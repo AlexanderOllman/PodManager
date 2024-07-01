@@ -1,29 +1,20 @@
-FROM ubuntu:latest
+FROM python:3.9-slim
 
-# Set the working directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Install necessary dependencies
-RUN apt-get update && apt-get install -y \
-    apt-transport-https \
-    gnupg2 \
-    curl \
-    wget \
-    python3.8 \
-    python3-pip
+# Copy the current directory contents into the container at /app
+COPY . /app
 
-# Update alternatives to make python3 point to python3.8
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
-
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Install kubectl
-RUN mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list && \
-    apt-get update && \
-    apt-get install -y kubectl
-
-
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
+    rm kubectl
 
 # Copy the current directory contents into the container at /app
 COPY . /app
