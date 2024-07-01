@@ -1,16 +1,17 @@
-FROM python:3.8
+# Use an official Python runtime as a parent image
+FROM python:3.8-slim
 
-WORKDIR /workspace
+# Set the working directory in the container
+WORKDIR /app
 
-ADD requirements.txt /workspace/requirements.txt
-RUN pip install -r requirements.txt
+# Copy the current directory contents into the container at /app
+COPY . /app
 
-# Add the necessary files including the templates folder
-ADD app.py /workspace/
-ADD templates /workspace/templates
+# Install any needed dependencies specified in requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-ENV HOME=/workspace
-
+# Make port 80 available to the world outside this container
 EXPOSE 80
-
-CMD [ "python3", "/workspace/app.py" ]
+EXPOSE 8080
+# Run app.py when the container launches
+CMD ["python3", "app.py"]
