@@ -1,18 +1,16 @@
 FROM python:3.8
 
-# Set the working directory in the container
-WORKDIR /app
+WORKDIR /workspace
 
-# Copy the current directory contents into the container at /app
-ADD . /app
-
-# Install the required packages
+ADD requirements.txt /workspace/requirements.txt
 RUN pip install -r requirements.txt
 
-ENV HOME=/app
+# Add the necessary files including the templates folder
+ADD app.py /workspace/
+ADD templates /workspace/templates
 
-# Make port 5000 available to the world outside this container
+ENV HOME=/workspace
+
 EXPOSE 80
 
-# Run app.py when the container launches
-CMD ["python3", "/app/app.py"]
+CMD [ "python3", "/workspace/app.py" ]
