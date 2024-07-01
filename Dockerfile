@@ -10,8 +10,6 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     python3.8 \
-    python3.8-venv \
-    python3.8-dev \
     python3-pip
 
 # Update alternatives to make python3 point to python3.8
