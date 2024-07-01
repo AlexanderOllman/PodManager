@@ -1,8 +1,22 @@
-# Use an official Python runtime as a parent image
-FROM python:3.8-slim
+FROM ubuntu:latest
 
-# Set the working directory in the container
+# Set the working directory
 WORKDIR /app
+
+# Install necessary dependencies
+RUN apt-get update && apt-get install -y \
+    apt-transport-https \
+    gnupg2 \
+    curl \
+    wget \
+    python3 \
+    python3-pip
+
+# Install kubectl
+RUN curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - && \
+    echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list && \
+    apt-get update && \
+    apt-get install -y kubectl
 
 # Copy the current directory contents into the container at /app
 COPY . /app
