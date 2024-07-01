@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Terminal Command Executor</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Terminal Command Executor</h1>
+    <form id="command-form">
+        <input type="text" id="command" name="command" placeholder="Enter command" required>
+        <button type="submit">Run</button>
+    </form>
+    <div id="output" style="white-space: pre-wrap; margin-top: 20px;"></div>
+
+    <script>
+        $(document).ready(function() {
+            $('#command-form').on('submit', function(event) {
+                event.preventDefault();
+                const command = $('#command').val();
+                $('#output').empty(); // Clear the output div
+                $.ajax({
+                    url: '/run',
+                    type: 'POST',
+                    data: { command: command },
+                    success: function(data) {
+                        if (data.format === 'table') {
+                            renderTable(data.data);
+                        } else {
+                            $('#output').text(data.output);
+                        }
+                    },
+                    error: function() {
+                        $('#output').text('An error occurred while executing the command.');
+                    }
+                });
+            });
+
+            function renderTable(pods) {
+                let table = '<table border="1"><thead><tr>';
+                table += '<th>Namespace</th><th>Name</th><th>Status</th><th>Age</th>';
+                table += '</tr></thead><tbody>';
+                pods.items.forEach(pod => {
+                    table += '<tr>';
+                    table += `<td>${pod.metadata.namespace}</td>`;
+                    table += `<td>${pod.metadata.name}</td>`;
+                    table += `<td>${pod.status.phase}</td>`;
+                    table += `<td>${pod.metadata.creationTimestamp}</td>`;
+                    table += '</tr>';
+                });
+                table += '</tbody></table>';
+                $('#output').html(table);
+            }
+        });
+    </script>
+</body>
+</html>
