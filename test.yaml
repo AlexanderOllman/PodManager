@@ -1,0 +1,33 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: llm
+spec:
+  predictor:
+    timeout: 600
+    containers:
+      - name: kserve-container
+        image: "marketplace.us1.greenlake-hpe.com/ezmeral/ezkf/qna-llm:v1.3.0-e658264"
+        imagePullPolicy: Always
+        # If you are running behind a proxy, uncomment the following lines and replace the values with your proxy URLs.
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "1000m"
+          limits:
+            memory: "8Gi"
+            cpu: "1000m"
+  transformer:
+    timeout: 600
+    containers:
+      - image: "marketplace.us1.greenlake-hpe.com/ezmeral/ezkf/qna-transformer:v1.3.0-f7315d3"
+        imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        name: kserve-container
+        args: ["--use_ssl"]
