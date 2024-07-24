@@ -9,6 +9,8 @@ COPY . /app
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN export HTTP_PROXY=http://hpeproxy.its.hpecorp.net:80 && \
+    export HTTPS_PROXY=http://hpeproxy.its.hpecorp.net:80
 # Install kubectl
 RUN apt-get update && \
     apt-get install -y curl && \
