@@ -1,6 +1,8 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import subprocess
 import json
+import os
+import tempfile
 
 app = Flask(__name__)
 
@@ -45,6 +47,28 @@ def run_action():
 
     output = run_kubectl_command(command)
     return jsonify(format='text', output=output)
+
+@app.route('/run_cli_command', methods=['POST'])
+def run_cli_command():
+    command = request.form['command']
+    output = run_kubectl_command(command)
+    return jsonify(output=output)
+
+@app.route('/upload_yaml', methods=['POST'])
+def upload_yaml():
+    if 'file' not in request.files:
+        return jsonify(error="No file part")
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify(error="No selected file")
+    if file and file.filename.endswith('.yaml'):
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.yaml') as temp_file:
+            file.save(temp_file.name)
+            command = f"kubectl apply -f {temp_file.name}"
+            output = run_kubectl_command(command)
+            os.unlink(temp_file.name)
+        return jsonify(output=output)
+    return jsonify(error="Invalid file type")
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port='8080')
