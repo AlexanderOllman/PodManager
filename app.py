@@ -70,5 +70,24 @@ def upload_yaml():
         return jsonify(output=output)
     return jsonify(error="Invalid file type")
 
+@app.route('/get_namespaces', methods=['GET'])
+def get_namespaces():
+    command = "kubectl get namespaces -o json"
+    output = run_kubectl_command(command)
+    
+    try:
+        namespaces = json.loads(output)
+        namespace_names = [item['metadata']['name'] for item in namespaces['items']]
+        return jsonify(namespaces=namespace_names)
+    except json.JSONDecodeError:
+        return jsonify(error="Unable to fetch namespaces")
+
+@app.route('/get_events', methods=['POST'])
+def get_events():
+    namespace = request.form['namespace']
+    command = f"kubectl get events -n {namespace} --sort-by='.lastTimestamp'"
+    output = run_kubectl_command(command)
+    return jsonify(output=output)
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port='8080')
