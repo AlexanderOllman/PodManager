@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubernetes Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+        .logo-container {
+            background-color: white;
+            border-radius: 50%;
+            width: 100px;
+            height: 100px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px auto;
+        }
+        .logo-container img {
+            max-width: 80%;
+            max-height: 80%;
+        }
+        .sidebar {
+            height: 100vh;
+            background-color: #01a982;
+            transition: width 0.3s ease;
+            width: 60px;
+            overflow: hidden;
+        }
+        .sidebar:hover {
+            width: 250px;
+        }
+        .sidebar .nav-link {
+            color: white;
+            white-space: nowrap;
+        }
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            color: white;
+            width: 20px;
+        }
+        .logo {
+            height: 50px;
+            object-fit: contain;
+        }
+        .status-icon {
+            margin-right: 5px;
+        }
+        .status-running { color: #28a745; }
+        .status-pending { color: #ffc107; }
+        .status-failed { color: #dc3545; }
+        .status-unknown { color: #6c757d; }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #007bff;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+        }
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 20px;
+            width: 480px;
+            font-family: sans-serif;
+            margin: 100px auto;
+            padding: 20px;
+        }
+        .drop-zone--over {
+            border-style: solid;
+        }
+        .drop-zone__prompt {
+            color: #999;
+            font-size: 20px;
+            text-align: center;
+            padding: 20px;
+        }
+        .drop-zone__input {
+            display: none;
+        }
+        .drop-zone__thumb {
+            width: 100%;
+            height: 150px;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #cccccc;
+            background-size: cover;
+            position: relative;
+        }
+        .drop-zone__thumb::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 5px 0;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.75);
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
+                </div>
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#" data-bs-toggle="tab" data-bs-target="#home">
+                                <i class="fas fa-home"></i> <span>Home</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#cli">
+                                <i class="fas fa-terminal"></i> <span>CLI</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#yaml">
+                                <i class="fas fa-file-upload"></i> <span>Upload YAML</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#events">
+                                <i class="fa fa-clock-o"></i> Events
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <div class="tab-content" id="myTabContent">
+                    <!-- Home Tab -->
+                    <div class="tab-pane fade show active" id="home" role="tabpanel" aria-labelledby="home-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h1 class="h2">Kubernetes Resources</h1>
+                        </div>
+
+                <!-- Tabs -->
+                <ul class="nav nav-tabs" id="resourceTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="pods-tab" data-bs-toggle="tab" data-bs-target="#pods" type="button" role="tab" aria-controls="pods" aria-selected="true">Pods</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="services-tab" data-bs-toggle="tab" data-bs-target="#services" type="button" role="tab" aria-controls="services" aria-selected="false">Services</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="inferenceservices-tab" data-bs-toggle="tab" data-bs-target="#inferenceservices" type="button" role="tab" aria-controls="inferenceservices" aria-selected="false">InferenceServices</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="deployments-tab" data-bs-toggle="tab" data-bs-target="#deployments" type="button" role="tab" aria-controls="deployments" aria-selected="false">Deployments</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="configmaps-tab" data-bs-toggle="tab" data-bs-target="#configmaps" type="button" role="tab" aria-controls="configmaps" aria-selected="false">ConfigMaps</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="secrets-tab" data-bs-toggle="tab" data-bs-target="#secrets" type="button" role="tab" aria-controls="secrets" aria-selected="false">Secrets</button>
+                    </li>
+                </ul>
+
+                <!-- Tab content -->
+                <div class="tab-content" id="resourceTabsContent">
+                    <div class="tab-pane fade show active" id="pods" role="tabpanel" aria-labelledby="pods-tab">
+                        <div class="loading-container" id="podsLoading">
+                            <div class="spinner"></div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-sm" id="podsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Namespace</th>
+                                        <th>Name</th>
+                                        <th>Ready</th>
+                                        <th>Status</th>
+                                        <th>Restarts</th>
+                                        <th>Age</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Table content will be dynamically populated -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="services" role="tabpanel" aria-labelledby="services-tab">
+                        <div class="loading-container" id="podsLoading">
+                            <div class="spinner"></div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-sm" id="servicesTable">
+                                <thead>
+                                    <tr>
+                                        <th>Namespace</th>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Cluster-IP</th>
+                                        <th>External-IP</th>
+                                        <th>Ports</th>
+                                        <th>Age</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Table content will be dynamically populated -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="inferenceservices" role="tabpanel" aria-labelledby="inferenceservices-tab">
+                        <div class="loading-container" id="podsLoading">
+                            <div class="spinner"></div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-sm" id="inferenceservicesTable">
+                                <thead>
+                                    <tr>
+                                        <th>Namespace</th>
+                                        <th>Name</th>
+                                        <th>URL</th>
+                                        <th>Ready</th>
+                                        <th>Default Traffic</th>
+                                        <th>Canary Traffic</th>
+                                        <th>Age</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Table content will be dynamically populated -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="deployments" role="tabpanel" aria-labelledby="deployments-tab">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-sm" id="deploymentsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Namespace</th>
+                                        <th>Name</th>
+                                        <th>Ready</th>
+                                        <th>Up-to-date</th>
+                                        <th>Available</th>
+                                        <th>Age</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Table content will be dynamically populated -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="configmaps" role="tabpanel" aria-labelledby="configmaps-tab">
+                        <div class="loading-container" id="podsLoading">
+                            <div class="spinner"></div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-sm" id="configmapsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Namespace</th>
+                                        <th>Name</th>
+                                        <th>Data</th>
+                                        <th>Age</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Table content will be dynamically populated -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="secrets" role="tabpanel" aria-labelledby="secrets-tab">
+                        <div class="loading-container" id="podsLoading">
+                            <div class="spinner"></div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-sm" id="secretsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Namespace</th>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Data</th>
+                                        <th>Age</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Table content will be dynamically populated -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                    </div>
+
+                    <!-- CLI Tab -->
+                    <div class="tab-pane fade" id="cli" role="tabpanel" aria-labelledby="cli-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h1 class="h2">CLI Commands</h1>
+                        </div>
+                        <div class="mb-3">
+                            <label for="cliCommand" class="form-label">Enter kubectl command:</label>
+                            <input type="text" class="form-control" id="cliCommand" placeholder="e.g., kubectl get pods">
+                        </div>
+                        <button class="btn btn-primary" onclick="runCliCommand()">Run Command</button>
+                        <div class="mt-3">
+                            <pre id="cliOutput"></pre>
+                        </div>
+                    </div>
+
+                    <!-- YAML Upload Tab -->
+                    <div class="tab-pane fade" id="yaml" role="tabpanel" aria-labelledby="yaml-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h1 class="h2">Upload YAML</h1>
+                        </div>
+                        <div class="drop-zone">
+                            <span class="drop-zone__prompt">Drop YAML file here or click to upload</span>
+                            <input type="file" name="myFile" class="drop-zone__input" accept=".yaml">
+                        </div>
+                        <div class="text-center mt-3">
+                            <button id="deployButton" class="btn btn-primary" style="display: none;" onclick="deployYaml()">Deploy</button>
+                        </div>
+                        <div class="mt-3">
+                            <pre id="yamlOutput"></pre>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="events" role="tabpanel" aria-labelledby="events-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h2>Events</h2>
+                        </div>
+                        <div class="mb-3">
+                            <label for="namespaceSelect" class="form-label">Select Namespace:</label>
+                            <select id="namespaceSelect" class="form-select">
+                                <option value="">Select a namespace</option>
+                            </select>
+                        </div>
+                        <pre id="eventsOutput" class="mt-3"></pre>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modal for displaying action results -->
+    <div class="modal fade" id="actionModal" tabindex="-1" aria-labelledby="actionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="actionModalLabel">Action Result</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="loading-container" id="actionLoading">
+                        <div class="spinner"></div>
+                    </div>
+                    <pre id="actionResult" style="display: none;"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<script>
+    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+
+    $(document).ready(function() {
+            // Load namespaces
+            $.get('/get_namespaces', function(data) {
+                if (data.namespaces) {
+                    data.namespaces.forEach(function(namespace) {
+                        $('#namespaceSelect').append($('<option>', {
+                            value: namespace,
+                            text: namespace
+                        }));
+                    });
+                }
+            });
+
+            // Handle namespace selection
+            $('#namespaceSelect').change(function() {
+                var selectedNamespace = $(this).val();
+                if (selectedNamespace) {
+                    $.post('/get_events', { namespace: selectedNamespace }, function(data) {
+                        $('#eventsOutput').text(data.output);
+                    });
+                } else {
+                    $('#eventsOutput').text('');
+                }
+            });
+        });
+
+function getStatusIcon(status) {
+    switch (status.toLowerCase()) {
+        case 'running':
+            return '<i class="fas fa-check-circle status-icon status-running"></i>';
+        case 'pending':
+            return '<i class="fas fa-clock status-icon status-pending"></i>';
+        case 'failed':
+            return '<i class="fas fa-times-circle status-icon status-failed"></i>';
+        default:
+            return '<i class="fas fa-question-circle status-icon status-unknown"></i>';
+    }
+}
+
+function createActionButton(resourceType, namespace, name) {
+    return `
+        <div class="dropdown">
+            <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-ellipsis-h"></i>
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">View Logs</a></li>
+                <li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">Access</a></li>
+                <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">Delete</a></li>
+            </ul>
+        </div>
+    `;
+}
+
+function showLoading(resourceType) {
+    document.getElementById(`${resourceType}Loading`).style.display = 'flex';
+    document.getElementById(`${resourceType}Table`).style.display = 'none';
+}
+
+function hideLoading(resourceType) {
+    document.getElementById(`${resourceType}Loading`).style.display = 'none';
+    document.getElementById(`${resourceType}Table`).style.display = 'block';
+}
+
+function fetchResourceData(resourceType) {
+    showLoading(resourceType);
+    fetch('/get_resources', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `resource_type=${resourceType}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        const tableBody = document.querySelector(`#${resourceType}Table table tbody`);
+        tableBody.innerHTML = ''; // Clear existing rows
+
+        if (data.format === 'error') {
+            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}</td></tr>`;
+        } else {
+            data.data.items.forEach(item => {
+                const row = document.createElement('tr');
+                switch (resourceType) {
+                    case 'pods':
+                        row.innerHTML = `
+                            <td>${item.metadata.namespace}</td>
+                            <td>${item.metadata.name}</td>
+                            <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
+                            <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                            <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
+                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                        `;
+                        break;
+                    case 'services':
+                        row.innerHTML = `
+                            <td>${item.metadata.namespace}</td>
+                            <td>${item.metadata.name}</td>
+                            <td>${item.spec.type}</td>
+                            <td>${item.spec.clusterIP}</td>
+                            <td>${item.spec.externalIP || 'N/A'}</td>
+                            <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
+                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                        `;
+                        break;
+                    // Add cases for other resource types as needed
+                }
+                tableBody.appendChild(row);
+            });
+        }
+        hideLoading(resourceType);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        hideLoading(resourceType);
+    });
+}
+
+function runAction(action, resourceType, namespace, name) {
+    const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
+    actionModal.show();
+    
+    document.getElementById('actionLoading').style.display = 'flex';
+    document.getElementById('actionResult').style.display = 'none';
+
+    fetch('/run_action', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        const actionResult = document.getElementById('actionResult');
+        actionResult.textContent = data.output;
+        document.getElementById('actionLoading').style.display = 'none';
+        actionResult.style.display = 'block';
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('actionLoading').style.display = 'none';
+        document.getElementById('actionResult').style.display = 'block';
+        document.getElementById('actionResult').textContent = 'An error occurred while performing the action.';
+    });
+}
+
+function runCliCommand() {
+    const command = document.getElementById('cliCommand').value;
+    fetch('/run_cli_command', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `command=${encodeURIComponent(command)}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('cliOutput').textContent = data.output;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('cliOutput').textContent = 'An error occurred while running the command.';
+    });
+}
+
+function deployYaml() {
+    const fileInput = document.querySelector('.drop-zone__input');
+    const file = fileInput.files[0];
+    if (file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/upload_yaml', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('yamlOutput').textContent = data.output || data.error;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
+        });
+    }
+}
+
+document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
+    const dropZoneElement = inputElement.closest(".drop-zone");
+
+    dropZoneElement.addEventListener("click", (e) => {
+        inputElement.click();
+    });
+
+    inputElement.addEventListener("change", (e) => {
+        if (inputElement.files.length) {
+            updateThumbnail(dropZoneElement, inputElement.files[0]);
+            document.getElementById('deployButton').style.display = 'inline-block';
+        }
+    });
+
+    dropZoneElement.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZoneElement.classList.add("drop-zone--over");
+    });
+
+    ["dragleave", "dragend"].forEach((type) => {
+        dropZoneElement.addEventListener(type, (e) => {
+            dropZoneElement.classList.remove("drop-zone--over");
+        });
+    });
+
+    dropZoneElement.addEventListener("drop", (e) => {
+        e.preventDefault();
+
+        if (e.dataTransfer.files.length) {
+            inputElement.files = e.dataTransfer.files;
+            updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
+            document.getElementById('deployButton').style.display = 'inline-block';
+        }
+
+        dropZoneElement.classList.remove("drop-zone--over");
+    });
+});
+
+function updateThumbnail(dropZoneElement, file) {
+    let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
+
+    if (dropZoneElement.querySelector(".drop-zone__prompt")) {
+        dropZoneElement.querySelector(".drop-zone__prompt").remove();
+    }
+
+    if (!thumbnailElement) {
+        thumbnailElement = document.createElement("div");
+        thumbnailElement.classList.add("drop-zone__thumb");
+        dropZoneElement.appendChild(thumbnailElement);
+    }
+
+    thumbnailElement.dataset.label = file.name;
+
+    if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
+        };
+    } else {
+        thumbnailElement.style.backgroundImage = null;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    resourceTypes.forEach(resourceType => {
+        fetchResourceData(resourceType);
+        document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
+    });
+});
+</script>
+</body>
+</html>
