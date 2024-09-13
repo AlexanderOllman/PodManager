@@ -10,6 +10,19 @@
         .sidebar {
             height: 100vh;
             background-color: #f8f9fa;
+            transition: width 0.3s ease;
+            width: 60px;
+            overflow: hidden;
+        }
+        .sidebar:hover {
+            width: 250px;
+        }
+        .sidebar .nav-link {
+            white-space: nowrap;
+        }
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            width: 20px;
         }
         .logo {
             height: 50px;
@@ -41,6 +54,47 @@
             align-items: center;
             height: 200px;
         }
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 20px;
+            width: 480px;
+            font-family: sans-serif;
+            margin: 100px auto;
+            padding: 20px;
+        }
+        .drop-zone--over {
+            border-style: solid;
+        }
+        .drop-zone__prompt {
+            color: #999;
+            font-size: 20px;
+            text-align: center;
+            padding: 20px;
+        }
+        .drop-zone__input {
+            display: none;
+        }
+        .drop-zone__thumb {
+            width: 100%;
+            height: 150px;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #cccccc;
+            background-size: cover;
+            position: relative;
+        }
+        .drop-zone__thumb::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 5px 0;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.75);
+            font-size: 14px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -48,24 +102,29 @@
         <div class="row">
             <!-- Sidebar -->
             <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
+                </div>
                 <div class="position-sticky pt-3">
-                    <div class="text-center mb-3">
-                        <img src="/api/placeholder/200/50" alt="Logo" class="logo">
-                    </div>
                     <ul class="nav flex-column">
                         <li class="nav-item">
-                            <a class="nav-link active" href="#">
-                                <i class="fas fa-home"></i> Home
+                            <a class="nav-link active" href="#" data-bs-toggle="tab" data-bs-target="#home">
+                                <i class="fas fa-home"></i> <span>Home</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="#">
-                                <i class="fas fa-chart-bar"></i> Dashboard
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#cli">
+                                <i class="fas fa-terminal"></i> <span>CLI</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="#">
-                                <i class="fas fa-cog"></i> Settings
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#yaml">
+                                <i class="fas fa-file-upload"></i> <span>Upload YAML</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#events">
+                                <i class="fa fa-clock-o"></i> Events
                             </a>
                         </li>
                     </ul>
@@ -74,9 +133,12 @@
 
             <!-- Main content -->
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
-                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                    <h1 class="h2">Kubernetes Resources</h1>
-                </div>
+                <div class="tab-content" id="myTabContent">
+                    <!-- Home Tab -->
+                    <div class="tab-pane fade show active" id="home" role="tabpanel" aria-labelledby="home-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h1 class="h2">Kubernetes Resources</h1>
+                        </div>
 
                 <!-- Tabs -->
                 <ul class="nav nav-tabs" id="resourceTabs" role="tablist">
@@ -237,6 +299,54 @@
                         </div>
                     </div>
                 </div>
+
+                    </div>
+
+                    <!-- CLI Tab -->
+                    <div class="tab-pane fade" id="cli" role="tabpanel" aria-labelledby="cli-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h1 class="h2">CLI Commands</h1>
+                        </div>
+                        <div class="mb-3">
+                            <label for="cliCommand" class="form-label">Enter kubectl command:</label>
+                            <input type="text" class="form-control" id="cliCommand" placeholder="e.g., kubectl get pods">
+                        </div>
+                        <button class="btn btn-primary" onclick="runCliCommand()">Run Command</button>
+                        <div class="mt-3">
+                            <pre id="cliOutput"></pre>
+                        </div>
+                    </div>
+
+                    <!-- YAML Upload Tab -->
+                    <div class="tab-pane fade" id="yaml" role="tabpanel" aria-labelledby="yaml-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h1 class="h2">Upload YAML</h1>
+                        </div>
+                        <div class="drop-zone">
+                            <span class="drop-zone__prompt">Drop YAML file here or click to upload</span>
+                            <input type="file" name="myFile" class="drop-zone__input" accept=".yaml">
+                        </div>
+                        <div class="text-center mt-3">
+                            <button id="deployButton" class="btn btn-primary" style="display: none;" onclick="deployYaml()">Deploy</button>
+                        </div>
+                        <div class="mt-3">
+                            <pre id="yamlOutput"></pre>
+                        </div>
+                    </div>
+                    
+                    <div class="tab-pane fade" id="events" role="tabpanel" aria-labelledby="events-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h2>Events</h2>
+                        </div>
+                        <div class="mb-3">
+                            <label for="namespaceSelect" class="form-label">Select Namespace:</label>
+                            <select id="namespaceSelect" class="form-select">
+                                <option value="">Select a namespace</option>
+                            </select>
+                        </div>
+                        <pre id="eventsOutput" class="mt-3"></pre>
+                    </div>
+                </div>
             </main>
         </div>
     </div>
@@ -260,154 +370,270 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script>
-        const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
-    
-        function getStatusIcon(status) {
-            switch (status.toLowerCase()) {
-                case 'running':
-                    return '<i class="fas fa-check-circle status-icon status-running"></i>';
-                case 'pending':
-                    return '<i class="fas fa-clock status-icon status-pending"></i>';
-                case 'failed':
-                    return '<i class="fas fa-times-circle status-icon status-failed"></i>';
-                default:
-                    return '<i class="fas fa-question-circle status-icon status-unknown"></i>';
-            }
-        }
-    
-        function createActionButton(resourceType, namespace, name) {
-            return `
-                <div class="dropdown">
-                    <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-ellipsis-h"></i>
-                    </button>
-                    <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                        <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">View Logs</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">Access</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">Delete</a></li>
-                    </ul>
-                </div>
-            `;
-        }
-    
-        function fetchResourceData(resourceType) {
-            fetch('/get_resources', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `resource_type=${resourceType}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-                tableBody.innerHTML = ''; // Clear existing rows
-    
-                if (data.format === 'error') {
-                    tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}</td></tr>`;
-                    return;
+<script>
+    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+
+function getStatusIcon(status) {
+    switch (status.toLowerCase()) {
+        case 'running':
+            return '<i class="fas fa-check-circle status-icon status-running"></i>';
+        case 'pending':
+            return '<i class="fas fa-clock status-icon status-pending"></i>';
+        case 'failed':
+            return '<i class="fas fa-times-circle status-icon status-failed"></i>';
+        default:
+            return '<i class="fas fa-question-circle status-icon status-unknown"></i>';
+    }
+}
+
+function createActionButton(resourceType, namespace, name) {
+    return `
+        <div class="dropdown">
+            <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-ellipsis-h"></i>
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">View Logs</a></li>
+                <li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">Access</a></li>
+                <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">Delete</a></li>
+            </ul>
+        </div>
+    `;
+}
+
+function showLoading(resourceType) {
+    document.getElementById(`${resourceType}Loading`).style.display = 'flex';
+    document.getElementById(`${resourceType}Table`).style.display = 'none';
+}
+
+function hideLoading(resourceType) {
+    document.getElementById(`${resourceType}Loading`).style.display = 'none';
+    document.getElementById(`${resourceType}Table`).style.display = 'block';
+}
+
+function fetchResourceData(resourceType) {
+    showLoading(resourceType);
+    fetch('/get_resources', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `resource_type=${resourceType}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        const tableBody = document.querySelector(`#${resourceType}Table table tbody`);
+        tableBody.innerHTML = ''; // Clear existing rows
+
+        if (data.format === 'error') {
+            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}</td></tr>`;
+        } else {
+            data.data.items.forEach(item => {
+                const row = document.createElement('tr');
+                switch (resourceType) {
+                    case 'pods':
+                        row.innerHTML = `
+                            <td>${item.metadata.namespace}</td>
+                            <td>${item.metadata.name}</td>
+                            <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
+                            <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                            <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
+                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                        `;
+                        break;
+                    case 'services':
+                        row.innerHTML = `
+                            <td>${item.metadata.namespace}</td>
+                            <td>${item.metadata.name}</td>
+                            <td>${item.spec.type}</td>
+                            <td>${item.spec.clusterIP}</td>
+                            <td>${item.spec.externalIP || 'N/A'}</td>
+                            <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
+                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                        `;
+                        break;
+                    // Add cases for other resource types as needed
                 }
-    
-                data.data.items.forEach(item => {
-                    const row = document.createElement('tr');
-                    switch (resourceType) {
-                        case 'pods':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
-                                <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                                <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                        case 'services':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${item.spec.type}</td>
-                                <td>${item.spec.clusterIP}</td>
-                                <td>${item.spec.externalIP || 'N/A'}</td>
-                                <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                        case 'inferenceservices':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${item.status.url || 'N/A'}</td>
-                                <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
-                                <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
-                                <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                        case 'deployments':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
-                                <td>${item.status.updatedReplicas}</td>
-                                <td>${item.status.availableReplicas}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                        case 'configmaps':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${Object.keys(item.data || {}).length}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                        case 'secrets':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${item.type}</td>
-                                <td>${Object.keys(item.data || {}).length}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                    }
-                    tableBody.appendChild(row);
-                });
-            })
-            .catch(error => console.error('Error:', error));
+                tableBody.appendChild(row);
+            });
         }
+        hideLoading(resourceType);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        hideLoading(resourceType);
+    });
+}
+
+function runAction(action, resourceType, namespace, name) {
+    const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
+    actionModal.show();
     
-        function runAction(action, resourceType, namespace, name) {
-            fetch('/run_action', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                const actionResult = document.getElementById('actionResult');
-                actionResult.textContent = data.output;
-                const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
-                actionModal.show();
-            })
-            .catch(error => console.error('Error:', error));
+    document.getElementById('actionLoading').style.display = 'flex';
+    document.getElementById('actionResult').style.display = 'none';
+
+    fetch('/run_action', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        const actionResult = document.getElementById('actionResult');
+        actionResult.textContent = data.output;
+        document.getElementById('actionLoading').style.display = 'none';
+        actionResult.style.display = 'block';
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('actionLoading').style.display = 'none';
+        document.getElementById('actionResult').style.display = 'block';
+        document.getElementById('actionResult').textContent = 'An error occurred while performing the action.';
+    });
+}
+
+function runCliCommand() {
+    const command = document.getElementById('cliCommand').value;
+    fetch('/run_cli_command', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `command=${encodeURIComponent(command)}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('cliOutput').textContent = data.output;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('cliOutput').textContent = 'An error occurred while running the command.';
+    });
+}
+
+function deployYaml() {
+    const fileInput = document.querySelector('.drop-zone__input');
+    const file = fileInput.files[0];
+    if (file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/upload_yaml', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('yamlOutput').textContent = data.output || data.error;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
+        });
+    }
+}
+
+document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
+    const dropZoneElement = inputElement.closest(".drop-zone");
+
+    dropZoneElement.addEventListener("click", (e) => {
+        inputElement.click();
+    });
+
+    inputElement.addEventListener("change", (e) => {
+        if (inputElement.files.length) {
+            updateThumbnail(dropZoneElement, inputElement.files[0]);
+            document.getElementById('deployButton').style.display = 'inline-block';
         }
-    
-        document.addEventListener('DOMContentLoaded', function() {
-            resourceTypes.forEach(resourceType => {
-                fetchResourceData(resourceType);
-                document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
+    });
+
+    dropZoneElement.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZoneElement.classList.add("drop-zone--over");
+    });
+
+    ["dragleave", "dragend"].forEach((type) => {
+        dropZoneElement.addEventListener(type, (e) => {
+            dropZoneElement.classList.remove("drop-zone--over");
+        });
+    });
+
+    dropZoneElement.addEventListener("drop", (e) => {
+        e.preventDefault();
+
+        if (e.dataTransfer.files.length) {
+            inputElement.files = e.dataTransfer.files;
+            updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
+            document.getElementById('deployButton').style.display = 'inline-block';
+        }
+
+        dropZoneElement.classList.remove("drop-zone--over");
+    });
+});
+
+function updateThumbnail(dropZoneElement, file) {
+    let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
+
+    if (dropZoneElement.querySelector(".drop-zone__prompt")) {
+        dropZoneElement.querySelector(".drop-zone__prompt").remove();
+    }
+
+    if (!thumbnailElement) {
+        thumbnailElement = document.createElement("div");
+        thumbnailElement.classList.add("drop-zone__thumb");
+        dropZoneElement.appendChild(thumbnailElement);
+    }
+
+    thumbnailElement.dataset.label = file.name;
+
+    if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
+        };
+    } else {
+        thumbnailElement.style.backgroundImage = null;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    resourceTypes.forEach(resourceType => {
+        fetchResourceData(resourceType);
+        document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
+    });
+});
+
+$(document).ready(function() {
+            // Load namespaces
+            $.get('/get_namespaces', function(data) {
+                if (data.namespaces) {
+                    data.namespaces.forEach(function(namespace) {
+                        $('#namespaceSelect').append($('<option>', {
+                            value: namespace,
+                            text: namespace
+                        }));
+                    });
+                }
+            });
+
+            // Handle namespace selection
+            $('#namespaceSelect').change(function() {
+                var selectedNamespace = $(this).val();
+                if (selectedNamespace) {
+                    $.post('/get_events', { namespace: selectedNamespace }, function(data) {
+                        $('#eventsOutput').text(data.output);
+                    });
+                } else {
+                    $('#eventsOutput').text('');
+                }
             });
         });
-    </script>
-    </body>
-    </html>
+</script>
+</body>
+</html>
