@@ -208,7 +208,7 @@
                         </div>
                     </div>
                     <div class="tab-pane fade" id="services" role="tabpanel" aria-labelledby="services-tab">
-                        <div class="loading-container" id="podsLoading">
+                        <div class="loading-container" id="servicesLoading">
                             <div class="spinner"></div>
                         </div>
                         <div class="table-responsive">
@@ -232,7 +232,7 @@
                         </div>
                     </div>
                     <div class="tab-pane fade" id="inferenceservices" role="tabpanel" aria-labelledby="inferenceservices-tab">
-                        <div class="loading-container" id="podsLoading">
+                        <div class="loading-container" id="inferenceservicesLoading">
                             <div class="spinner"></div>
                         </div>
                         <div class="table-responsive">
@@ -276,7 +276,7 @@
                         </div>
                     </div>
                     <div class="tab-pane fade" id="configmaps" role="tabpanel" aria-labelledby="configmaps-tab">
-                        <div class="loading-container" id="podsLoading">
+                        <div class="loading-container" id="configmapsLoading">
                             <div class="spinner"></div>
                         </div>
                         <div class="table-responsive">
@@ -297,7 +297,7 @@
                         </div>
                     </div>
                     <div class="tab-pane fade" id="secrets" role="tabpanel" aria-labelledby="secrets-tab">
-                        <div class="loading-container" id="podsLoading">
+                        <div class="loading-container" id="secretsLoading">
                             <div class="spinner"></div>
                         </div>
                         <div class="table-responsive">
@@ -395,31 +395,6 @@
 <script>
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
 
-    $(document).ready(function() {
-            // Load namespaces
-            $.get('/get_namespaces', function(data) {
-                if (data.namespaces) {
-                    data.namespaces.forEach(function(namespace) {
-                        $('#namespaceSelect').append($('<option>', {
-                            value: namespace,
-                            text: namespace
-                        }));
-                    });
-                }
-            });
-
-            // Handle namespace selection
-            $('#namespaceSelect').change(function() {
-                var selectedNamespace = $(this).val();
-                if (selectedNamespace) {
-                    $.post('/get_events', { namespace: selectedNamespace }, function(data) {
-                        $('#eventsOutput').text(data.output);
-                    });
-                } else {
-                    $('#eventsOutput').text('');
-                }
-            });
-        });
 
 function getStatusIcon(status) {
     switch (status.toLowerCase()) {
