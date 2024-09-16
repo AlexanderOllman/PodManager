@@ -6,10 +6,43 @@
     <title>Kubernetes Dashboard</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
     <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+        .logo-container {
+            background-color: white;
+            border-radius: 50%;
+            width: 100px;
+            height: 100px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px auto;
+        }
+        .logo-container img {
+            max-width: 80%;
+            max-height: 80%;
+        }
         .sidebar {
             height: 100vh;
-            background-color: #f8f9fa;
+            background-color: #01a982;
+            transition: width 0.3s ease;
+            width: 60px;
+            overflow: hidden;
+        }
+        .sidebar:hover {
+            width: 250px;
+        }
+        .sidebar .nav-link {
+            color: white;
+            white-space: nowrap;
+        }
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            color: white;
+            width: 20px;
         }
         .logo {
             height: 50px;
@@ -41,6 +74,47 @@
             align-items: center;
             height: 200px;
         }
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 20px;
+            width: 480px;
+            font-family: sans-serif;
+            margin: 100px auto;
+            padding: 20px;
+        }
+        .drop-zone--over {
+            border-style: solid;
+        }
+        .drop-zone__prompt {
+            color: #999;
+            font-size: 20px;
+            text-align: center;
+            padding: 20px;
+        }
+        .drop-zone__input {
+            display: none;
+        }
+        .drop-zone__thumb {
+            width: 100%;
+            height: 150px;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #cccccc;
+            background-size: cover;
+            position: relative;
+        }
+        .drop-zone__thumb::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 5px 0;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.75);
+            font-size: 14px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -68,12 +142,23 @@
                                 <i class="fas fa-cog"></i> Settings
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#events">
+                                <i class="fa fa-clock-o"></i> Events
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </nav>
 
             <!-- Main content -->
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+
+                <div class="tab-content" id="myTabContent">
+
+                    <div class="tab-pane fade show active" id="home" role="tabpanel" aria-labelledby="home-tab">
+
+
                 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                     <h1 class="h2">Kubernetes Resources</h1>
                 </div>
@@ -126,7 +211,7 @@
                         </div>
                     </div>
                     <div class="tab-pane fade" id="services" role="tabpanel" aria-labelledby="services-tab">
-                        <div class="loading-container" id="podsLoading">
+                        <div class="loading-container" id="servicesLoading">
                             <div class="spinner"></div>
                         </div>
                         <div class="table-responsive">
@@ -150,7 +235,7 @@
                         </div>
                     </div>
                     <div class="tab-pane fade" id="inferenceservices" role="tabpanel" aria-labelledby="inferenceservices-tab">
-                        <div class="loading-container" id="podsLoading">
+                        <div class="loading-container" id="inferenceLoading">
                             <div class="spinner"></div>
                         </div>
                         <div class="table-responsive">
@@ -174,6 +259,9 @@
                         </div>
                     </div>
                     <div class="tab-pane fade" id="deployments" role="tabpanel" aria-labelledby="deployments-tab">
+                        <div class="loading-container" id="deploymentsLoading">
+                            <div class="spinner"></div>
+                        </div>
                         <div class="table-responsive">
                             <table class="table table-striped table-sm" id="deploymentsTable">
                                 <thead>
@@ -194,7 +282,7 @@
                         </div>
                     </div>
                     <div class="tab-pane fade" id="configmaps" role="tabpanel" aria-labelledby="configmaps-tab">
-                        <div class="loading-container" id="podsLoading">
+                        <div class="loading-container" id="configmapsLoading">
                             <div class="spinner"></div>
                         </div>
                         <div class="table-responsive">
@@ -215,7 +303,7 @@
                         </div>
                     </div>
                     <div class="tab-pane fade" id="secrets" role="tabpanel" aria-labelledby="secrets-tab">
-                        <div class="loading-container" id="podsLoading">
+                        <div class="loading-container" id="secretsLoading">
                             <div class="spinner"></div>
                         </div>
                         <div class="table-responsive">
@@ -236,6 +324,57 @@
                             </table>
                         </div>
                     </div>
+                </div>
+
+                </div>
+
+
+                    <!-- CLI Tab -->
+                    <div class="tab-pane fade" id="cli" role="tabpanel" aria-labelledby="cli-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h1 class="h2">CLI Commands</h1>
+                        </div>
+                        <div class="mb-3">
+                            <label for="cliCommand" class="form-label">Enter kubectl command:</label>
+                            <input type="text" class="form-control" id="cliCommand" placeholder="e.g., kubectl get pods">
+                        </div>
+                        <button class="btn btn-primary" onclick="runCliCommand()">Run Command</button>
+                        <div class="mt-3">
+                            <pre id="cliOutput"></pre>
+                        </div>
+                    </div>
+
+                    <!-- YAML Upload Tab -->
+                    <div class="tab-pane fade" id="yaml" role="tabpanel" aria-labelledby="yaml-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h1 class="h2">Upload YAML</h1>
+                        </div>
+                        <div class="drop-zone">
+                            <span class="drop-zone__prompt">Drop YAML file here or click to upload</span>
+                            <input type="file" name="myFile" class="drop-zone__input" accept=".yaml">
+                        </div>
+                        <div class="text-center mt-3">
+                            <button id="deployButton" class="btn btn-primary" style="display: none;" onclick="deployYaml()">Deploy</button>
+                        </div>
+                        <div class="mt-3">
+                            <pre id="yamlOutput"></pre>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="events" role="tabpanel" aria-labelledby="events-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h2>Events</h2>
+                        </div>
+                        <div class="mb-3">
+                            <label for="namespaceSelect" class="form-label">Select Namespace:</label>
+                            <select id="namespaceSelect" class="form-select">
+                                <option value="">Select a namespace</option>
+                            </select>
+                        </div>
+                        <pre id="eventsOutput" class="mt-3"></pre>
+                    </div>
+
+
                 </div>
             </main>
         </div>
