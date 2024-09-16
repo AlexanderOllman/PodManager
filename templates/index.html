@@ -122,24 +122,24 @@
         <div class="row">
             <!-- Sidebar -->
             <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
+                </div>
                 <div class="position-sticky pt-3">
-                    <div class="text-center mb-3">
-                        <img src="/api/placeholder/200/50" alt="Logo" class="logo">
-                    </div>
                     <ul class="nav flex-column">
                         <li class="nav-item">
-                            <a class="nav-link active" href="#">
-                                <i class="fas fa-home"></i> Home
+                            <a class="nav-link active" href="#" data-bs-toggle="tab" data-bs-target="#home">
+                                <i class="fas fa-home"></i> <span>Home</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="#">
-                                <i class="fas fa-chart-bar"></i> Dashboard
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#cli">
+                                <i class="fas fa-terminal"></i> <span>CLI</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="#">
-                                <i class="fas fa-cog"></i> Settings
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#yaml">
+                                <i class="fas fa-file-upload"></i> <span>Upload YAML</span>
                             </a>
                         </li>
                         <li class="nav-item">
@@ -528,34 +528,152 @@
                     }
                     tableBody.appendChild(row);
                 });
+                hideLoading(resourceType);
             })
             .catch(error => console.error('Error:', error));
         }
     
         function runAction(action, resourceType, namespace, name) {
-            fetch('/run_action', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                const actionResult = document.getElementById('actionResult');
-                actionResult.textContent = data.output;
-                const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
-                actionModal.show();
-            })
-            .catch(error => console.error('Error:', error));
-        }
+    const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
+    actionModal.show();
     
-        document.addEventListener('DOMContentLoaded', function() {
-            resourceTypes.forEach(resourceType => {
-                fetchResourceData(resourceType);
-                document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
-            });
+    document.getElementById('actionLoading').style.display = 'flex';
+    document.getElementById('actionResult').style.display = 'none';
+
+    fetch('/run_action', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        const actionResult = document.getElementById('actionResult');
+        actionResult.textContent = data.output;
+        document.getElementById('actionLoading').style.display = 'none';
+        actionResult.style.display = 'block';
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('actionLoading').style.display = 'none';
+        document.getElementById('actionResult').style.display = 'block';
+        document.getElementById('actionResult').textContent = 'An error occurred while performing the action.';
+    });
+}
+
+function runCliCommand() {
+    const command = document.getElementById('cliCommand').value;
+    fetch('/run_cli_command', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `command=${encodeURIComponent(command)}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('cliOutput').textContent = data.output;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('cliOutput').textContent = 'An error occurred while running the command.';
+    });
+}
+
+function deployYaml() {
+    const fileInput = document.querySelector('.drop-zone__input');
+    const file = fileInput.files[0];
+    if (file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/upload_yaml', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('yamlOutput').textContent = data.output || data.error;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
         });
+    }
+}
+
+document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
+    const dropZoneElement = inputElement.closest(".drop-zone");
+
+    dropZoneElement.addEventListener("click", (e) => {
+        inputElement.click();
+    });
+
+    inputElement.addEventListener("change", (e) => {
+        if (inputElement.files.length) {
+            updateThumbnail(dropZoneElement, inputElement.files[0]);
+            document.getElementById('deployButton').style.display = 'inline-block';
+        }
+    });
+
+    dropZoneElement.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZoneElement.classList.add("drop-zone--over");
+    });
+
+    ["dragleave", "dragend"].forEach((type) => {
+        dropZoneElement.addEventListener(type, (e) => {
+            dropZoneElement.classList.remove("drop-zone--over");
+        });
+    });
+
+    dropZoneElement.addEventListener("drop", (e) => {
+        e.preventDefault();
+
+        if (e.dataTransfer.files.length) {
+            inputElement.files = e.dataTransfer.files;
+            updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
+            document.getElementById('deployButton').style.display = 'inline-block';
+        }
+
+        dropZoneElement.classList.remove("drop-zone--over");
+    });
+});
+
+function updateThumbnail(dropZoneElement, file) {
+    let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
+
+    if (dropZoneElement.querySelector(".drop-zone__prompt")) {
+        dropZoneElement.querySelector(".drop-zone__prompt").remove();
+    }
+
+    if (!thumbnailElement) {
+        thumbnailElement = document.createElement("div");
+        thumbnailElement.classList.add("drop-zone__thumb");
+        dropZoneElement.appendChild(thumbnailElement);
+    }
+
+    thumbnailElement.dataset.label = file.name;
+
+    if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
+        };
+    } else {
+        thumbnailElement.style.backgroundImage = null;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    resourceTypes.forEach(resourceType => {
+        fetchResourceData(resourceType);
+        document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
+    });
+});
     </script>
     </body>
     </html>
