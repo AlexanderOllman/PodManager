@@ -1,123 +1,93 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import subprocess
 import json
 import os
-from kubernetes import client, config
+import tempfile
 
 app = Flask(__name__)
 
-def get_kubeconfig():
-    # Specify the path where you want to save the kubeconfig file
-    kubeconfig_path = os.path.join(os.path.dirname(__file__), 'kubeconfig')
-    
-    # Run the command to get the kubeconfig content
-    try:
-        kubeconfig_content = subprocess.check_output(
-            ["kubectl", "config", "view", "--raw"],
-            stderr=subprocess.STDOUT
-        ).decode('utf-8')
-
-        # Write the content to the file
-        with open(kubeconfig_path, 'w') as f:
-            f.write(kubeconfig_content)
-
-        return kubeconfig_path
-    except subprocess.CalledProcessError as e:
-        print(f"Error getting kubeconfig: {e.output.decode('utf-8')}")
-        return None
-
-# Get and load Kubernetes configuration
-kubeconfig_path = get_kubeconfig()
-if kubeconfig_path:
-    config.load_kube_config(config_file=kubeconfig_path)
-    v1 = client.CoreV1Api()
-else:
-    print("Failed to load kubeconfig. Kubernetes operations may not work.")
-    v1 = None
-
 def run_kubectl_command(command):
-    result = subprocess.run(command, capture_output=True, text=True, shell=True)
-    return result.stdout
+    try:
+        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return result.stdout.decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        return f"Error: {e.stderr.decode('utf-8')}"
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/models')
-def models():
-    isvc_data = run_kubectl_command("kubectl get isvc -A -o json")
-    isvc_json = json.loads(isvc_data)
-    return render_template('models.html', isvc_data=isvc_json['items'])
-
-@app.route('/manage')
-def manage():
-    return render_template('manage.html')
-
-@app.route('/deploy')
-def deploy():
-    return render_template('deploy.html')
-
-@app.route('/api/isvc')
-def get_isvc():
-    isvc_data = run_kubectl_command("kubectl get isvc -A -o json")
-    return jsonify(json.loads(isvc_data))
-
-@app.route('/api/clusterservingruntime')
-def get_clusterservingruntime():
-    csr_data = run_kubectl_command("kubectl get clusterservingruntime -A -o json")
-    return jsonify(json.loads(csr_data))
-
-@app.route('/api/pvc-models')
-def get_pvc_models():
-    if not v1:
-        return jsonify({"error": "Kubernetes configuration not available"}), 500
-
-    pvc_name = "models-pvc"
-    namespace = "default"  # Replace with the correct namespace if different
-
+@app.route('/get_resources', methods=['POST'])
+def get_resources():
+    resource_type = request.form['resource_type']
+    command = f"kubectl get {resource_type} -A -o json"
+    output = run_kubectl_command(command)
+    
     try:
-        # Get the PVC
-        pvc = v1.read_namespaced_persistent_volume_claim(pvc_name, namespace)
+        resources = json.loads(output)
+        return jsonify(format='table', data=resources)
+    except json.JSONDecodeError:
+        return jsonify(format='error', message=f"Unable to fetch {resource_type}")
 
-        # Get the pod that mounts this PVC
-        pods = v1.list_namespaced_pod(namespace)
-        mounting_pod = None
-        for pod in pods.items:
-            for volume in pod.spec.volumes:
-                if volume.persistent_volume_claim and volume.persistent_volume_claim.claim_name == pvc_name:
-                    mounting_pod = pod
-                    break
-            if mounting_pod:
-                break
+@app.route('/run_action', methods=['POST'])
+def run_action():
+    action = request.form['action']
+    resource_type = request.form['resource_type']
+    resource_name = request.form['resource_name']
+    namespace = request.form['namespace']
 
-        if not mounting_pod:
-            return jsonify({"error": "No pod found mounting the PVC"}), 404
+    if action == 'logs':
+        command = f"kubectl logs -f {resource_name} -n {namespace}"
+    elif action == 'exec':
+        command = f"kubectl exec -it {resource_name} -n {namespace} -- /bin/bash"
+    elif action == 'delete':
+        command = f"kubectl delete {resource_type} {resource_name} -n {namespace}"
+    else:
+        return jsonify(format='error', message="Invalid action")
 
-        # Execute 'ls -lh' command in the pod
-        exec_command = ['/bin/sh', '-c', 'ls -lh /mnt/models']  # Adjust the mount path if necessary
-        resp = stream(v1.connect_get_namespaced_pod_exec,
-                      mounting_pod.metadata.name,
-                      namespace,
-                      command=exec_command,
-                      stderr=True, stdin=False,
-                      stdout=True, tty=False)
+    output = run_kubectl_command(command)
+    return jsonify(format='text', output=output)
 
-        # Parse the output
-        files = []
-        for line in resp.split('\n')[1:]:  # Skip the first line (total size)
-            if line.strip():
-                parts = line.split()
-                if len(parts) >= 8:
-                    size, name = parts[4], ' '.join(parts[8:])
-                    files.append({"name": name, "size": size})
+@app.route('/run_cli_command', methods=['POST'])
+def run_cli_command():
+    command = request.form['command']
+    output = run_kubectl_command(command)
+    return jsonify(output=output)
 
-        return jsonify(files)
+@app.route('/upload_yaml', methods=['POST'])
+def upload_yaml():
+    if 'file' not in request.files:
+        return jsonify(error="No file part")
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify(error="No selected file")
+    if file and file.filename.endswith('.yaml'):
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.yaml') as temp_file:
+            file.save(temp_file.name)
+            command = f"kubectl apply -f {temp_file.name}"
+            output = run_kubectl_command(command)
+            os.unlink(temp_file.name)
+        return jsonify(output=output)
+    return jsonify(error="Invalid file type")
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@app.route('/get_namespaces', methods=['GET'])
+def get_namespaces():
+    command = "kubectl get namespaces -o json"
+    output = run_kubectl_command(command)
+    
+    try:
+        namespaces = json.loads(output)
+        namespace_names = [item['metadata']['name'] for item in namespaces['items']]
+        return jsonify(namespaces=namespace_names)
+    except json.JSONDecodeError:
+        return jsonify(error="Unable to fetch namespaces")
 
-def stream(func, *args, **kwargs):
-    return func(*args, **kwargs)
+@app.route('/get_events', methods=['POST'])
+def get_events():
+    namespace = request.form['namespace']
+    command = f"kubectl get events -n {namespace} --sort-by='.lastTimestamp'"
+    output = run_kubectl_command(command)
+    return jsonify(output=output)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port='8080')
