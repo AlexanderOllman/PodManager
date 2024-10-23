@@ -1,0 +1,36 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: test-llm
+spec:
+  predictor:
+    containers:
+      - args:
+          - "--port"
+          - "8080"
+          - "--model"
+          - "/mnt/models/hub/models--roneneldan--TinyStories-1M"
+        command:
+          - "python3"
+          - "-m"
+          - "vllm.entrypoints.api_server"
+        image: vllm/vllm-openai:latest
+        imagePullPolicy: IfNotPresent
+        name: vllm-container
+        resources:
+          limits:
+            cpu: "4"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+          requests:
+            cpu: "2"
+            memory: 8Gi
+            nvidia.com/gpu: "1"
+        volumeMounts:
+          - name: model-pvc
+            mountPath: /mnt/models
+    volumes:
+      - name: model-pvc
+        persistentVolumeClaim:
+          claimName: llm-pvc
+
