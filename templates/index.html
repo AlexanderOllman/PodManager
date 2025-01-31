@@ -7,6 +7,9 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/4.14.0/xterm.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/4.14.0/xterm.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
     <style>
         body {
             font-family: 'Roboto', sans-serif;
@@ -144,7 +147,12 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#events">
-                                <i class="fa fa-clock-o"></i> Events
+                                <i class="fa fa-clock-o"></i> <span>Events</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#settings">
+                                <i class="fas fa-cog"></i> <span>Settings</span>
                             </a>
                         </li>
                     </ul>
@@ -334,14 +342,9 @@
                         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                             <h1 class="h2">CLI Commands</h1>
                         </div>
-                        <div class="mb-3">
-                            <label for="cliCommand" class="form-label">Enter kubectl command:</label>
-                            <input type="text" class="form-control" id="cliCommand" placeholder="e.g., kubectl get pods">
-                        </div>
+                        <div id="terminal" style="width: 100%; height: 400px;"></div>
+                        <input type="text" id="cliCommand" placeholder="Enter command" />
                         <button class="btn btn-primary" onclick="runCliCommand()">Run Command</button>
-                        <div class="mt-3">
-                            <pre id="cliOutput"></pre>
-                        </div>
                     </div>
 
                     <!-- YAML Upload Tab -->
@@ -374,6 +377,17 @@
                         <pre id="eventsOutput" class="mt-3"></pre>
                     </div>
 
+                    <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
+                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                            <h2>Settings</h2>
+                        </div>
+                        <div class="mb-3">
+                            <label for="githubRepo" class="form-label">GitHub Repository URL:</label>
+                            <input type="text" class="form-control" id="githubRepo" placeholder="https://github.com/username/repo">
+                        </div>
+                        <button class="btn btn-primary" onclick="updateFromGithub()">Update from GitHub</button>
+                        <div id="updateStatus" class="mt-3"></div>
+                    </div>
 
                 </div>
             </main>
@@ -674,6 +688,64 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
     });
 });
+
+const socket = io();
+
+const terminal = new Terminal();
+terminal.open(document.getElementById('terminal'));
+
+socket.on('output', function(data) {
+    terminal.write(data.data);
+});
+
+function runCliCommand() {
+    const command = document.getElementById('cliCommand').value;
+    socket.emit('run_cli_command', { command: command });
+    terminal.write(`\r\n$ ${command}\r\n`);
+    document.getElementById('cliCommand').value = '';
+}
+
+function updateFromGithub() {
+    const repoUrl = document.getElementById('githubRepo').value;
+    const statusDiv = document.getElementById('updateStatus');
+    
+    statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
+    
+    // First update from GitHub
+    fetch('/update_from_github', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            repo_url: repoUrl
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            statusDiv.innerHTML = 'Update successful. Restarting application...';
+            // Then restart the application
+            return fetch('/restart', {
+                method: 'POST'
+            });
+        } else {
+            throw new Error(data.message);
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            statusDiv.innerHTML = 'Application updated and restarted successfully. Refreshing page...';
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        }
+    })
+    .catch(error => {
+        statusDiv.innerHTML = `Error: ${error.message}`;
+    });
+}
     </script>
     </body>
     </html>

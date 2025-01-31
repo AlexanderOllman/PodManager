@@ -1,10 +1,16 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask_socketio import SocketIO, emit
 import subprocess
 import json
 import os
 import tempfile
+import threading
+import git
+import shutil
+import sys
 
 app = Flask(__name__)
+socketio = SocketIO(app)
 
 def run_kubectl_command(command):
     try:
@@ -48,11 +54,23 @@ def run_action():
     output = run_kubectl_command(command)
     return jsonify(format='text', output=output)
 
+def run_command(command, sid):
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    while True:
+        output = process.stdout.readline()
+        if output == b'' and process.poll() is not None:
+            break
+        if output:
+            socketio.emit('output', {'data': output.decode('utf-8')}, room=sid)
+    socketio.emit('output', {'data': 'Command finished.'}, room=sid)
+
 @app.route('/run_cli_command', methods=['POST'])
 def run_cli_command():
     command = request.form['command']
-    output = run_kubectl_command(command)
-    return jsonify(output=output)
+    sid = request.sid
+    thread = threading.Thread(target=run_command, args=(command, sid))
+    thread.start()
+    return jsonify(success=True)
 
 @app.route('/upload_yaml', methods=['POST'])
 def upload_yaml():
@@ -89,5 +107,46 @@ def get_events():
     output = run_kubectl_command(command)
     return jsonify(output=output)
 
+@app.route('/update_from_github', methods=['POST'])
+def update_from_github():
+    try:
+        repo_url = request.json['repo_url']
+        
+        # Create a temporary directory
+        temp_dir = tempfile.mkdtemp()
+        
+        # Clone the repository
+        git.Repo.clone_from(repo_url, temp_dir)
+        
+        # Copy new files to the application directory
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Copy files while preserving the app instance
+        for item in os.listdir(temp_dir):
+            if item != '.git':
+                src = os.path.join(temp_dir, item)
+                dst = os.path.join(app_dir, item)
+                if os.path.isdir(src):
+                    if os.path.exists(dst):
+                        shutil.rmtree(dst)
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+        
+        # Clean up
+        shutil.rmtree(temp_dir)
+        
+        return jsonify({"status": "success", "message": "Application updated successfully"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/restart', methods=['POST'])
+def restart_application():
+    try:
+        os.execv(sys.executable, ['python'] + sys.argv)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port='8080')
+    socketio.run(app, debug=True, host='0.0.0.0', port='8080')
