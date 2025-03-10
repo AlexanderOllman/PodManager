@@ -242,43 +242,6 @@
                 terminal.writeln('Welcome to the pod terminal.');
                 terminal.writeln('Enter a command and click "Run" to execute it in the pod.');
                 terminal.writeln('');
-                
-                // Initialize Socket.IO connection with proper error handling
-                try {
-                    window.socket = io({
-                        transports: ['websocket', 'polling'],
-                        reconnection: true,
-                        reconnectionAttempts: 5,
-                        timeout: 10000
-                    });
-                    
-                    window.socket.on('connect', () => {
-                        terminal.writeln('Socket.IO connected successfully.');
-                    });
-                    
-                    window.socket.on('connect_error', (error) => {
-                        console.error('Socket.IO connection error:', error);
-                        terminal.writeln(`Socket.IO connection error: ${error.message}`);
-                    });
-                    
-                    window.socket.on('error', (error) => {
-                        console.error('Socket.IO error:', error);
-                        terminal.writeln(`Socket.IO error: ${error}`);
-                    });
-                    
-                    // Listen for command outputs
-                    window.socket.on('command_output', (data) => {
-                        if (data.error) {
-                            terminal.writeln(`Error: ${data.error}`);
-                        } else {
-                            terminal.writeln(data.output);
-                        }
-                        terminal.writeln('');
-                    });
-                } catch (error) {
-                    console.error('Error initializing Socket.IO:', error);
-                    terminal.writeln(`Error initializing Socket.IO: ${error.message}`);
-                }
             }
         }
 
@@ -288,33 +251,23 @@
             
             terminal.writeln(`> ${command}`);
             
-            // If Socket.IO is connected, use it for commands
-            if (window.socket && window.socket.connected) {
-                window.socket.emit('pod_command', {
-                    namespace: namespace,
-                    pod_name: podName,
-                    command: command
-                });
-            } else {
-                // Fall back to fetch API if Socket.IO is not connected
-                fetch('/api/pod/exec', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `namespace=${namespace}&pod_name=${podName}&command=${encodeURIComponent(command)}`
-                })
-                .then(response => response.json())
-                .then(data => {
-                    terminal.writeln(data.output || data.error || 'No output');
-                    terminal.writeln('');
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    terminal.writeln('Error executing command.');
-                    terminal.writeln('');
-                });
-            }
+            fetch('/api/pod/exec', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `namespace=${namespace}&pod_name=${podName}&command=${encodeURIComponent(command)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                terminal.writeln(data.output);
+                terminal.writeln('');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                terminal.writeln('Error executing command.');
+                terminal.writeln('');
+            });
             
             document.getElementById('commandInput').value = '';
         }
