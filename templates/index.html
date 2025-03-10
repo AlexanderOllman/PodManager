@@ -218,6 +218,35 @@
                 <input type="text" class="form-control" id="githubRepo" placeholder="https://github.com/username/repo">
             </div>
             <button class="btn btn-primary" onclick="updateFromGithub()">Update from GitHub</button>
+            
+            <!-- New Refresh Button Section -->
+            <div class="mt-4 border-top pt-3">
+                <h4>Application Refresh</h4>
+                <p class="text-muted">
+                    This will stop the application, perform a hard pull on the GitHub repository, 
+                    and restart the application with the latest code.
+                </p>
+                <button class="btn btn-warning" onclick="refreshApplication()">
+                    <i class="fas fa-sync-alt"></i> Refresh Application
+                </button>
+            </div>
+            
+            <!-- Log Display Area -->
+            <div class="mt-3">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Refresh Log</span>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearRefreshLog()">
+                            <i class="fas fa-eraser"></i> Clear
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="refreshLog" class="bg-dark text-light p-3" style="height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.9rem;">
+                            <div class="text-muted">-- Log will appear here during refresh operations --</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
         
         <div id="updateStatus" class="mt-3"></div>
@@ -228,6 +257,8 @@
 {% block page_scripts %}
 <script>
 const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+// Initialize socket connection in the global scope
+const socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
 
 function initializeHomePage() {
     // Initialize the terminal first
@@ -621,7 +652,106 @@ function updateFromGithub() {
     });
 }
 
+function refreshApplication() {
+    const refreshLog = document.getElementById('refreshLog');
+    const statusDiv = document.getElementById('updateStatus');
+    
+    // Clear the log
+    refreshLog.innerHTML = '';
+    
+    // Add initial message
+    const logEntry = document.createElement('div');
+    logEntry.className = 'text-info';
+    logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] Starting refresh process...`;
+    refreshLog.appendChild(logEntry);
+    
+    statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Refreshing application...';
+    
+    // Get the repo URL from the input field
+    const repoUrl = document.getElementById('githubRepo').value;
+    
+    fetch('/refresh_application', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            repo_url: repoUrl || undefined  // Only send if user provided a value
+        })
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        if (!statusDiv.innerHTML.includes('alert-danger')) {
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            
+            const errorLogEntry = document.createElement('div');
+            errorLogEntry.className = 'text-danger';
+            errorLogEntry.innerHTML = `[${new Date().toLocaleTimeString()}] Error: ${error.message}`;
+            refreshLog.appendChild(errorLogEntry);
+        }
+    });
+}
+
+function clearRefreshLog() {
+    const refreshLog = document.getElementById('refreshLog');
+    refreshLog.innerHTML = '<div class="text-muted">-- Log will appear here during refresh operations --</div>';
+}
+
 // Initialize the page when loaded directly
-document.addEventListener('DOMContentLoaded', initializeHomePage);
+document.addEventListener('DOMContentLoaded', function() {
+    initializeHomePage();
+    
+    // Add event listener for refresh logs
+    socket.on('refresh_log', function(data) {
+        const refreshLog = document.getElementById('refreshLog');
+        const logMessage = data.message;
+        
+        // Create new log entry with appropriate class based on status
+        const logEntry = document.createElement('div');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        // Set class based on status
+        if (data.status === 'error') {
+            logEntry.className = 'text-danger';
+        } else if (data.status === 'warning') {
+            logEntry.className = 'text-warning';
+        } else if (data.status === 'success') {
+            logEntry.className = 'text-success';
+        } else {
+            logEntry.className = 'text-info';
+        }
+        
+        logEntry.innerHTML = `[${timestamp}] ${logMessage}`;
+        refreshLog.appendChild(logEntry);
+        
+        // Auto-scroll to the bottom
+        refreshLog.scrollTop = refreshLog.scrollHeight;
+        
+        // If this is a completion message, trigger the restart
+        if (logMessage.includes('Preparing to restart application')) {
+            // Wait a moment to ensure the user sees the restart message
+            setTimeout(() => {
+                fetch('/restart', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const statusDiv = document.getElementById('updateStatus');
+                    if (data.status === 'success') {
+                        const logEntry = document.createElement('div');
+                        logEntry.className = 'text-success';
+                        logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] Application restarted successfully. Page will refresh shortly...`;
+                        refreshLog.appendChild(logEntry);
+                        
+                        statusDiv.innerHTML = 'Application restarted successfully. Refreshing page...';
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 3000);
+                    }
+                });
+            }, 1000);
+        }
+    });
+});
 </script>
 {% endblock %}

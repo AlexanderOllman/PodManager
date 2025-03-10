@@ -16,6 +16,9 @@ RUN apt-get update && \
 # Install any needed dependencies specified in requirements.txt
 RUN pip3 install --no-cache-dir -r requirements.txt
 
+# Define the GitHub repository URL
+ENV GITHUB_REPO_URL="https://github.com/AlexanderOllman/PodManager.git"
+
 # Make port 80 available to the world outside this container
 EXPOSE 80
 EXPOSE 8080

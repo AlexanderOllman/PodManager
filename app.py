@@ -7,6 +7,7 @@ import tempfile
 import threading
 import shutil
 import sys
+import time
 
 # We'll check for git availability at runtime rather than import time
 git_available = False
@@ -18,6 +19,9 @@ except ImportError:
 
 app = Flask(__name__)
 socketio = SocketIO(app)
+
+# Get GitHub repo URL from environment variable or use default
+github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
 
 def run_kubectl_command(command):
     try:
@@ -196,6 +200,69 @@ def api_pod_exec():
 @app.route('/git_status', methods=['GET'])
 def git_status():
     return jsonify(available=git_available)
+
+@app.route('/refresh_application', methods=['POST'])
+def refresh_application():
+    if not git_available:
+        socketio.emit('refresh_log', {'message': 'Error: Git functionality is not available. Make sure git is installed and the GitPython package can find it.', 'status': 'error'})
+        return jsonify({
+            "status": "error", 
+            "message": "Git functionality is not available. Make sure git is installed and the GitPython package can find it."
+        })
+    
+    try:
+        # Emit starting message
+        socketio.emit('refresh_log', {'message': 'Starting application refresh process...', 'status': 'info'})
+        
+        # Step 1: Prepare for shutdown
+        socketio.emit('refresh_log', {'message': 'Preparing to stop application...', 'status': 'info'})
+        time.sleep(1)  # Give time for the message to be sent
+        
+        # Step 2: Get repo URL (from environment or request)
+        repo_url = request.json.get('repo_url', github_repo_url)
+        socketio.emit('refresh_log', {'message': f'Using repository: {repo_url}', 'status': 'info'})
+        
+        # Step 3: Create a temporary directory
+        temp_dir = tempfile.mkdtemp()
+        socketio.emit('refresh_log', {'message': f'Created temporary directory: {temp_dir}', 'status': 'info'})
+        
+        # Step 4: Clone the repository with --hard option
+        socketio.emit('refresh_log', {'message': 'Cloning repository (hard pull)...', 'status': 'info'})
+        git.Repo.clone_from(repo_url, temp_dir)
+        socketio.emit('refresh_log', {'message': 'Repository successfully cloned', 'status': 'info'})
+        
+        # Step 5: Copy new files to the application directory
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        socketio.emit('refresh_log', {'message': f'Copying files to application directory: {app_dir}', 'status': 'info'})
+        
+        # Copy files while preserving the app instance
+        for item in os.listdir(temp_dir):
+            if item != '.git':
+                src = os.path.join(temp_dir, item)
+                dst = os.path.join(app_dir, item)
+                if os.path.isdir(src):
+                    if os.path.exists(dst):
+                        shutil.rmtree(dst)
+                    shutil.copytree(src, dst)
+                    socketio.emit('refresh_log', {'message': f'Copied directory: {item}', 'status': 'info'})
+                else:
+                    shutil.copy2(src, dst)
+                    socketio.emit('refresh_log', {'message': f'Copied file: {item}', 'status': 'info'})
+        
+        # Step 6: Clean up
+        shutil.rmtree(temp_dir)
+        socketio.emit('refresh_log', {'message': 'Cleaned up temporary files', 'status': 'info'})
+        
+        # Step 7: Prepare for restart
+        socketio.emit('refresh_log', {'message': 'All files updated. Preparing to restart application...', 'status': 'info'})
+        
+        # Return success response (the client will then call restart)
+        return jsonify({"status": "success", "message": "Application ready for restart"})
+        
+    except Exception as e:
+        error_message = f"Error during refresh: {str(e)}"
+        socketio.emit('refresh_log', {'message': error_message, 'status': 'error'})
+        return jsonify({"status": "error", "message": error_message})
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
