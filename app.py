@@ -8,25 +8,15 @@ import threading
 import git
 import shutil
 import sys
-import logging
-import eventlet
-
-# Patch standard library for better Socket.IO performance
-eventlet.monkey_patch()
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-app.logger.setLevel(logging.INFO)
+socketio = SocketIO(app)
 
 def run_kubectl_command(command):
     try:
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return result.stdout.decode('utf-8')
     except subprocess.CalledProcessError as e:
-        app.logger.error(f"kubectl command failed: {e.stderr.decode('utf-8')}")
         return f"Error: {e.stderr.decode('utf-8')}"
 
 @app.route('/')
@@ -52,12 +42,10 @@ def run_action():
     resource_name = request.form['resource_name']
     namespace = request.form['namespace']
 
-    if action == 'describe':
-        command = f"kubectl describe {resource_type} {resource_name} -n {namespace}"
-    elif action == 'logs':
-        command = f"kubectl logs {resource_name} -n {namespace} --tail=100"
+    if action == 'logs':
+        command = f"kubectl logs -f {resource_name} -n {namespace}"
     elif action == 'exec':
-        command = f"kubectl exec {resource_name} -n {namespace} -- ps aux"
+        command = f"kubectl exec -it {resource_name} -n {namespace} -- /bin/bash"
     elif action == 'delete':
         command = f"kubectl delete {resource_type} {resource_name} -n {namespace}"
     else:
@@ -160,91 +148,5 @@ def restart_application():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
-@app.route('/explore/<namespace>/<pod_name>')
-def explore_pod(namespace, pod_name):
-    try:
-        return render_template('explore.html', namespace=namespace, pod_name=pod_name)
-    except Exception as e:
-        app.logger.error(f"Error in explore_pod: {str(e)}")
-        return render_template('error.html', error=str(e)), 500
-
-@app.route('/api/pod/describe', methods=['POST'])
-def api_pod_describe():
-    try:
-        namespace = request.form['namespace']
-        pod_name = request.form['pod_name']
-        command = f"kubectl describe pod {pod_name} -n {namespace}"
-        output = run_kubectl_command(command)
-        return jsonify(output=output)
-    except Exception as e:
-        app.logger.error(f"Error in api_pod_describe: {str(e)}")
-        return jsonify(error=str(e)), 500
-
-@app.route('/api/pod/logs', methods=['POST'])
-def api_pod_logs():
-    try:
-        namespace = request.form['namespace']
-        pod_name = request.form['pod_name']
-        tail_lines = request.form.get('tail_lines', '1000')
-        command = f"kubectl logs {pod_name} -n {namespace} --tail={tail_lines}"
-        output = run_kubectl_command(command)
-        return jsonify(output=output)
-    except Exception as e:
-        app.logger.error(f"Error in api_pod_logs: {str(e)}")
-        return jsonify(error=str(e)), 500
-
-@app.route('/api/pod/exec', methods=['POST'])
-def api_pod_exec():
-    try:
-        namespace = request.form['namespace']
-        pod_name = request.form['pod_name']
-        command = request.form.get('command', 'ls -la')
-        kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
-        output = run_kubectl_command(kubectl_command)
-        return jsonify(output=output)
-    except Exception as e:
-        app.logger.error(f"Error in api_pod_exec: {str(e)}")
-        return jsonify(error=str(e)), 500
-
-@app.route('/health')
-def health_check():
-    return jsonify(status="healthy"), 200
-
-@app.route('/readiness')
-def readiness_check():
-    return jsonify(status="ready"), 200
-
-# Socket.IO event handlers
-@socketio.on('connect')
-def handle_connect():
-    app.logger.info(f"Client connected: {request.sid}")
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    app.logger.info(f"Client disconnected: {request.sid}")
-
-@socketio.on('pod_command')
-def handle_pod_command(data):
-    try:
-        namespace = data.get('namespace')
-        pod_name = data.get('pod_name')
-        command = data.get('command')
-        
-        if not all([namespace, pod_name, command]):
-            socketio.emit('command_output', {'error': 'Missing required parameters'}, room=request.sid)
-            return
-            
-        kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
-        result = subprocess.run(kubectl_command, shell=True, capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            socketio.emit('command_output', {'output': result.stdout}, room=request.sid)
-        else:
-            socketio.emit('command_output', {'error': result.stderr}, room=request.sid)
-    except Exception as e:
-        app.logger.error(f"Error in pod_command: {str(e)}")
-        socketio.emit('command_output', {'error': str(e)}, room=request.sid)
-
 if __name__ == '__main__':
-    # Use Eventlet WSGI server instead of Flask's development server
-    socketio.run(app, debug=True, host='0.0.0.0', port=8080)
+    socketio.run(app, debug=True, host='0.0.0.0', port='8080')
