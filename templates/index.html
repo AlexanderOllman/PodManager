@@ -381,11 +381,15 @@
                         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                             <h2>Settings</h2>
                         </div>
-                        <div class="mb-3">
-                            <label for="githubRepo" class="form-label">GitHub Repository URL:</label>
-                            <input type="text" class="form-control" id="githubRepo" placeholder="https://github.com/username/repo">
+                        
+                        <div id="githubSettings">
+                            <div class="mb-3">
+                                <label for="githubRepo" class="form-label">GitHub Repository URL:</label>
+                                <input type="text" class="form-control" id="githubRepo" placeholder="https://github.com/username/repo">
+                            </div>
+                            <button class="btn btn-primary" onclick="updateFromGithub()">Update from GitHub</button>
                         </div>
-                        <button class="btn btn-primary" onclick="updateFromGithub()">Update from GitHub</button>
+                        
                         <div id="updateStatus" class="mt-3"></div>
                     </div>
 
@@ -620,21 +624,9 @@
 
         function runCliCommand() {
             const command = document.getElementById('cliCommand').value;
-            fetch('/run_cli_command', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `command=${encodeURIComponent(command)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('cliOutput').textContent = data.output;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('cliOutput').textContent = 'An error occurred while running the command.';
-            });
+            socket.emit('run_cli_command', { command: command });
+            terminal.write(`\r\n$ ${command}\r\n`);
+            document.getElementById('cliCommand').value = '';
         }
 
         function deployYaml() {
@@ -729,22 +721,82 @@
                 fetchResourceData(resourceType);
                 document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
             });
+            
+            // Check if git functionality is available
+            checkGitAvailability();
+            
+            // Fetch namespaces for the events tab
+            fetchNamespaces();
         });
 
-        const socket = io();
+        function checkGitAvailability() {
+            fetch('/git_status')
+            .then(response => response.json())
+            .then(data => {
+                const githubSettings = document.getElementById('githubSettings');
+                if (!data.available) {
+                    githubSettings.innerHTML = `
+                        <div class="alert alert-warning">
+                            <strong>Git functionality is not available.</strong> 
+                            <p>The "Update from GitHub" feature requires git to be installed on the server. 
+                            Please install git or contact your administrator if you need this feature.</p>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error checking git status:', error);
+            });
+        }
 
-        const terminal = new Terminal();
-        terminal.open(document.getElementById('terminal'));
+        function fetchNamespaces() {
+            fetch('/get_namespaces')
+                .then(response => response.json())
+                .then(data => {
+                    const namespaceSelect = document.getElementById('namespaceSelect');
+                    namespaceSelect.innerHTML = '<option value="">Select a namespace</option>';
+                    
+                    if (data.namespaces) {
+                        data.namespaces.forEach(namespace => {
+                            const option = document.createElement('option');
+                            option.value = namespace;
+                            option.textContent = namespace;
+                            namespaceSelect.appendChild(option);
+                        });
+                    } else if (data.error) {
+                        console.error('Error fetching namespaces:', data.error);
+                    }
+                    
+                    // Set up event listener for namespace selection
+                    namespaceSelect.addEventListener('change', function() {
+                        if (this.value) {
+                            fetchEvents(this.value);
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
 
-        socket.on('output', function(data) {
-            terminal.write(data.data);
-        });
-
-        function runCliCommand() {
-            const command = document.getElementById('cliCommand').value;
-            socket.emit('run_cli_command', { command: command });
-            terminal.write(`\r\n$ ${command}\r\n`);
-            document.getElementById('cliCommand').value = '';
+        function fetchEvents(namespace) {
+            document.getElementById('eventsOutput').textContent = 'Loading events...';
+            
+            fetch('/get_events', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `namespace=${namespace}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('eventsOutput').textContent = data.output;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('eventsOutput').textContent = 'An error occurred while fetching events.';
+            });
         }
 
         function updateFromGithub() {
@@ -772,6 +824,7 @@
                         method: 'POST'
                     });
                 } else {
+                    statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
                     throw new Error(data.message);
                 }
             })
@@ -785,9 +838,21 @@
                 }
             })
             .catch(error => {
-                statusDiv.innerHTML = `Error: ${error.message}`;
+                console.error('Error:', error);
+                if (!statusDiv.innerHTML.includes('alert-danger')) {
+                    statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                }
             });
         }
+
+        const socket = io();
+
+        const terminal = new Terminal();
+        terminal.open(document.getElementById('terminal'));
+
+        socket.on('output', function(data) {
+            terminal.write(data.data);
+        });
     </script>
     </body>
     </html>

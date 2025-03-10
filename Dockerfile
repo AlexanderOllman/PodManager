@@ -6,20 +6,12 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# RUN export HTTP_PROXY=http://hpeproxy.its.hpecorp.net:80 && \
-#     export HTTPS_PROXY=http://hpeproxy.its.hpecorp.net:80
-# Install kubectl
+# Install git and kubectl
 RUN apt-get update && \
-    apt-get install -y curl && \
+    apt-get install -y curl git && \
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
     install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
     rm kubectl
-
-# Copy the current directory contents into the container at /app
-COPY . /app
 
 # Install any needed dependencies specified in requirements.txt
 RUN pip3 install --no-cache-dir -r requirements.txt

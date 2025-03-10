@@ -5,9 +5,16 @@ import json
 import os
 import tempfile
 import threading
-import git
 import shutil
 import sys
+
+# We'll check for git availability at runtime rather than import time
+git_available = False
+try:
+    import git
+    git_available = True
+except ImportError:
+    print("Git module could not be imported. GitHub update functionality will be disabled.")
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -111,6 +118,12 @@ def get_events():
 
 @app.route('/update_from_github', methods=['POST'])
 def update_from_github():
+    if not git_available:
+        return jsonify({
+            "status": "error", 
+            "message": "Git functionality is not available. Make sure git is installed and the GitPython package can find it."
+        })
+    
     try:
         repo_url = request.json['repo_url']
         
@@ -179,6 +192,10 @@ def api_pod_exec():
     kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
     output = run_kubectl_command(kubectl_command)
     return jsonify(output=output)
+
+@app.route('/git_status', methods=['GET'])
+def git_status():
+    return jsonify(available=git_available)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080')
