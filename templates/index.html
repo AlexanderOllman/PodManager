@@ -256,42 +256,12 @@
 
 {% block page_scripts %}
 <script>
-// Main initialization function that's called when dependencies are loaded
+// Main initialization function that runs when the DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM content loaded, waiting for dependencies...');
+    console.log('DOM content loaded, initializing application...');
     
-    // Poll until dependencies are loaded or timeout
-    let checkCount = 0;
-    const maxChecks = 20; // 10 seconds
-    
-    function checkDependencies() {
-        checkCount++;
-        
-        // Log loading status 
-        console.log(`Checking dependencies (${checkCount}/${maxChecks})...`);
-        console.log(`Socket.IO loaded: ${window.appLoaded.socketio}`);
-        console.log(`Terminal loaded: ${window.appLoaded.terminal}`);
-        
-        if (window.appLoaded.socketio) {
-            // Initialize the application once Socket.IO is available
-            // Terminal is optional, we'll check for it before using
-            initializeApp();
-            return;
-        }
-        
-        if (checkCount >= maxChecks) {
-            console.error('Dependencies not loaded after timeout!');
-            // Try to initialize anyway, with graceful fallbacks
-            initializeApp();
-            return;
-        }
-        
-        // Check again in 500ms
-        setTimeout(checkDependencies, 500);
-    }
-    
-    // Start checking dependencies
-    checkDependencies();
+    // Since scripts are loaded in head, we can initialize right away
+    initializeApp();
 });
 
 // Main application initialization
@@ -313,35 +283,29 @@ function initializeApp() {
     console.log('Application initialized');
 }
 
-// Terminal initialization - only if the library is loaded
+// Terminal initialization - already loaded in head
 function initializeTerminal() {
     if (document.getElementById('terminal')) {
-        if (window.appLoaded.terminal && typeof Terminal !== 'undefined') {
-            try {
-                console.log('Initializing terminal...');
-                const terminal = new Terminal();
-                window.app.terminal = terminal;
-                terminal.open(document.getElementById('terminal'));
-                
-                if (window.app.socket) {
-                    window.app.socket.on('output', function(data) {
-                        if (window.app.terminal) {
-                            window.app.terminal.write(data.data);
-                        }
-                    });
-                    console.log('Terminal initialized successfully');
-                } else {
-                    console.warn('Socket not available for terminal output');
-                }
-            } catch (error) {
-                console.error('Failed to initialize terminal:', error);
-                const terminalElement = document.getElementById('terminal');
-                terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
+        try {
+            console.log('Initializing terminal...');
+            const terminal = new Terminal();
+            window.app.terminal = terminal;
+            terminal.open(document.getElementById('terminal'));
+            
+            if (window.app.socket) {
+                window.app.socket.on('output', function(data) {
+                    if (window.app.terminal) {
+                        window.app.terminal.write(data.data);
+                    }
+                });
+                console.log('Terminal initialized successfully');
+            } else {
+                console.warn('Socket not available for terminal output');
             }
-        } else {
-            console.warn('Terminal library not loaded');
+        } catch (error) {
+            console.error('Failed to initialize terminal:', error);
             const terminalElement = document.getElementById('terminal');
-            terminalElement.innerHTML = '<div class="alert alert-warning">Terminal features are unavailable because the required library could not be loaded.</div>';
+            terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
         }
     }
 }
