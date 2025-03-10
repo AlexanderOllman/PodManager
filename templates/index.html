@@ -258,20 +258,60 @@
 <script>
 // Wait for socket.io to be loaded
 document.addEventListener('DOMContentLoaded', function() {
+    // Check if we're on a page with the refreshLog element (settings page)
+    const refreshLog = document.getElementById('refreshLog');
+    
     // Check if io is defined
     if (typeof io === 'undefined') {
         console.error('Socket.io is not loaded. Check network connections.');
-        document.getElementById('refreshLog').innerHTML = '<div class="text-danger">Error: Socket.io library failed to load. Please check your internet connection.</div>';
+        if (refreshLog) {
+            refreshLog.innerHTML = '<div class="text-danger">Error: Socket.io library failed to load. Please check your internet connection.</div>';
+        }
+        
+        // Still try to initialize the page without socket functionality
+        console.log('Attempting to initialize page without socket.io functionality');
+        safeInitializePage();
         return;
     }
 
     // Initialize socket connection in the global scope
     try {
-        window.socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
+        // First, check if socket already exists in the global scope (from base.html)
+        if (typeof socket !== 'undefined') {
+            window.socket = socket;
+            console.log('Using existing socket connection from base.html');
+        } else {
+            console.log('Creating new socket connection');
+            window.socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
+        }
         
         // Add event listener for refresh logs
+        window.socket.on('connect', function() {
+            console.log('Socket.io connected successfully');
+            if (refreshLog) {
+                const logEntry = document.createElement('div');
+                logEntry.className = 'text-success';
+                logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] Connected to server successfully.`;
+                refreshLog.appendChild(logEntry);
+            }
+            
+            // Socket is connected, now initialize the page
+            safeInitializePage();
+        });
+        
+        window.socket.on('connect_error', function(err) {
+            console.error('Socket.io connection error:', err);
+            if (refreshLog) {
+                refreshLog.innerHTML = `<div class="text-danger">Connection error: ${err.message}. Server may be unavailable.</div>`;
+            }
+            
+            // Still try to initialize the page without socket functionality
+            safeInitializePage();
+        });
+        
         window.socket.on('refresh_log', function(data) {
-            const refreshLog = document.getElementById('refreshLog');
+            if (!refreshLog) return;
+            
             const logMessage = data.message;
             
             // Create new log entry with appropriate class based on status
@@ -320,28 +360,67 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 1000);
             }
         });
-        
-        initializeHomePage();
     } catch (error) {
         console.error('Error initializing socket:', error);
-        document.getElementById('refreshLog').innerHTML = `<div class="text-danger">Error initializing socket: ${error.message}</div>`;
+        if (refreshLog) {
+            refreshLog.innerHTML = `<div class="text-danger">Error initializing socket: ${error.message}</div>`;
+        }
+        
+        // Still try to initialize the page without socket functionality
+        safeInitializePage();
     }
 });
+
+// Safe initialization function that won't crash if required libraries aren't loaded
+function safeInitializePage() {
+    try {
+        initializeHomePage();
+    } catch (error) {
+        console.error('Error during page initialization:', error);
+        // Try to load at least the basic UI components
+        try {
+            // Check if git functionality is available
+            checkGitAvailability();
+            
+            // Fetch namespaces for the events tab
+            fetchNamespaces();
+            
+            // Set up drop zone event listeners
+            setupDropZone();
+        } catch (e) {
+            console.error('Fatal error initializing page:', e);
+        }
+    }
+}
 
 const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
 
 function initializeHomePage() {
-    // Initialize the terminal first
+    // Initialize the terminal first if the Terminal class exists
     if (document.getElementById('terminal')) {
-        if (!window.terminalInstance) {
-            window.terminalInstance = new Terminal();
-            window.terminalInstance.open(document.getElementById('terminal'));
-            
-            window.socket.on('output', function(data) {
-                if (window.terminalInstance) {
-                    window.terminalInstance.write(data.data);
+        if (!window.terminalInstance && typeof Terminal !== 'undefined') {
+            try {
+                window.terminalInstance = new Terminal();
+                window.terminalInstance.open(document.getElementById('terminal'));
+                
+                window.socket.on('output', function(data) {
+                    if (window.terminalInstance) {
+                        window.terminalInstance.write(data.data);
+                    }
+                });
+            } catch (error) {
+                console.error('Error initializing terminal:', error);
+                const terminalElement = document.getElementById('terminal');
+                if (terminalElement) {
+                    terminalElement.innerHTML = '<div class="alert alert-danger">Error initializing terminal. Terminal library may not be loaded correctly.</div>';
                 }
-            });
+            }
+        } else if (typeof Terminal === 'undefined') {
+            console.warn('Terminal library not loaded yet. CLI terminal features will be unavailable.');
+            const terminalElement = document.getElementById('terminal');
+            if (terminalElement) {
+                terminalElement.innerHTML = '<div class="alert alert-warning">Terminal library not loaded. CLI features are unavailable.</div>';
+            }
         }
     }
     
@@ -550,10 +629,28 @@ function fetchResourceData(resourceType) {
 
 function runCliCommand() {
     const command = document.getElementById('cliCommand').value;
-    if (window.terminalInstance) {
+    
+    // Check if terminal instance exists
+    if (!window.terminalInstance) {
+        console.error('Terminal instance not initialized');
+        alert('Terminal is not initialized. Please refresh the page and try again.');
+        return;
+    }
+    
+    // Check if socket is connected
+    if (!window.socket || !window.socket.connected) {
+        console.error('Socket not connected');
+        window.terminalInstance.write('\r\n\x1b[31mError: Not connected to server. Command could not be sent.\x1b[0m\r\n');
+        return;
+    }
+    
+    try {
         window.socket.emit('run_cli_command', { command: command });
         window.terminalInstance.write(`\r\n$ ${command}\r\n`);
         document.getElementById('cliCommand').value = '';
+    } catch (error) {
+        console.error('Error sending command:', error);
+        window.terminalInstance.write(`\r\n\x1b[31mError sending command: ${error.message}\x1b[0m\r\n`);
     }
 }
 
