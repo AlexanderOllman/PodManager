@@ -42,10 +42,12 @@ def run_action():
     resource_name = request.form['resource_name']
     namespace = request.form['namespace']
 
-    if action == 'logs':
-        command = f"kubectl logs -f {resource_name} -n {namespace}"
+    if action == 'describe':
+        command = f"kubectl describe {resource_type} {resource_name} -n {namespace}"
+    elif action == 'logs':
+        command = f"kubectl logs {resource_name} -n {namespace} --tail=100"
     elif action == 'exec':
-        command = f"kubectl exec -it {resource_name} -n {namespace} -- /bin/bash"
+        command = f"kubectl exec {resource_name} -n {namespace} -- ps aux"
     elif action == 'delete':
         command = f"kubectl delete {resource_type} {resource_name} -n {namespace}"
     else:
@@ -147,6 +149,36 @@ def restart_application():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/explore/<namespace>/<pod_name>')
+def explore_pod(namespace, pod_name):
+    return render_template('explore.html', namespace=namespace, pod_name=pod_name)
+
+@app.route('/api/pod/describe', methods=['POST'])
+def api_pod_describe():
+    namespace = request.form['namespace']
+    pod_name = request.form['pod_name']
+    command = f"kubectl describe pod {pod_name} -n {namespace}"
+    output = run_kubectl_command(command)
+    return jsonify(output=output)
+
+@app.route('/api/pod/logs', methods=['POST'])
+def api_pod_logs():
+    namespace = request.form['namespace']
+    pod_name = request.form['pod_name']
+    tail_lines = request.form.get('tail_lines', '1000')
+    command = f"kubectl logs {pod_name} -n {namespace} --tail={tail_lines}"
+    output = run_kubectl_command(command)
+    return jsonify(output=output)
+
+@app.route('/api/pod/exec', methods=['POST'])
+def api_pod_exec():
+    namespace = request.form['namespace']
+    pod_name = request.form['pod_name']
+    command = request.form.get('command', 'ls -la')
+    kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
+    output = run_kubectl_command(kubectl_command)
+    return jsonify(output=output)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080')

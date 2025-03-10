@@ -403,6 +403,9 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div id="actionLoading" class="loading" style="display: none;">
+                        <div class="spinner"></div>
+                    </div>
                     <pre id="actionResult"></pre>
                 </div>
             </div>
@@ -429,18 +432,35 @@
         }
     
         function createActionButton(resourceType, namespace, name) {
-            return `
-                <div class="dropdown">
-                    <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-ellipsis-h"></i>
-                    </button>
-                    <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                        <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">View Logs</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">Access</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">Delete</a></li>
-                    </ul>
-                </div>
-            `;
+            if (resourceType === 'pods') {
+                return `
+                    <div class="d-flex">
+                        <a href="#" class="me-2" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')" title="View Logs">
+                            <i class="fas fa-file-alt text-primary"></i>
+                        </a>
+                        <a href="/explore/${namespace}/${name}" class="me-2" title="Explore Pod">
+                            <i class="fas fa-terminal text-success"></i>
+                        </a>
+                        <a href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')" title="Delete">
+                            <i class="fas fa-trash-alt text-danger"></i>
+                        </a>
+                    </div>
+                `;
+            } else {
+                return `
+                    <div class="dropdown">
+                        <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-ellipsis-h"></i>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">Describe</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">View Logs</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">Access</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">Delete</a></li>
+                        </ul>
+                    </div>
+                `;
+            }
         }
 
         function showLoading(resourceType) {
@@ -548,204 +568,226 @@
         }
     
         function runAction(action, resourceType, namespace, name) {
-    const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
-    actionModal.show();
-    
-    document.getElementById('actionLoading').style.display = 'flex';
-    document.getElementById('actionResult').style.display = 'none';
+            const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
+            actionModal.show();
+            
+            document.getElementById('actionLoading').style.display = 'flex';
+            document.getElementById('actionResult').style.display = 'none';
+            
+            // Add a title to the modal based on the action
+            let actionTitle = '';
+            switch(action) {
+                case 'describe':
+                    actionTitle = `Describing ${resourceType}/${name} in namespace ${namespace}`;
+                    break;
+                case 'logs':
+                    actionTitle = `Logs for ${resourceType}/${name} in namespace ${namespace}`;
+                    break;
+                case 'exec':
+                    actionTitle = `Process list for ${resourceType}/${name} in namespace ${namespace}`;
+                    break;
+                case 'delete':
+                    actionTitle = `Deleting ${resourceType}/${name} in namespace ${namespace}`;
+                    break;
+                default:
+                    actionTitle = `Action: ${action} for ${resourceType}/${name}`;
+            }
+            
+            document.getElementById('actionModalLabel').textContent = actionTitle;
 
-    fetch('/run_action', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
-    })
-    .then(response => response.json())
-    .then(data => {
-        const actionResult = document.getElementById('actionResult');
-        actionResult.textContent = data.output;
-        document.getElementById('actionLoading').style.display = 'none';
-        actionResult.style.display = 'block';
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        document.getElementById('actionLoading').style.display = 'none';
-        document.getElementById('actionResult').style.display = 'block';
-        document.getElementById('actionResult').textContent = 'An error occurred while performing the action.';
-    });
-}
-
-function runCliCommand() {
-    const command = document.getElementById('cliCommand').value;
-    fetch('/run_cli_command', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `command=${encodeURIComponent(command)}`
-    })
-    .then(response => response.json())
-    .then(data => {
-        document.getElementById('cliOutput').textContent = data.output;
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        document.getElementById('cliOutput').textContent = 'An error occurred while running the command.';
-    });
-}
-
-function deployYaml() {
-    const fileInput = document.querySelector('.drop-zone__input');
-    const file = fileInput.files[0];
-    if (file) {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        fetch('/upload_yaml', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('yamlOutput').textContent = data.output || data.error;
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
-        });
-    }
-}
-
-document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
-    const dropZoneElement = inputElement.closest(".drop-zone");
-
-    dropZoneElement.addEventListener("click", (e) => {
-        inputElement.click();
-    });
-
-    inputElement.addEventListener("change", (e) => {
-        if (inputElement.files.length) {
-            updateThumbnail(dropZoneElement, inputElement.files[0]);
-            document.getElementById('deployButton').style.display = 'inline-block';
-        }
-    });
-
-    dropZoneElement.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropZoneElement.classList.add("drop-zone--over");
-    });
-
-    ["dragleave", "dragend"].forEach((type) => {
-        dropZoneElement.addEventListener(type, (e) => {
-            dropZoneElement.classList.remove("drop-zone--over");
-        });
-    });
-
-    dropZoneElement.addEventListener("drop", (e) => {
-        e.preventDefault();
-
-        if (e.dataTransfer.files.length) {
-            inputElement.files = e.dataTransfer.files;
-            updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
-            document.getElementById('deployButton').style.display = 'inline-block';
-        }
-
-        dropZoneElement.classList.remove("drop-zone--over");
-    });
-});
-
-function updateThumbnail(dropZoneElement, file) {
-    let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
-
-    if (dropZoneElement.querySelector(".drop-zone__prompt")) {
-        dropZoneElement.querySelector(".drop-zone__prompt").remove();
-    }
-
-    if (!thumbnailElement) {
-        thumbnailElement = document.createElement("div");
-        thumbnailElement.classList.add("drop-zone__thumb");
-        dropZoneElement.appendChild(thumbnailElement);
-    }
-
-    thumbnailElement.dataset.label = file.name;
-
-    if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-            thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
-        };
-    } else {
-        thumbnailElement.style.backgroundImage = null;
-    }
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    resourceTypes.forEach(resourceType => {
-        fetchResourceData(resourceType);
-        document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
-    });
-});
-
-const socket = io();
-
-const terminal = new Terminal();
-terminal.open(document.getElementById('terminal'));
-
-socket.on('output', function(data) {
-    terminal.write(data.data);
-});
-
-function runCliCommand() {
-    const command = document.getElementById('cliCommand').value;
-    socket.emit('run_cli_command', { command: command });
-    terminal.write(`\r\n$ ${command}\r\n`);
-    document.getElementById('cliCommand').value = '';
-}
-
-function updateFromGithub() {
-    const repoUrl = document.getElementById('githubRepo').value;
-    const statusDiv = document.getElementById('updateStatus');
-    
-    statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
-    
-    // First update from GitHub
-    fetch('/update_from_github', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            repo_url: repoUrl
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            statusDiv.innerHTML = 'Update successful. Restarting application...';
-            // Then restart the application
-            return fetch('/restart', {
-                method: 'POST'
+            fetch('/run_action', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                const actionResult = document.getElementById('actionResult');
+                // Use pre element to preserve formatting
+                actionResult.innerHTML = `<pre>${data.output}</pre>`;
+                document.getElementById('actionLoading').style.display = 'none';
+                actionResult.style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('actionLoading').style.display = 'none';
+                document.getElementById('actionResult').style.display = 'block';
+                document.getElementById('actionResult').textContent = 'An error occurred while performing the action.';
             });
-        } else {
-            throw new Error(data.message);
         }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            statusDiv.innerHTML = 'Application updated and restarted successfully. Refreshing page...';
-            setTimeout(() => {
-                window.location.reload();
-            }, 2000);
+
+        function runCliCommand() {
+            const command = document.getElementById('cliCommand').value;
+            fetch('/run_cli_command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `command=${encodeURIComponent(command)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('cliOutput').textContent = data.output;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('cliOutput').textContent = 'An error occurred while running the command.';
+            });
         }
-    })
-    .catch(error => {
-        statusDiv.innerHTML = `Error: ${error.message}`;
-    });
-}
+
+        function deployYaml() {
+            const fileInput = document.querySelector('.drop-zone__input');
+            const file = fileInput.files[0];
+            if (file) {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                fetch('/upload_yaml', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('yamlOutput').textContent = data.output || data.error;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
+                });
+            }
+        }
+
+        document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
+            const dropZoneElement = inputElement.closest(".drop-zone");
+
+            dropZoneElement.addEventListener("click", (e) => {
+                inputElement.click();
+            });
+
+            inputElement.addEventListener("change", (e) => {
+                if (inputElement.files.length) {
+                    updateThumbnail(dropZoneElement, inputElement.files[0]);
+                    document.getElementById('deployButton').style.display = 'inline-block';
+                }
+            });
+
+            dropZoneElement.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                dropZoneElement.classList.add("drop-zone--over");
+            });
+
+            ["dragleave", "dragend"].forEach((type) => {
+                dropZoneElement.addEventListener(type, (e) => {
+                    dropZoneElement.classList.remove("drop-zone--over");
+                });
+            });
+
+            dropZoneElement.addEventListener("drop", (e) => {
+                e.preventDefault();
+
+                if (e.dataTransfer.files.length) {
+                    inputElement.files = e.dataTransfer.files;
+                    updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
+                    document.getElementById('deployButton').style.display = 'inline-block';
+                }
+
+                dropZoneElement.classList.remove("drop-zone--over");
+            });
+        });
+
+        function updateThumbnail(dropZoneElement, file) {
+            let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
+
+            if (dropZoneElement.querySelector(".drop-zone__prompt")) {
+                dropZoneElement.querySelector(".drop-zone__prompt").remove();
+            }
+
+            if (!thumbnailElement) {
+                thumbnailElement = document.createElement("div");
+                thumbnailElement.classList.add("drop-zone__thumb");
+                dropZoneElement.appendChild(thumbnailElement);
+            }
+
+            thumbnailElement.dataset.label = file.name;
+
+            if (file.type.startsWith("image/")) {
+                const reader = new FileReader();
+
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
+                };
+            } else {
+                thumbnailElement.style.backgroundImage = null;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            resourceTypes.forEach(resourceType => {
+                fetchResourceData(resourceType);
+                document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
+            });
+        });
+
+        const socket = io();
+
+        const terminal = new Terminal();
+        terminal.open(document.getElementById('terminal'));
+
+        socket.on('output', function(data) {
+            terminal.write(data.data);
+        });
+
+        function runCliCommand() {
+            const command = document.getElementById('cliCommand').value;
+            socket.emit('run_cli_command', { command: command });
+            terminal.write(`\r\n$ ${command}\r\n`);
+            document.getElementById('cliCommand').value = '';
+        }
+
+        function updateFromGithub() {
+            const repoUrl = document.getElementById('githubRepo').value;
+            const statusDiv = document.getElementById('updateStatus');
+            
+            statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
+            
+            // First update from GitHub
+            fetch('/update_from_github', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    repo_url: repoUrl
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    statusDiv.innerHTML = 'Update successful. Restarting application...';
+                    // Then restart the application
+                    return fetch('/restart', {
+                        method: 'POST'
+                    });
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    statusDiv.innerHTML = 'Application updated and restarted successfully. Refreshing page...';
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                }
+            })
+            .catch(error => {
+                statusDiv.innerHTML = `Error: ${error.message}`;
+            });
+        }
     </script>
     </body>
     </html>
