@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Kubernetes Dashboard{% endblock %}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/4.14.0/xterm.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/4.14.0/xterm.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+        .logo-container {
+            background-color: white;
+            border-radius: 50%;
+            width: 100px;
+            height: 100px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px auto;
+        }
+        .logo-container img {
+            max-width: 80%;
+            max-height: 80%;
+        }
+        .sidebar {
+            height: 100vh;
+            background-color: #01a982;
+            transition: width 0.3s ease;
+            width: 60px;
+            overflow: hidden;
+        }
+        .sidebar:hover {
+            width: 250px;
+        }
+        .sidebar .nav-link {
+            color: white;
+            white-space: nowrap;
+        }
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            color: white;
+            width: 20px;
+        }
+        .logo {
+            height: 50px;
+            object-fit: contain;
+        }
+        .status-icon {
+            margin-right: 5px;
+        }
+        .status-running { color: #28a745; }
+        .status-pending { color: #ffc107; }
+        .status-failed { color: #dc3545; }
+        .status-unknown { color: #6c757d; }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #007bff;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-container, .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+        }
+        .header {
+            background-color: #01a982;
+            color: white;
+            padding: 15px 0;
+            margin-bottom: 20px;
+        }
+        .tab-content {
+            padding: 20px;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 70vh;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .terminal-container {
+            height: 70vh;
+            background-color: #000;
+            color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #terminal {
+            width: 100%;
+            height: 100%;
+        }
+        .command-input {
+            margin-top: 10px;
+            display: flex;
+        }
+        .command-input input {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 20px;
+            width: 480px;
+            font-family: sans-serif;
+            margin: 100px auto;
+            padding: 20px;
+        }
+        .drop-zone--over {
+            border-style: solid;
+        }
+        .drop-zone__prompt {
+            color: #999;
+            font-size: 20px;
+            text-align: center;
+            padding: 20px;
+        }
+        .drop-zone__input {
+            display: none;
+        }
+        .drop-zone__thumb {
+            width: 100%;
+            height: 150px;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #cccccc;
+            background-size: cover;
+            position: relative;
+        }
+        .drop-zone__thumb::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 5px 0;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.75);
+            font-size: 14px;
+            text-align: center;
+        }
+        #main-content {
+            min-height: 100vh;
+        }
+        #app-content {
+            display: none;
+        }
+    </style>
+    {% block additional_styles %}{% endblock %}
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" onerror="this.src='data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%20preserveAspectRatio%3D%22none%22%3E%3Cdefs%3E%3Cstyle%20type%3D%22text%2Fcss%22%3E%23holder_16eb5dfb3cf%20text%20%7B%20fill%3A%23999%3Bfont-weight%3Anormal%3Bfont-family%3A-apple-system%2CBlinkMacSystemFont%2C%26quot%3BSegoe%20UI%26quot%3B%2CRoboto%2C%26quot%3BHelvetica%20Neue%26quot%3B%2CArial%2C%26quot%3BNoto%20Sans%26quot%3B%2Csans-serif%2C%26quot%3BApple%20Color%20Emoji%26quot%3B%2C%26quot%3BSegoe%20UI%20Emoji%26quot%3B%2C%26quot%3BSegoe%20UI%20Symbol%26quot%3B%2C%26quot%3BNoto%20Color%20Emoji%26quot%3B%2C%20monospace%3Bfont-size%3A10pt%20%7D%20%3C%2Fstyle%3E%3C%2Fdefs%3E%3Cg%20id%3D%22holder_16eb5dfb3cf%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23373940%22%3E%3C%2Frect%3E%3Cg%3E%3Ctext%20x%3D%2236.5%22%20y%3D%2256.5%22%3EK8S%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E';">
+                </div>
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#home" data-bs-toggle="tab" data-bs-target="#home" id="homeLink">
+                                <i class="fas fa-home"></i> <span>Home</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#cli" data-bs-toggle="tab" data-bs-target="#cli">
+                                <i class="fas fa-terminal"></i> <span>CLI</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#yaml" data-bs-toggle="tab" data-bs-target="#yaml">
+                                <i class="fas fa-file-upload"></i> <span>Upload YAML</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#events" data-bs-toggle="tab" data-bs-target="#events">
+                                <i class="fa fa-clock-o"></i> <span>Events</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#settings" data-bs-toggle="tab" data-bs-target="#settings">
+                                <i class="fas fa-cog"></i> <span>Settings</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" id="main-content">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Modal for displaying action results -->
+    <div class="modal fade" id="actionModal" tabindex="-1" aria-labelledby="actionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="actionModalLabel">Action Result</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="actionLoading" class="loading" style="display: none;">
+                        <div class="spinner"></div>
+                    </div>
+                    <pre id="actionResult"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        const socket = io();
+        window.terminalInstance = null;
+        
+        // Common functions used across pages
+        function getStatusIcon(status) {
+            switch (status.toLowerCase()) {
+                case 'running':
+                    return '<i class="fas fa-check-circle status-icon status-running"></i>';
+                case 'pending':
+                    return '<i class="fas fa-clock status-icon status-pending"></i>';
+                case 'failed':
+                    return '<i class="fas fa-times-circle status-icon status-failed"></i>';
+                default:
+                    return '<i class="fas fa-question-circle status-icon status-unknown"></i>';
+            }
+        }
+        
+        function runAction(action, resourceType, namespace, name) {
+            const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
+            actionModal.show();
+            
+            document.getElementById('actionLoading').style.display = 'flex';
+            document.getElementById('actionResult').style.display = 'none';
+            
+            // Add a title to the modal based on the action
+            let actionTitle = '';
+            switch(action) {
+                case 'describe':
+                    actionTitle = `Describing ${resourceType}/${name} in namespace ${namespace}`;
+                    break;
+                case 'logs':
+                    actionTitle = `Logs for ${resourceType}/${name} in namespace ${namespace}`;
+                    break;
+                case 'exec':
+                    actionTitle = `Process list for ${resourceType}/${name} in namespace ${namespace}`;
+                    break;
+                case 'delete':
+                    actionTitle = `Deleting ${resourceType}/${name} in namespace ${namespace}`;
+                    break;
+                default:
+                    actionTitle = `Action: ${action} for ${resourceType}/${name}`;
+            }
+            
+            document.getElementById('actionModalLabel').textContent = actionTitle;
+
+            fetch('/run_action', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                const actionResult = document.getElementById('actionResult');
+                // Use pre element to preserve formatting
+                actionResult.innerHTML = `<pre>${data.output}</pre>`;
+                document.getElementById('actionLoading').style.display = 'none';
+                actionResult.style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('actionLoading').style.display = 'none';
+                document.getElementById('actionResult').style.display = 'block';
+                document.getElementById('actionResult').textContent = 'An error occurred while performing the action.';
+            });
+        }
+        
+        // Client-side navigation for the explore page
+        document.addEventListener('DOMContentLoaded', function() {
+            // Intercept clicks on pod explore links
+            document.body.addEventListener('click', function(e) {
+                const target = e.target.closest('a[href^="/explore/"]');
+                if (target) {
+                    e.preventDefault();
+                    const href = target.getAttribute('href');
+                    navigateToExplore(href);
+                }
+            });
+            
+            // Handle back navigation from the explore page
+            document.getElementById('homeLink').addEventListener('click', function(e) {
+                e.preventDefault();
+                navigateToHome();
+            });
+        });
+        
+        function navigateToExplore(url) {
+            fetch(url)
+                .then(response => response.text())
+                .then(html => {
+                    // Extract the content from the explore page
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const content = doc.querySelector('#main-content').innerHTML;
+                    
+                    // Store the current page state in history
+                    const currentState = document.getElementById('main-content').innerHTML;
+                    window.history.pushState({content: currentState, page: 'home'}, '', '/');
+                    
+                    // Update the page content and history
+                    document.getElementById('main-content').innerHTML = content;
+                    window.history.pushState({content: content, page: 'explore'}, '', url);
+                    
+                    // Initialize the explore page components
+                    if (typeof initializeExplorePage === 'function') {
+                        initializeExplorePage();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+        
+        function navigateToHome() {
+            fetch('/')
+                .then(response => response.text())
+                .then(html => {
+                    // Extract the content from the home page
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const content = doc.querySelector('#main-content').innerHTML;
+                    
+                    // Update the page content and history
+                    document.getElementById('main-content').innerHTML = content;
+                    window.history.pushState({content: content, page: 'home'}, '', '/');
+                    
+                    // Initialize the home page components
+                    if (typeof initializeHomePage === 'function') {
+                        initializeHomePage();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+        
+        window.addEventListener('popstate', function(event) {
+            if (event.state) {
+                document.getElementById('main-content').innerHTML = event.state.content;
+                if (event.state.page === 'home' && typeof initializeHomePage === 'function') {
+                    initializeHomePage();
+                } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
+                    initializeExplorePage();
+                }
+            }
+        });
+
+        // Page-specific scripts
+        {% block page_scripts %}{% endblock %}
+    </script>
+</body>
+</html> 

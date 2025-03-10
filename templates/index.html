@@ -1,858 +1,627 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kubernetes Dashboard</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/4.14.0/xterm.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/4.14.0/xterm.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
-    <style>
-        body {
-            font-family: 'Roboto', sans-serif;
-        }
-        .logo-container {
-            background-color: white;
-            border-radius: 50%;
-            width: 100px;
-            height: 100px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 20px auto;
-        }
-        .logo-container img {
-            max-width: 80%;
-            max-height: 80%;
-        }
-        .sidebar {
-            height: 100vh;
-            background-color: #01a982;
-            transition: width 0.3s ease;
-            width: 60px;
-            overflow: hidden;
-        }
-        .sidebar:hover {
-            width: 250px;
-        }
-        .sidebar .nav-link {
-            color: white;
-            white-space: nowrap;
-        }
-        .sidebar .nav-link i {
-            margin-right: 10px;
-            color: white;
-            width: 20px;
-        }
-        .logo {
-            height: 50px;
-            object-fit: contain;
-        }
-        .status-icon {
-            margin-right: 5px;
-        }
-        .status-running { color: #28a745; }
-        .status-pending { color: #ffc107; }
-        .status-failed { color: #dc3545; }
-        .status-unknown { color: #6c757d; }
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 3px solid rgba(0, 0, 0, 0.1);
-            border-radius: 50%;
-            border-top: 3px solid #007bff;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .loading-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 200px;
-        }
-        .drop-zone {
-            border: 2px dashed #ccc;
-            border-radius: 20px;
-            width: 480px;
-            font-family: sans-serif;
-            margin: 100px auto;
-            padding: 20px;
-        }
-        .drop-zone--over {
-            border-style: solid;
-        }
-        .drop-zone__prompt {
-            color: #999;
-            font-size: 20px;
-            text-align: center;
-            padding: 20px;
-        }
-        .drop-zone__input {
-            display: none;
-        }
-        .drop-zone__thumb {
-            width: 100%;
-            height: 150px;
-            border-radius: 10px;
-            overflow: hidden;
-            background-color: #cccccc;
-            background-size: cover;
-            position: relative;
-        }
-        .drop-zone__thumb::after {
-            content: attr(data-label);
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            padding: 5px 0;
-            color: #ffffff;
-            background: rgba(0, 0, 0, 0.75);
-            font-size: 14px;
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
-                <div class="logo-container">
-                    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
-                </div>
-                <div class="position-sticky pt-3">
-                    <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a class="nav-link active" href="#" data-bs-toggle="tab" data-bs-target="#home">
-                                <i class="fas fa-home"></i> <span>Home</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#cli">
-                                <i class="fas fa-terminal"></i> <span>CLI</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#yaml">
-                                <i class="fas fa-file-upload"></i> <span>Upload YAML</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#events">
-                                <i class="fa fa-clock-o"></i> <span>Events</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#settings">
-                                <i class="fas fa-cog"></i> <span>Settings</span>
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
+{% extends "base.html" %}
 
-            <!-- Main content -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+{% block title %}Kubernetes Dashboard{% endblock %}
 
-                <div class="tab-content" id="myTabContent">
-
-                    <div class="tab-pane fade show active" id="home" role="tabpanel" aria-labelledby="home-tab">
-
-
-                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                    <h1 class="h2">Kubernetes Resources</h1>
-                </div>
-
-                <!-- Tabs -->
-                <ul class="nav nav-tabs" id="resourceTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="pods-tab" data-bs-toggle="tab" data-bs-target="#pods" type="button" role="tab" aria-controls="pods" aria-selected="true">Pods</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="services-tab" data-bs-toggle="tab" data-bs-target="#services" type="button" role="tab" aria-controls="services" aria-selected="false">Services</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="inferenceservices-tab" data-bs-toggle="tab" data-bs-target="#inferenceservices" type="button" role="tab" aria-controls="inferenceservices" aria-selected="false">InferenceServices</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="deployments-tab" data-bs-toggle="tab" data-bs-target="#deployments" type="button" role="tab" aria-controls="deployments" aria-selected="false">Deployments</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="configmaps-tab" data-bs-toggle="tab" data-bs-target="#configmaps" type="button" role="tab" aria-controls="configmaps" aria-selected="false">ConfigMaps</button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="secrets-tab" data-bs-toggle="tab" data-bs-target="#secrets" type="button" role="tab" aria-controls="secrets" aria-selected="false">Secrets</button>
-                    </li>
-                </ul>
-
-                <!-- Tab content -->
-                <div class="tab-content" id="resourceTabsContent">
-                    <div class="tab-pane fade show active" id="pods" role="tabpanel" aria-labelledby="pods-tab">
-                        <div class="loading-container" id="podsLoading">
-                            <div class="spinner"></div>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-striped table-sm" id="podsTable">
-                                <thead>
-                                    <tr>
-                                        <th>Namespace</th>
-                                        <th>Name</th>
-                                        <th>Ready</th>
-                                        <th>Status</th>
-                                        <th>Restarts</th>
-                                        <th>Age</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Table content will be dynamically populated -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="tab-pane fade" id="services" role="tabpanel" aria-labelledby="services-tab">
-                        <div class="loading-container" id="servicesLoading">
-                            <div class="spinner"></div>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-striped table-sm" id="servicesTable">
-                                <thead>
-                                    <tr>
-                                        <th>Namespace</th>
-                                        <th>Name</th>
-                                        <th>Type</th>
-                                        <th>Cluster-IP</th>
-                                        <th>External-IP</th>
-                                        <th>Ports</th>
-                                        <th>Age</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Table content will be dynamically populated -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="tab-pane fade" id="inferenceservices" role="tabpanel" aria-labelledby="inferenceservices-tab">
-                        <div class="loading-container" id="inferenceLoading">
-                            <div class="spinner"></div>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-striped table-sm" id="inferenceservicesTable">
-                                <thead>
-                                    <tr>
-                                        <th>Namespace</th>
-                                        <th>Name</th>
-                                        <th>URL</th>
-                                        <th>Ready</th>
-                                        <th>Default Traffic</th>
-                                        <th>Canary Traffic</th>
-                                        <th>Age</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Table content will be dynamically populated -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="tab-pane fade" id="deployments" role="tabpanel" aria-labelledby="deployments-tab">
-                        <div class="loading-container" id="deploymentsLoading">
-                            <div class="spinner"></div>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-striped table-sm" id="deploymentsTable">
-                                <thead>
-                                    <tr>
-                                        <th>Namespace</th>
-                                        <th>Name</th>
-                                        <th>Ready</th>
-                                        <th>Up-to-date</th>
-                                        <th>Available</th>
-                                        <th>Age</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Table content will be dynamically populated -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="tab-pane fade" id="configmaps" role="tabpanel" aria-labelledby="configmaps-tab">
-                        <div class="loading-container" id="configmapsLoading">
-                            <div class="spinner"></div>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-striped table-sm" id="configmapsTable">
-                                <thead>
-                                    <tr>
-                                        <th>Namespace</th>
-                                        <th>Name</th>
-                                        <th>Data</th>
-                                        <th>Age</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Table content will be dynamically populated -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="tab-pane fade" id="secrets" role="tabpanel" aria-labelledby="secrets-tab">
-                        <div class="loading-container" id="secretsLoading">
-                            <div class="spinner"></div>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-striped table-sm" id="secretsTable">
-                                <thead>
-                                    <tr>
-                                        <th>Namespace</th>
-                                        <th>Name</th>
-                                        <th>Type</th>
-                                        <th>Data</th>
-                                        <th>Age</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Table content will be dynamically populated -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                </div>
-
-
-                    <!-- CLI Tab -->
-                    <div class="tab-pane fade" id="cli" role="tabpanel" aria-labelledby="cli-tab">
-                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                            <h1 class="h2">CLI Commands</h1>
-                        </div>
-                        <div id="terminal" style="width: 100%; height: 400px;"></div>
-                        <input type="text" id="cliCommand" placeholder="Enter command" />
-                        <button class="btn btn-primary" onclick="runCliCommand()">Run Command</button>
-                    </div>
-
-                    <!-- YAML Upload Tab -->
-                    <div class="tab-pane fade" id="yaml" role="tabpanel" aria-labelledby="yaml-tab">
-                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                            <h1 class="h2">Upload YAML</h1>
-                        </div>
-                        <div class="drop-zone">
-                            <span class="drop-zone__prompt">Drop YAML file here or click to upload</span>
-                            <input type="file" name="myFile" class="drop-zone__input" accept=".yaml">
-                        </div>
-                        <div class="text-center mt-3">
-                            <button id="deployButton" class="btn btn-primary" style="display: none;" onclick="deployYaml()">Deploy</button>
-                        </div>
-                        <div class="mt-3">
-                            <pre id="yamlOutput"></pre>
-                        </div>
-                    </div>
-
-                    <div class="tab-pane fade" id="events" role="tabpanel" aria-labelledby="events-tab">
-                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                            <h2>Events</h2>
-                        </div>
-                        <div class="mb-3">
-                            <label for="namespaceSelect" class="form-label">Select Namespace:</label>
-                            <select id="namespaceSelect" class="form-select">
-                                <option value="">Select a namespace</option>
-                            </select>
-                        </div>
-                        <pre id="eventsOutput" class="mt-3"></pre>
-                    </div>
-
-                    <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
-                        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                            <h2>Settings</h2>
-                        </div>
-                        
-                        <div id="githubSettings">
-                            <div class="mb-3">
-                                <label for="githubRepo" class="form-label">GitHub Repository URL:</label>
-                                <input type="text" class="form-control" id="githubRepo" placeholder="https://github.com/username/repo">
-                            </div>
-                            <button class="btn btn-primary" onclick="updateFromGithub()">Update from GitHub</button>
-                        </div>
-                        
-                        <div id="updateStatus" class="mt-3"></div>
-                    </div>
-
-                </div>
-            </main>
+{% block content %}
+<div class="tab-content" id="mainContent">
+    <div class="tab-pane fade show active" id="home" role="tabpanel" aria-labelledby="home-tab">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h1 class="h2">Kubernetes Resources</h1>
         </div>
-    </div>
 
-    <!-- Modal for displaying action results -->
-    <div class="modal fade" id="actionModal" tabindex="-1" aria-labelledby="actionModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="actionModalLabel">Action Result</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <!-- Tabs -->
+        <ul class="nav nav-tabs" id="resourceTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="pods-tab" data-bs-toggle="tab" data-bs-target="#pods" type="button" role="tab" aria-controls="pods" aria-selected="true">Pods</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="services-tab" data-bs-toggle="tab" data-bs-target="#services" type="button" role="tab" aria-controls="services" aria-selected="false">Services</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="inferenceservices-tab" data-bs-toggle="tab" data-bs-target="#inferenceservices" type="button" role="tab" aria-controls="inferenceservices" aria-selected="false">InferenceServices</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="deployments-tab" data-bs-toggle="tab" data-bs-target="#deployments" type="button" role="tab" aria-controls="deployments" aria-selected="false">Deployments</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="configmaps-tab" data-bs-toggle="tab" data-bs-target="#configmaps" type="button" role="tab" aria-controls="configmaps" aria-selected="false">ConfigMaps</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="secrets-tab" data-bs-toggle="tab" data-bs-target="#secrets" type="button" role="tab" aria-controls="secrets" aria-selected="false">Secrets</button>
+            </li>
+        </ul>
+
+        <!-- Tab content -->
+        <div class="tab-content" id="resourceTabsContent">
+            <div class="tab-pane fade show active" id="pods" role="tabpanel" aria-labelledby="pods-tab">
+                <div class="loading-container" id="podsLoading">
+                    <div class="spinner"></div>
                 </div>
-                <div class="modal-body">
-                    <div id="actionLoading" class="loading" style="display: none;">
-                        <div class="spinner"></div>
-                    </div>
-                    <pre id="actionResult"></pre>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="podsTable">
+                        <thead>
+                            <tr>
+                                <th>Namespace</th>
+                                <th>Name</th>
+                                <th>Ready</th>
+                                <th>Status</th>
+                                <th>Restarts</th>
+                                <th>Age</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Table content will be dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="services" role="tabpanel" aria-labelledby="services-tab">
+                <div class="loading-container" id="servicesLoading">
+                    <div class="spinner"></div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="servicesTable">
+                        <thead>
+                            <tr>
+                                <th>Namespace</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Cluster-IP</th>
+                                <th>External-IP</th>
+                                <th>Ports</th>
+                                <th>Age</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Table content will be dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="inferenceservices" role="tabpanel" aria-labelledby="inferenceservices-tab">
+                <div class="loading-container" id="inferenceLoading">
+                    <div class="spinner"></div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="inferenceservicesTable">
+                        <thead>
+                            <tr>
+                                <th>Namespace</th>
+                                <th>Name</th>
+                                <th>URL</th>
+                                <th>Ready</th>
+                                <th>Default Traffic</th>
+                                <th>Canary Traffic</th>
+                                <th>Age</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Table content will be dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="deployments" role="tabpanel" aria-labelledby="deployments-tab">
+                <div class="loading-container" id="deploymentsLoading">
+                    <div class="spinner"></div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="deploymentsTable">
+                        <thead>
+                            <tr>
+                                <th>Namespace</th>
+                                <th>Name</th>
+                                <th>Ready</th>
+                                <th>Up-to-date</th>
+                                <th>Available</th>
+                                <th>Age</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Table content will be dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="configmaps" role="tabpanel" aria-labelledby="configmaps-tab">
+                <div class="loading-container" id="configmapsLoading">
+                    <div class="spinner"></div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="configmapsTable">
+                        <thead>
+                            <tr>
+                                <th>Namespace</th>
+                                <th>Name</th>
+                                <th>Data</th>
+                                <th>Age</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Table content will be dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="secrets" role="tabpanel" aria-labelledby="secrets-tab">
+                <div class="loading-container" id="secretsLoading">
+                    <div class="spinner"></div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="secretsTable">
+                        <thead>
+                            <tr>
+                                <th>Namespace</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Data</th>
+                                <th>Age</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Table content will be dynamically populated -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
+    <div class="tab-pane fade" id="cli" role="tabpanel" aria-labelledby="cli-tab">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h1 class="h2">CLI Commands</h1>
+        </div>
+        <div id="terminal" style="width: 100%; height: 400px;"></div>
+        <input type="text" id="cliCommand" placeholder="Enter command" />
+        <button class="btn btn-primary" onclick="runCliCommand()">Run Command</button>
+    </div>
+    <div class="tab-pane fade" id="yaml" role="tabpanel" aria-labelledby="yaml-tab">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h1 class="h2">Upload YAML</h1>
+        </div>
+        <div class="drop-zone">
+            <span class="drop-zone__prompt">Drop YAML file here or click to upload</span>
+            <input type="file" name="myFile" class="drop-zone__input" accept=".yaml">
+        </div>
+        <div class="text-center mt-3">
+            <button id="deployButton" class="btn btn-primary" style="display: none;" onclick="deployYaml()">Deploy</button>
+        </div>
+        <div class="mt-3">
+            <pre id="yamlOutput"></pre>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="events" role="tabpanel" aria-labelledby="events-tab">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h2>Events</h2>
+        </div>
+        <div class="mb-3">
+            <label for="namespaceSelect" class="form-label">Select Namespace:</label>
+            <select id="namespaceSelect" class="form-select">
+                <option value="">Select a namespace</option>
+            </select>
+        </div>
+        <pre id="eventsOutput" class="mt-3"></pre>
+    </div>
+    <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h2>Settings</h2>
+        </div>
+        
+        <div id="githubSettings">
+            <div class="mb-3">
+                <label for="githubRepo" class="form-label">GitHub Repository URL:</label>
+                <input type="text" class="form-control" id="githubRepo" placeholder="https://github.com/username/repo">
+            </div>
+            <button class="btn btn-primary" onclick="updateFromGithub()">Update from GitHub</button>
+        </div>
+        
+        <div id="updateStatus" class="mt-3"></div>
+    </div>
+</div>
+{% endblock %}
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+{% block page_scripts %}
+<script>
+const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
 
-   <script>
-        const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
-    
-        function getStatusIcon(status) {
-            switch (status.toLowerCase()) {
-                case 'running':
-                    return '<i class="fas fa-check-circle status-icon status-running"></i>';
-                case 'pending':
-                    return '<i class="fas fa-clock status-icon status-pending"></i>';
-                case 'failed':
-                    return '<i class="fas fa-times-circle status-icon status-failed"></i>';
-                default:
-                    return '<i class="fas fa-question-circle status-icon status-unknown"></i>';
-            }
-        }
-    
-        function createActionButton(resourceType, namespace, name) {
-            if (resourceType === 'pods') {
-                return `
-                    <div class="d-flex">
-                        <a href="#" class="me-2" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')" title="View Logs">
-                            <i class="fas fa-file-alt text-primary"></i>
-                        </a>
-                        <a href="/explore/${namespace}/${name}" class="me-2" title="Explore Pod">
-                            <i class="fas fa-terminal text-success"></i>
-                        </a>
-                        <a href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')" title="Delete">
-                            <i class="fas fa-trash-alt text-danger"></i>
-                        </a>
-                    </div>
-                `;
-            } else {
-                return `
-                    <div class="dropdown">
-                        <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-ellipsis-h"></i>
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                            <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">Describe</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">View Logs</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">Access</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">Delete</a></li>
-                        </ul>
-                    </div>
-                `;
-            }
-        }
-
-        function showLoading(resourceType) {
-            document.getElementById(`${resourceType}Loading`).style.display = 'flex';
-            document.getElementById(`${resourceType}Table`).style.display = 'none';
-        }
-
-        function hideLoading(resourceType) {
-            document.getElementById(`${resourceType}Loading`).style.display = 'none';
-            document.getElementById(`${resourceType}Table`).style.display = 'block';
-        }
-    
-        function fetchResourceData(resourceType) {
-            fetch('/get_resources', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `resource_type=${resourceType}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-                tableBody.innerHTML = ''; // Clear existing rows
-    
-                if (data.format === 'error') {
-                    tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}</td></tr>`;
-                    return;
-                }
-    
-                data.data.items.forEach(item => {
-                    const row = document.createElement('tr');
-                    switch (resourceType) {
-                        case 'pods':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
-                                <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                                <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                        case 'services':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${item.spec.type}</td>
-                                <td>${item.spec.clusterIP}</td>
-                                <td>${item.spec.externalIP || 'N/A'}</td>
-                                <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                        case 'inferenceservices':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${item.status.url || 'N/A'}</td>
-                                <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
-                                <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
-                                <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                        case 'deployments':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
-                                <td>${item.status.updatedReplicas}</td>
-                                <td>${item.status.availableReplicas}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                        case 'configmaps':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${Object.keys(item.data || {}).length}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                        case 'secrets':
-                            row.innerHTML = `
-                                <td>${item.metadata.namespace}</td>
-                                <td>${item.metadata.name}</td>
-                                <td>${item.type}</td>
-                                <td>${Object.keys(item.data || {}).length}</td>
-                                <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                                <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                            `;
-                            break;
-                    }
-                    tableBody.appendChild(row);
-                });
-                hideLoading(resourceType);
-            })
-            .catch(error => console.error('Error:', error));
-        }
-    
-        function runAction(action, resourceType, namespace, name) {
-            const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
-            actionModal.show();
+function initializeHomePage() {
+    // Initialize the terminal first
+    if (document.getElementById('terminal')) {
+        if (!window.terminalInstance) {
+            window.terminalInstance = new Terminal();
+            window.terminalInstance.open(document.getElementById('terminal'));
             
-            document.getElementById('actionLoading').style.display = 'flex';
-            document.getElementById('actionResult').style.display = 'none';
-            
-            // Add a title to the modal based on the action
-            let actionTitle = '';
-            switch(action) {
-                case 'describe':
-                    actionTitle = `Describing ${resourceType}/${name} in namespace ${namespace}`;
-                    break;
-                case 'logs':
-                    actionTitle = `Logs for ${resourceType}/${name} in namespace ${namespace}`;
-                    break;
-                case 'exec':
-                    actionTitle = `Process list for ${resourceType}/${name} in namespace ${namespace}`;
-                    break;
-                case 'delete':
-                    actionTitle = `Deleting ${resourceType}/${name} in namespace ${namespace}`;
-                    break;
-                default:
-                    actionTitle = `Action: ${action} for ${resourceType}/${name}`;
-            }
-            
-            document.getElementById('actionModalLabel').textContent = actionTitle;
-
-            fetch('/run_action', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                const actionResult = document.getElementById('actionResult');
-                // Use pre element to preserve formatting
-                actionResult.innerHTML = `<pre>${data.output}</pre>`;
-                document.getElementById('actionLoading').style.display = 'none';
-                actionResult.style.display = 'block';
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('actionLoading').style.display = 'none';
-                document.getElementById('actionResult').style.display = 'block';
-                document.getElementById('actionResult').textContent = 'An error occurred while performing the action.';
-            });
-        }
-
-        function runCliCommand() {
-            const command = document.getElementById('cliCommand').value;
-            socket.emit('run_cli_command', { command: command });
-            terminal.write(`\r\n$ ${command}\r\n`);
-            document.getElementById('cliCommand').value = '';
-        }
-
-        function deployYaml() {
-            const fileInput = document.querySelector('.drop-zone__input');
-            const file = fileInput.files[0];
-            if (file) {
-                const formData = new FormData();
-                formData.append('file', file);
-
-                fetch('/upload_yaml', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('yamlOutput').textContent = data.output || data.error;
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
-                });
-            }
-        }
-
-        document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
-            const dropZoneElement = inputElement.closest(".drop-zone");
-
-            dropZoneElement.addEventListener("click", (e) => {
-                inputElement.click();
-            });
-
-            inputElement.addEventListener("change", (e) => {
-                if (inputElement.files.length) {
-                    updateThumbnail(dropZoneElement, inputElement.files[0]);
-                    document.getElementById('deployButton').style.display = 'inline-block';
+            socket.on('output', function(data) {
+                if (window.terminalInstance) {
+                    window.terminalInstance.write(data.data);
                 }
             });
+        }
+    }
+    
+    // Then load resources
+    resourceTypes.forEach(resourceType => {
+        fetchResourceData(resourceType);
+        const tabElement = document.querySelector(`#${resourceType}-tab`);
+        if (tabElement) {
+            tabElement.addEventListener('click', () => fetchResourceData(resourceType));
+        }
+    });
+    
+    // Check if git functionality is available
+    checkGitAvailability();
+    
+    // Fetch namespaces for the events tab
+    fetchNamespaces();
+    
+    // Set up drop zone event listeners
+    setupDropZone();
+}
 
-            dropZoneElement.addEventListener("dragover", (e) => {
-                e.preventDefault();
-                dropZoneElement.classList.add("drop-zone--over");
-            });
+function setupDropZone() {
+    document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
+        const dropZoneElement = inputElement.closest(".drop-zone");
 
-            ["dragleave", "dragend"].forEach((type) => {
-                dropZoneElement.addEventListener(type, (e) => {
-                    dropZoneElement.classList.remove("drop-zone--over");
-                });
-            });
+        dropZoneElement.addEventListener("click", (e) => {
+            inputElement.click();
+        });
 
-            dropZoneElement.addEventListener("drop", (e) => {
-                e.preventDefault();
+        inputElement.addEventListener("change", (e) => {
+            if (inputElement.files.length) {
+                updateThumbnail(dropZoneElement, inputElement.files[0]);
+                document.getElementById('deployButton').style.display = 'inline-block';
+            }
+        });
 
-                if (e.dataTransfer.files.length) {
-                    inputElement.files = e.dataTransfer.files;
-                    updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
-                    document.getElementById('deployButton').style.display = 'inline-block';
-                }
+        dropZoneElement.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropZoneElement.classList.add("drop-zone--over");
+        });
 
+        ["dragleave", "dragend"].forEach((type) => {
+            dropZoneElement.addEventListener(type, (e) => {
                 dropZoneElement.classList.remove("drop-zone--over");
             });
         });
 
-        function updateThumbnail(dropZoneElement, file) {
-            let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
+        dropZoneElement.addEventListener("drop", (e) => {
+            e.preventDefault();
 
-            if (dropZoneElement.querySelector(".drop-zone__prompt")) {
-                dropZoneElement.querySelector(".drop-zone__prompt").remove();
+            if (e.dataTransfer.files.length) {
+                inputElement.files = e.dataTransfer.files;
+                updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
+                document.getElementById('deployButton').style.display = 'inline-block';
             }
 
-            if (!thumbnailElement) {
-                thumbnailElement = document.createElement("div");
-                thumbnailElement.classList.add("drop-zone__thumb");
-                dropZoneElement.appendChild(thumbnailElement);
-            }
-
-            thumbnailElement.dataset.label = file.name;
-
-            if (file.type.startsWith("image/")) {
-                const reader = new FileReader();
-
-                reader.readAsDataURL(file);
-                reader.onload = () => {
-                    thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
-                };
-            } else {
-                thumbnailElement.style.backgroundImage = null;
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            resourceTypes.forEach(resourceType => {
-                fetchResourceData(resourceType);
-                document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
-            });
-            
-            // Check if git functionality is available
-            checkGitAvailability();
-            
-            // Fetch namespaces for the events tab
-            fetchNamespaces();
+            dropZoneElement.classList.remove("drop-zone--over");
         });
+    });
+}
 
-        function checkGitAvailability() {
-            fetch('/git_status')
-            .then(response => response.json())
-            .then(data => {
-                const githubSettings = document.getElementById('githubSettings');
-                if (!data.available) {
-                    githubSettings.innerHTML = `
-                        <div class="alert alert-warning">
-                            <strong>Git functionality is not available.</strong> 
-                            <p>The "Update from GitHub" feature requires git to be installed on the server. 
-                            Please install git or contact your administrator if you need this feature.</p>
-                        </div>
+function createActionButton(resourceType, namespace, name) {
+    if (resourceType === 'pods') {
+        return `
+            <div class="d-flex">
+                <a href="#" class="me-2" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')" title="View Logs">
+                    <i class="fas fa-file-alt text-primary"></i>
+                </a>
+                <a href="/explore/${namespace}/${name}" class="me-2" title="Explore Pod">
+                    <i class="fas fa-terminal text-success"></i>
+                </a>
+                <a href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')" title="Delete">
+                    <i class="fas fa-trash-alt text-danger"></i>
+                </a>
+            </div>
+        `;
+    } else {
+        return `
+            <div class="dropdown">
+                <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-ellipsis-h"></i>
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                    <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">Describe</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">View Logs</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">Access</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">Delete</a></li>
+                </ul>
+            </div>
+        `;
+    }
+}
+
+function showLoading(resourceType) {
+    const loadingElement = document.getElementById(`${resourceType}Loading`);
+    const tableElement = document.getElementById(`${resourceType}Table`);
+    
+    if (loadingElement) loadingElement.style.display = 'flex';
+    if (tableElement) tableElement.style.display = 'none';
+}
+
+function hideLoading(resourceType) {
+    const loadingElement = document.getElementById(`${resourceType}Loading`);
+    const tableElement = document.getElementById(`${resourceType}Table`);
+    
+    if (loadingElement) loadingElement.style.display = 'none';
+    if (tableElement) tableElement.style.display = 'block';
+}
+
+function fetchResourceData(resourceType) {
+    showLoading(resourceType);
+    
+    fetch('/get_resources', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `resource_type=${resourceType}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+        tableBody.innerHTML = ''; // Clear existing rows
+        
+        if (data.format === 'error') {
+            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}</td></tr>`;
+            return;
+        }
+        
+        data.data.items.forEach(item => {
+            const row = document.createElement('tr');
+            switch (resourceType) {
+                case 'pods':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
+                        <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                        <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                     `;
-                }
-            })
-            .catch(error => {
-                console.error('Error checking git status:', error);
-            });
-        }
-
-        function fetchNamespaces() {
-            fetch('/get_namespaces')
-                .then(response => response.json())
-                .then(data => {
-                    const namespaceSelect = document.getElementById('namespaceSelect');
-                    namespaceSelect.innerHTML = '<option value="">Select a namespace</option>';
-                    
-                    if (data.namespaces) {
-                        data.namespaces.forEach(namespace => {
-                            const option = document.createElement('option');
-                            option.value = namespace;
-                            option.textContent = namespace;
-                            namespaceSelect.appendChild(option);
-                        });
-                    } else if (data.error) {
-                        console.error('Error fetching namespaces:', data.error);
-                    }
-                    
-                    // Set up event listener for namespace selection
-                    namespaceSelect.addEventListener('change', function() {
-                        if (this.value) {
-                            fetchEvents(this.value);
-                        }
-                    });
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
-        }
-
-        function fetchEvents(namespace) {
-            document.getElementById('eventsOutput').textContent = 'Loading events...';
-            
-            fetch('/get_events', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `namespace=${namespace}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('eventsOutput').textContent = data.output;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('eventsOutput').textContent = 'An error occurred while fetching events.';
-            });
-        }
-
-        function updateFromGithub() {
-            const repoUrl = document.getElementById('githubRepo').value;
-            const statusDiv = document.getElementById('updateStatus');
-            
-            statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
-            
-            // First update from GitHub
-            fetch('/update_from_github', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    repo_url: repoUrl
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    statusDiv.innerHTML = 'Update successful. Restarting application...';
-                    // Then restart the application
-                    return fetch('/restart', {
-                        method: 'POST'
-                    });
-                } else {
-                    statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
-                    throw new Error(data.message);
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    statusDiv.innerHTML = 'Application updated and restarted successfully. Refreshing page...';
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 2000);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                if (!statusDiv.innerHTML.includes('alert-danger')) {
-                    statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-                }
-            });
-        }
-
-        const socket = io();
-
-        const terminal = new Terminal();
-        terminal.open(document.getElementById('terminal'));
-
-        socket.on('output', function(data) {
-            terminal.write(data.data);
+                    break;
+                case 'services':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.spec.type}</td>
+                        <td>${item.spec.clusterIP}</td>
+                        <td>${item.spec.externalIP || 'N/A'}</td>
+                        <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'inferenceservices':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.url || 'N/A'}</td>
+                        <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
+                        <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
+                        <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'deployments':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
+                        <td>${item.status.updatedReplicas}</td>
+                        <td>${item.status.availableReplicas}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'configmaps':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${Object.keys(item.data || {}).length}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'secrets':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.type}</td>
+                        <td>${Object.keys(item.data || {}).length}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+            }
+            tableBody.appendChild(row);
         });
-    </script>
-    </body>
-    </html>
+        hideLoading(resourceType);
+    })
+    .catch(error => console.error('Error:', error));
+}
+
+function runCliCommand() {
+    const command = document.getElementById('cliCommand').value;
+    if (window.terminalInstance) {
+        socket.emit('run_cli_command', { command: command });
+        window.terminalInstance.write(`\r\n$ ${command}\r\n`);
+        document.getElementById('cliCommand').value = '';
+    }
+}
+
+function deployYaml() {
+    const fileInput = document.querySelector('.drop-zone__input');
+    const file = fileInput.files[0];
+    if (file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/upload_yaml', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('yamlOutput').textContent = data.output || data.error;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
+        });
+    }
+}
+
+function updateThumbnail(dropZoneElement, file) {
+    let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
+
+    if (dropZoneElement.querySelector(".drop-zone__prompt")) {
+        dropZoneElement.querySelector(".drop-zone__prompt").remove();
+    }
+
+    if (!thumbnailElement) {
+        thumbnailElement = document.createElement("div");
+        thumbnailElement.classList.add("drop-zone__thumb");
+        dropZoneElement.appendChild(thumbnailElement);
+    }
+
+    thumbnailElement.dataset.label = file.name;
+
+    if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
+        };
+    } else {
+        thumbnailElement.style.backgroundImage = null;
+    }
+}
+
+function checkGitAvailability() {
+    fetch('/git_status')
+    .then(response => response.json())
+    .then(data => {
+        const githubSettings = document.getElementById('githubSettings');
+        if (!data.available) {
+            githubSettings.innerHTML = `
+                <div class="alert alert-warning">
+                    <strong>Git functionality is not available.</strong> 
+                    <p>The "Update from GitHub" feature requires git to be installed on the server. 
+                    Please install git or contact your administrator if you need this feature.</p>
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error checking git status:', error);
+    });
+}
+
+function fetchNamespaces() {
+    fetch('/get_namespaces')
+        .then(response => response.json())
+        .then(data => {
+            const namespaceSelect = document.getElementById('namespaceSelect');
+            namespaceSelect.innerHTML = '<option value="">Select a namespace</option>';
+            
+            if (data.namespaces) {
+                data.namespaces.forEach(namespace => {
+                    const option = document.createElement('option');
+                    option.value = namespace;
+                    option.textContent = namespace;
+                    namespaceSelect.appendChild(option);
+                });
+            } else if (data.error) {
+                console.error('Error fetching namespaces:', data.error);
+            }
+            
+            // Set up event listener for namespace selection
+            namespaceSelect.addEventListener('change', function() {
+                if (this.value) {
+                    fetchEvents(this.value);
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
+function fetchEvents(namespace) {
+    document.getElementById('eventsOutput').textContent = 'Loading events...';
+    
+    fetch('/get_events', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `namespace=${namespace}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('eventsOutput').textContent = data.output;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('eventsOutput').textContent = 'An error occurred while fetching events.';
+    });
+}
+
+function updateFromGithub() {
+    const repoUrl = document.getElementById('githubRepo').value;
+    const statusDiv = document.getElementById('updateStatus');
+    
+    statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
+    
+    // First update from GitHub
+    fetch('/update_from_github', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            repo_url: repoUrl
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            statusDiv.innerHTML = 'Update successful. Restarting application...';
+            // Then restart the application
+            return fetch('/restart', {
+                method: 'POST'
+            });
+        } else {
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
+            throw new Error(data.message);
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            statusDiv.innerHTML = 'Application updated and restarted successfully. Refreshing page...';
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        if (!statusDiv.innerHTML.includes('alert-danger')) {
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+        }
+    });
+}
+
+// Initialize the page when loaded directly
+document.addEventListener('DOMContentLoaded', initializeHomePage);
+</script>
+{% endblock %}
