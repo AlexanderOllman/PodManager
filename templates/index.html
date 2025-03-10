@@ -256,62 +256,108 @@
 
 {% block page_scripts %}
 <script>
-// Wait for socket.io to be loaded
+// Main initialization function that's called when dependencies are loaded
 document.addEventListener('DOMContentLoaded', function() {
-    // Check if we're on a page with the refreshLog element (settings page)
-    const refreshLog = document.getElementById('refreshLog');
+    console.log('DOM content loaded, waiting for dependencies...');
     
-    // Check if io is defined
-    if (typeof io === 'undefined') {
-        console.error('Socket.io is not loaded. Check network connections.');
-        if (refreshLog) {
-            refreshLog.innerHTML = '<div class="text-danger">Error: Socket.io library failed to load. Please check your internet connection.</div>';
+    // Poll until dependencies are loaded or timeout
+    let checkCount = 0;
+    const maxChecks = 20; // 10 seconds
+    
+    function checkDependencies() {
+        checkCount++;
+        
+        // Log loading status 
+        console.log(`Checking dependencies (${checkCount}/${maxChecks})...`);
+        console.log(`Socket.IO loaded: ${window.appLoaded.socketio}`);
+        console.log(`Terminal loaded: ${window.appLoaded.terminal}`);
+        
+        if (window.appLoaded.socketio) {
+            // Initialize the application once Socket.IO is available
+            // Terminal is optional, we'll check for it before using
+            initializeApp();
+            return;
         }
         
-        // Still try to initialize the page without socket functionality
-        console.log('Attempting to initialize page without socket.io functionality');
-        safeInitializePage();
+        if (checkCount >= maxChecks) {
+            console.error('Dependencies not loaded after timeout!');
+            // Try to initialize anyway, with graceful fallbacks
+            initializeApp();
+            return;
+        }
+        
+        // Check again in 500ms
+        setTimeout(checkDependencies, 500);
+    }
+    
+    // Start checking dependencies
+    checkDependencies();
+});
+
+// Main application initialization
+function initializeApp() {
+    console.log('Initializing application...');
+    
+    // Initialize components that don't require special dependencies
+    fetchResourcesForAllTabs();
+    checkGitAvailability();
+    fetchNamespaces();
+    setupDropZone();
+    
+    // Initialize terminal if available
+    initializeTerminal();
+    
+    // Connect socket event listeners
+    connectSocketListeners();
+    
+    console.log('Application initialized');
+}
+
+// Terminal initialization - only if the library is loaded
+function initializeTerminal() {
+    if (document.getElementById('terminal')) {
+        if (window.appLoaded.terminal && typeof Terminal !== 'undefined') {
+            try {
+                console.log('Initializing terminal...');
+                const terminal = new Terminal();
+                window.app.terminal = terminal;
+                terminal.open(document.getElementById('terminal'));
+                
+                if (window.app.socket) {
+                    window.app.socket.on('output', function(data) {
+                        if (window.app.terminal) {
+                            window.app.terminal.write(data.data);
+                        }
+                    });
+                    console.log('Terminal initialized successfully');
+                } else {
+                    console.warn('Socket not available for terminal output');
+                }
+            } catch (error) {
+                console.error('Failed to initialize terminal:', error);
+                const terminalElement = document.getElementById('terminal');
+                terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
+            }
+        } else {
+            console.warn('Terminal library not loaded');
+            const terminalElement = document.getElementById('terminal');
+            terminalElement.innerHTML = '<div class="alert alert-warning">Terminal features are unavailable because the required library could not be loaded.</div>';
+        }
+    }
+}
+
+// Socket event listeners
+function connectSocketListeners() {
+    const socket = window.app.socket;
+    if (!socket) {
+        console.warn('Socket not available for event listeners');
         return;
     }
-
-    // Initialize socket connection in the global scope
-    try {
-        // First, check if socket already exists in the global scope (from base.html)
-        if (typeof socket !== 'undefined') {
-            window.socket = socket;
-            console.log('Using existing socket connection from base.html');
-        } else {
-            console.log('Creating new socket connection');
-            window.socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
-        }
-        
-        // Add event listener for refresh logs
-        window.socket.on('connect', function() {
-            console.log('Socket.io connected successfully');
-            if (refreshLog) {
-                const logEntry = document.createElement('div');
-                logEntry.className = 'text-success';
-                logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] Connected to server successfully.`;
-                refreshLog.appendChild(logEntry);
-            }
-            
-            // Socket is connected, now initialize the page
-            safeInitializePage();
-        });
-        
-        window.socket.on('connect_error', function(err) {
-            console.error('Socket.io connection error:', err);
-            if (refreshLog) {
-                refreshLog.innerHTML = `<div class="text-danger">Connection error: ${err.message}. Server may be unavailable.</div>`;
-            }
-            
-            // Still try to initialize the page without socket functionality
-            safeInitializePage();
-        });
-        
-        window.socket.on('refresh_log', function(data) {
-            if (!refreshLog) return;
-            
+    
+    // Refresh log listener for the settings page
+    const refreshLog = document.getElementById('refreshLog');
+    if (refreshLog) {
+        socket.on('refresh_log', function(data) {
             const logMessage = data.message;
             
             // Create new log entry with appropriate class based on status
@@ -360,71 +406,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 1000);
             }
         });
-    } catch (error) {
-        console.error('Error initializing socket:', error);
-        if (refreshLog) {
-            refreshLog.innerHTML = `<div class="text-danger">Error initializing socket: ${error.message}</div>`;
-        }
-        
-        // Still try to initialize the page without socket functionality
-        safeInitializePage();
-    }
-});
-
-// Safe initialization function that won't crash if required libraries aren't loaded
-function safeInitializePage() {
-    try {
-        initializeHomePage();
-    } catch (error) {
-        console.error('Error during page initialization:', error);
-        // Try to load at least the basic UI components
-        try {
-            // Check if git functionality is available
-            checkGitAvailability();
-            
-            // Fetch namespaces for the events tab
-            fetchNamespaces();
-            
-            // Set up drop zone event listeners
-            setupDropZone();
-        } catch (e) {
-            console.error('Fatal error initializing page:', e);
-        }
     }
 }
 
-const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
-
-function initializeHomePage() {
-    // Initialize the terminal first if the Terminal class exists
-    if (document.getElementById('terminal')) {
-        if (!window.terminalInstance && typeof Terminal !== 'undefined') {
-            try {
-                window.terminalInstance = new Terminal();
-                window.terminalInstance.open(document.getElementById('terminal'));
-                
-                window.socket.on('output', function(data) {
-                    if (window.terminalInstance) {
-                        window.terminalInstance.write(data.data);
-                    }
-                });
-            } catch (error) {
-                console.error('Error initializing terminal:', error);
-                const terminalElement = document.getElementById('terminal');
-                if (terminalElement) {
-                    terminalElement.innerHTML = '<div class="alert alert-danger">Error initializing terminal. Terminal library may not be loaded correctly.</div>';
-                }
-            }
-        } else if (typeof Terminal === 'undefined') {
-            console.warn('Terminal library not loaded yet. CLI terminal features will be unavailable.');
-            const terminalElement = document.getElementById('terminal');
-            if (terminalElement) {
-                terminalElement.innerHTML = '<div class="alert alert-warning">Terminal library not loaded. CLI features are unavailable.</div>';
-            }
-        }
-    }
+// Fetch all resources for each tab
+function fetchResourcesForAllTabs() {
+    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
     
-    // Then load resources
     resourceTypes.forEach(resourceType => {
         fetchResourceData(resourceType);
         const tabElement = document.querySelector(`#${resourceType}-tab`);
@@ -432,105 +420,9 @@ function initializeHomePage() {
             tabElement.addEventListener('click', () => fetchResourceData(resourceType));
         }
     });
-    
-    // Check if git functionality is available
-    checkGitAvailability();
-    
-    // Fetch namespaces for the events tab
-    fetchNamespaces();
-    
-    // Set up drop zone event listeners
-    setupDropZone();
 }
 
-function setupDropZone() {
-    document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
-        const dropZoneElement = inputElement.closest(".drop-zone");
-
-        dropZoneElement.addEventListener("click", (e) => {
-            inputElement.click();
-        });
-
-        inputElement.addEventListener("change", (e) => {
-            if (inputElement.files.length) {
-                updateThumbnail(dropZoneElement, inputElement.files[0]);
-                document.getElementById('deployButton').style.display = 'inline-block';
-            }
-        });
-
-        dropZoneElement.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            dropZoneElement.classList.add("drop-zone--over");
-        });
-
-        ["dragleave", "dragend"].forEach((type) => {
-            dropZoneElement.addEventListener(type, (e) => {
-                dropZoneElement.classList.remove("drop-zone--over");
-            });
-        });
-
-        dropZoneElement.addEventListener("drop", (e) => {
-            e.preventDefault();
-
-            if (e.dataTransfer.files.length) {
-                inputElement.files = e.dataTransfer.files;
-                updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
-                document.getElementById('deployButton').style.display = 'inline-block';
-            }
-
-            dropZoneElement.classList.remove("drop-zone--over");
-        });
-    });
-}
-
-function createActionButton(resourceType, namespace, name) {
-    if (resourceType === 'pods') {
-        return `
-            <div class="d-flex">
-                <a href="#" class="me-2" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')" title="View Logs">
-                    <i class="fas fa-file-alt text-primary"></i>
-                </a>
-                <a href="/explore/${namespace}/${name}" class="me-2" title="Explore Pod">
-                    <i class="fas fa-terminal text-success"></i>
-                </a>
-                <a href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')" title="Delete">
-                    <i class="fas fa-trash-alt text-danger"></i>
-                </a>
-            </div>
-        `;
-    } else {
-        return `
-            <div class="dropdown">
-                <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="fas fa-ellipsis-h"></i>
-                </button>
-                <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                    <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">Describe</a></li>
-                    <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">View Logs</a></li>
-                    <li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">Access</a></li>
-                    <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">Delete</a></li>
-                </ul>
-            </div>
-        `;
-    }
-}
-
-function showLoading(resourceType) {
-    const loadingElement = document.getElementById(`${resourceType}Loading`);
-    const tableElement = document.getElementById(`${resourceType}Table`);
-    
-    if (loadingElement) loadingElement.style.display = 'flex';
-    if (tableElement) tableElement.style.display = 'none';
-}
-
-function hideLoading(resourceType) {
-    const loadingElement = document.getElementById(`${resourceType}Loading`);
-    const tableElement = document.getElementById(`${resourceType}Table`);
-    
-    if (loadingElement) loadingElement.style.display = 'none';
-    if (tableElement) tableElement.style.display = 'block';
-}
-
+// Resource data fetching
 function fetchResourceData(resourceType) {
     showLoading(resourceType);
     
@@ -544,10 +436,17 @@ function fetchResourceData(resourceType) {
     .then(response => response.json())
     .then(data => {
         const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+        if (!tableBody) {
+            console.warn(`Table body for ${resourceType} not found`);
+            hideLoading(resourceType);
+            return;
+        }
+        
         tableBody.innerHTML = ''; // Clear existing rows
         
         if (data.format === 'error') {
             tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}</td></tr>`;
+            hideLoading(resourceType);
             return;
         }
         
@@ -624,36 +523,93 @@ function fetchResourceData(resourceType) {
         });
         hideLoading(resourceType);
     })
-    .catch(error => console.error('Error:', error));
+    .catch(error => {
+        console.error('Error fetching resources:', error);
+        hideLoading(resourceType);
+        
+        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+        if (tableBody) {
+            tableBody.innerHTML = `<tr><td colspan="7">Error fetching ${resourceType}: ${error.message}</td></tr>`;
+        }
+    });
 }
 
+// UI helpers
+function showLoading(resourceType) {
+    const loadingElement = document.getElementById(`${resourceType}Loading`);
+    const tableElement = document.getElementById(`${resourceType}Table`);
+    
+    if (loadingElement) loadingElement.style.display = 'flex';
+    if (tableElement) tableElement.style.display = 'none';
+}
+
+function hideLoading(resourceType) {
+    const loadingElement = document.getElementById(`${resourceType}Loading`);
+    const tableElement = document.getElementById(`${resourceType}Table`);
+    
+    if (loadingElement) loadingElement.style.display = 'none';
+    if (tableElement) tableElement.style.display = 'block';
+}
+
+function createActionButton(resourceType, namespace, name) {
+    if (resourceType === 'pods') {
+        return `
+            <div class="d-flex">
+                <a href="#" class="me-2" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')" title="View Logs">
+                    <i class="fas fa-file-alt text-primary"></i>
+                </a>
+                <a href="/explore/${namespace}/${name}" class="me-2" title="Explore Pod">
+                    <i class="fas fa-terminal text-success"></i>
+                </a>
+                <a href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')" title="Delete">
+                    <i class="fas fa-trash-alt text-danger"></i>
+                </a>
+            </div>
+        `;
+    } else {
+        return `
+            <div class="dropdown">
+                <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-ellipsis-h"></i>
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                    <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">Describe</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">View Logs</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">Access</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">Delete</a></li>
+                </ul>
+            </div>
+        `;
+    }
+}
+
+// CLI command execution
 function runCliCommand() {
     const command = document.getElementById('cliCommand').value;
     
-    // Check if terminal instance exists
-    if (!window.terminalInstance) {
-        console.error('Terminal instance not initialized');
+    // Check if terminal is available
+    if (!window.app.terminal) {
         alert('Terminal is not initialized. Please refresh the page and try again.');
         return;
     }
     
     // Check if socket is connected
-    if (!window.socket || !window.socket.connected) {
-        console.error('Socket not connected');
-        window.terminalInstance.write('\r\n\x1b[31mError: Not connected to server. Command could not be sent.\x1b[0m\r\n');
+    if (!window.app.socket) {
+        window.app.terminal.write('\r\n\x1b[31mError: Not connected to server. Command could not be sent.\x1b[0m\r\n');
         return;
     }
     
     try {
-        window.socket.emit('run_cli_command', { command: command });
-        window.terminalInstance.write(`\r\n$ ${command}\r\n`);
+        window.app.socket.emit('run_cli_command', { command: command });
+        window.app.terminal.write(`\r\n$ ${command}\r\n`);
         document.getElementById('cliCommand').value = '';
     } catch (error) {
         console.error('Error sending command:', error);
-        window.terminalInstance.write(`\r\n\x1b[31mError sending command: ${error.message}\x1b[0m\r\n`);
+        window.app.terminal.write(`\r\n\x1b[31mError sending command: ${error.message}\x1b[0m\r\n`);
     }
 }
 
+// YAML deployment
 function deployYaml() {
     const fileInput = document.querySelector('.drop-zone__input');
     const file = fileInput.files[0];
@@ -674,6 +630,54 @@ function deployYaml() {
             document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
         });
     }
+}
+
+// Drop zone setup
+function setupDropZone() {
+    document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
+        const dropZoneElement = inputElement.closest(".drop-zone");
+        if (!dropZoneElement) return;
+
+        dropZoneElement.addEventListener("click", (e) => {
+            inputElement.click();
+        });
+
+        inputElement.addEventListener("change", (e) => {
+            if (inputElement.files.length) {
+                updateThumbnail(dropZoneElement, inputElement.files[0]);
+                const deployButton = document.getElementById('deployButton');
+                if (deployButton) {
+                    deployButton.style.display = 'inline-block';
+                }
+            }
+        });
+
+        dropZoneElement.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropZoneElement.classList.add("drop-zone--over");
+        });
+
+        ["dragleave", "dragend"].forEach((type) => {
+            dropZoneElement.addEventListener(type, (e) => {
+                dropZoneElement.classList.remove("drop-zone--over");
+            });
+        });
+
+        dropZoneElement.addEventListener("drop", (e) => {
+            e.preventDefault();
+
+            if (e.dataTransfer.files.length) {
+                inputElement.files = e.dataTransfer.files;
+                updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
+                const deployButton = document.getElementById('deployButton');
+                if (deployButton) {
+                    deployButton.style.display = 'inline-block';
+                }
+            }
+
+            dropZoneElement.classList.remove("drop-zone--over");
+        });
+    });
 }
 
 function updateThumbnail(dropZoneElement, file) {
@@ -703,19 +707,22 @@ function updateThumbnail(dropZoneElement, file) {
     }
 }
 
+// Check git availability
 function checkGitAvailability() {
     fetch('/git_status')
     .then(response => response.json())
     .then(data => {
         const githubSettings = document.getElementById('githubSettings');
-        if (!data.available) {
-            githubSettings.innerHTML = `
-                <div class="alert alert-warning">
-                    <strong>Git functionality is not available.</strong> 
-                    <p>The "Update from GitHub" feature requires git to be installed on the server. 
-                    Please install git or contact your administrator if you need this feature.</p>
-                </div>
-            `;
+        if (githubSettings) {
+            if (!data.available) {
+                githubSettings.innerHTML = `
+                    <div class="alert alert-warning">
+                        <strong>Git functionality is not available.</strong> 
+                        <p>The "Update from GitHub" feature requires git to be installed on the server. 
+                        Please install git or contact your administrator if you need this feature.</p>
+                    </div>
+                `;
+            }
         }
     })
     .catch(error => {
@@ -723,11 +730,14 @@ function checkGitAvailability() {
     });
 }
 
+// Fetch namespaces for events tab
 function fetchNamespaces() {
     fetch('/get_namespaces')
         .then(response => response.json())
         .then(data => {
             const namespaceSelect = document.getElementById('namespaceSelect');
+            if (!namespaceSelect) return;
+            
             namespaceSelect.innerHTML = '<option value="">Select a namespace</option>';
             
             if (data.namespaces) {
@@ -749,12 +759,16 @@ function fetchNamespaces() {
             });
         })
         .catch(error => {
-            console.error('Error:', error);
+            console.error('Error fetching namespaces:', error);
         });
 }
 
+// Fetch events for selected namespace
 function fetchEvents(namespace) {
-    document.getElementById('eventsOutput').textContent = 'Loading events...';
+    const eventsOutput = document.getElementById('eventsOutput');
+    if (!eventsOutput) return;
+    
+    eventsOutput.textContent = 'Loading events...';
     
     fetch('/get_events', {
         method: 'POST',
@@ -765,17 +779,20 @@ function fetchEvents(namespace) {
     })
     .then(response => response.json())
     .then(data => {
-        document.getElementById('eventsOutput').textContent = data.output;
+        eventsOutput.textContent = data.output;
     })
     .catch(error => {
-        console.error('Error:', error);
-        document.getElementById('eventsOutput').textContent = 'An error occurred while fetching events.';
+        console.error('Error fetching events:', error);
+        eventsOutput.textContent = 'An error occurred while fetching events.';
     });
 }
 
+// GitHub update function
 function updateFromGithub() {
     const repoUrl = document.getElementById('githubRepo').value;
     const statusDiv = document.getElementById('updateStatus');
+    
+    if (!statusDiv) return;
     
     statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
     
@@ -813,15 +830,21 @@ function updateFromGithub() {
     })
     .catch(error => {
         console.error('Error:', error);
-        if (!statusDiv.innerHTML.includes('alert-danger')) {
+        if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
             statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
         }
     });
 }
 
+// Application refresh function (for the refresh button)
 function refreshApplication() {
     const refreshLog = document.getElementById('refreshLog');
     const statusDiv = document.getElementById('updateStatus');
+    
+    if (!refreshLog || !statusDiv) {
+        console.error('Required elements not found');
+        return;
+    }
     
     // Clear the log
     refreshLog.innerHTML = '';
@@ -859,9 +882,12 @@ function refreshApplication() {
     });
 }
 
+// Clear refresh log
 function clearRefreshLog() {
     const refreshLog = document.getElementById('refreshLog');
-    refreshLog.innerHTML = '<div class="text-muted">-- Log will appear here during refresh operations --</div>';
+    if (refreshLog) {
+        refreshLog.innerHTML = '<div class="text-muted">-- Log will appear here during refresh operations --</div>';
+    }
 }
 </script>
 {% endblock %}
