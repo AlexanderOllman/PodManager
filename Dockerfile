@@ -3,29 +3,41 @@ FROM python:3.9-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . /app
-
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# RUN export HTTP_PROXY=http://hpeproxy.its.hpecorp.net:80 && \
-#     export HTTPS_PROXY=http://hpeproxy.its.hpecorp.net:80
-# Install kubectl
+# Install system dependencies and kubectl
 RUN apt-get update && \
-    apt-get install -y curl && \
+    apt-get install -y curl procps && \
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
     install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
-    rm kubectl
+    rm kubectl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy the current directory contents into the container at /app
+# Copy requirements file separately to leverage Docker caching
+COPY requirements.txt /app/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the application code to the container
 COPY . /app
 
-# Install any needed dependencies specified in requirements.txt
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Create a log directory with proper permissions
+RUN mkdir -p /app/logs && chmod 777 /app/logs
 
-# Make port 80 available to the world outside this container
-EXPOSE 80
+# Environment variables
+ENV PYTHONUNBUFFERED=1
+ENV LOG_FILE=/app/logs/app.log
+
+# Make ports available
 EXPOSE 8080
-# Run app.py when the container launches
-CMD ["python3", "app.py"]
+EXPOSE 80
+
+# Add health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Add a startup script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]

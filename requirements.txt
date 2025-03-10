@@ -1,4 +1,9 @@
 flask
 requests
 gitpython
-flask-socketio 
+flask-socketio
+python-socketio
+python-engineio
+websocket-client
+eventlet
+gunicorn
