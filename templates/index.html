@@ -256,9 +256,79 @@
 
 {% block page_scripts %}
 <script>
+// Wait for socket.io to be loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if io is defined
+    if (typeof io === 'undefined') {
+        console.error('Socket.io is not loaded. Check network connections.');
+        document.getElementById('refreshLog').innerHTML = '<div class="text-danger">Error: Socket.io library failed to load. Please check your internet connection.</div>';
+        return;
+    }
+
+    // Initialize socket connection in the global scope
+    try {
+        window.socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
+        
+        // Add event listener for refresh logs
+        window.socket.on('refresh_log', function(data) {
+            const refreshLog = document.getElementById('refreshLog');
+            const logMessage = data.message;
+            
+            // Create new log entry with appropriate class based on status
+            const logEntry = document.createElement('div');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            // Set class based on status
+            if (data.status === 'error') {
+                logEntry.className = 'text-danger';
+            } else if (data.status === 'warning') {
+                logEntry.className = 'text-warning';
+            } else if (data.status === 'success') {
+                logEntry.className = 'text-success';
+            } else {
+                logEntry.className = 'text-info';
+            }
+            
+            logEntry.innerHTML = `[${timestamp}] ${logMessage}`;
+            refreshLog.appendChild(logEntry);
+            
+            // Auto-scroll to the bottom
+            refreshLog.scrollTop = refreshLog.scrollHeight;
+            
+            // If this is a completion message, trigger the restart
+            if (logMessage.includes('Preparing to restart application')) {
+                // Wait a moment to ensure the user sees the restart message
+                setTimeout(() => {
+                    fetch('/restart', {
+                        method: 'POST'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        const statusDiv = document.getElementById('updateStatus');
+                        if (data.status === 'success') {
+                            const logEntry = document.createElement('div');
+                            logEntry.className = 'text-success';
+                            logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] Application restarted successfully. Page will refresh shortly...`;
+                            refreshLog.appendChild(logEntry);
+                            
+                            statusDiv.innerHTML = 'Application restarted successfully. Refreshing page...';
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 3000);
+                        }
+                    });
+                }, 1000);
+            }
+        });
+        
+        initializeHomePage();
+    } catch (error) {
+        console.error('Error initializing socket:', error);
+        document.getElementById('refreshLog').innerHTML = `<div class="text-danger">Error initializing socket: ${error.message}</div>`;
+    }
+});
+
 const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
-// Initialize socket connection in the global scope
-const socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
 
 function initializeHomePage() {
     // Initialize the terminal first
@@ -267,7 +337,7 @@ function initializeHomePage() {
             window.terminalInstance = new Terminal();
             window.terminalInstance.open(document.getElementById('terminal'));
             
-            socket.on('output', function(data) {
+            window.socket.on('output', function(data) {
                 if (window.terminalInstance) {
                     window.terminalInstance.write(data.data);
                 }
@@ -481,7 +551,7 @@ function fetchResourceData(resourceType) {
 function runCliCommand() {
     const command = document.getElementById('cliCommand').value;
     if (window.terminalInstance) {
-        socket.emit('run_cli_command', { command: command });
+        window.socket.emit('run_cli_command', { command: command });
         window.terminalInstance.write(`\r\n$ ${command}\r\n`);
         document.getElementById('cliCommand').value = '';
     }
@@ -696,62 +766,5 @@ function clearRefreshLog() {
     const refreshLog = document.getElementById('refreshLog');
     refreshLog.innerHTML = '<div class="text-muted">-- Log will appear here during refresh operations --</div>';
 }
-
-// Initialize the page when loaded directly
-document.addEventListener('DOMContentLoaded', function() {
-    initializeHomePage();
-    
-    // Add event listener for refresh logs
-    socket.on('refresh_log', function(data) {
-        const refreshLog = document.getElementById('refreshLog');
-        const logMessage = data.message;
-        
-        // Create new log entry with appropriate class based on status
-        const logEntry = document.createElement('div');
-        const timestamp = new Date().toLocaleTimeString();
-        
-        // Set class based on status
-        if (data.status === 'error') {
-            logEntry.className = 'text-danger';
-        } else if (data.status === 'warning') {
-            logEntry.className = 'text-warning';
-        } else if (data.status === 'success') {
-            logEntry.className = 'text-success';
-        } else {
-            logEntry.className = 'text-info';
-        }
-        
-        logEntry.innerHTML = `[${timestamp}] ${logMessage}`;
-        refreshLog.appendChild(logEntry);
-        
-        // Auto-scroll to the bottom
-        refreshLog.scrollTop = refreshLog.scrollHeight;
-        
-        // If this is a completion message, trigger the restart
-        if (logMessage.includes('Preparing to restart application')) {
-            // Wait a moment to ensure the user sees the restart message
-            setTimeout(() => {
-                fetch('/restart', {
-                    method: 'POST'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    const statusDiv = document.getElementById('updateStatus');
-                    if (data.status === 'success') {
-                        const logEntry = document.createElement('div');
-                        logEntry.className = 'text-success';
-                        logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] Application restarted successfully. Page will refresh shortly...`;
-                        refreshLog.appendChild(logEntry);
-                        
-                        statusDiv.innerHTML = 'Application restarted successfully. Refreshing page...';
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 3000);
-                    }
-                });
-            }, 1000);
-        }
-    });
-});
 </script>
 {% endblock %}
