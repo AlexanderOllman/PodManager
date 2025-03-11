@@ -79,6 +79,9 @@ const namespace = "{{ namespace }}";
 const podName = "{{ pod_name }}";
 
 function initializeExplorePage() {
+    console.log(`Initializing explore page for pod: ${podName} in namespace: ${namespace}`);
+    
+    // Load the pod description immediately
     loadPodDescription();
     
     // Set up tab handlers
@@ -97,50 +100,73 @@ function initializeExplorePage() {
 }
 
 function loadPodDescription() {
+    console.log('Loading pod description...');
     document.getElementById('describeLoading').style.display = 'flex';
     document.getElementById('describeOutput').style.display = 'none';
     
+    // Use JSON content type for better error handling
     fetch('/api/pod/describe', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Type': 'application/json',
         },
-        body: `namespace=${namespace}&pod_name=${podName}`
+        body: JSON.stringify({
+            namespace: namespace,
+            pod_name: podName
+        })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
+        console.log('Pod description loaded successfully');
         document.getElementById('describeOutput').textContent = data.output;
         document.getElementById('describeLoading').style.display = 'none';
         document.getElementById('describeOutput').style.display = 'block';
     })
     .catch(error => {
-        console.error('Error:', error);
-        document.getElementById('describeOutput').textContent = 'Error loading pod description.';
+        console.error('Error loading pod description:', error);
+        document.getElementById('describeOutput').textContent = `Error loading pod description: ${error.message}`;
         document.getElementById('describeLoading').style.display = 'none';
         document.getElementById('describeOutput').style.display = 'block';
     });
 }
 
 function loadPodLogs() {
+    console.log('Loading pod logs...');
     document.getElementById('logsLoading').style.display = 'flex';
     document.getElementById('logsOutput').style.display = 'none';
     
+    // Use JSON content type for better error handling
     fetch('/api/pod/logs', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Type': 'application/json',
         },
-        body: `namespace=${namespace}&pod_name=${podName}&tail_lines=1000`
+        body: JSON.stringify({
+            namespace: namespace,
+            pod_name: podName,
+            tail_lines: 1000
+        })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
+        console.log('Pod logs loaded successfully');
         document.getElementById('logsOutput').textContent = data.output;
         document.getElementById('logsLoading').style.display = 'none';
         document.getElementById('logsOutput').style.display = 'block';
     })
     .catch(error => {
-        console.error('Error:', error);
-        document.getElementById('logsOutput').textContent = 'Error loading pod logs.';
+        console.error('Error loading pod logs:', error);
+        document.getElementById('logsOutput').textContent = `Error loading pod logs: ${error.message}`;
         document.getElementById('logsLoading').style.display = 'none';
         document.getElementById('logsOutput').style.display = 'block';
     });

@@ -173,29 +173,73 @@ def explore_pod(namespace, pod_name):
 
 @app.route('/api/pod/describe', methods=['POST'])
 def api_pod_describe():
-    namespace = request.form['namespace']
-    pod_name = request.form['pod_name']
-    command = f"kubectl describe pod {pod_name} -n {namespace}"
-    output = run_kubectl_command(command)
-    return jsonify(output=output)
+    try:
+        # Handle both JSON and form data
+        if request.is_json:
+            data = request.get_json()
+            namespace = data.get('namespace')
+            pod_name = data.get('pod_name')
+        else:
+            namespace = request.form['namespace']
+            pod_name = request.form['pod_name']
+            
+        if not namespace or not pod_name:
+            return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
+            
+        command = f"kubectl describe pod {pod_name} -n {namespace}"
+        output = run_kubectl_command(command)
+        return jsonify({"output": output})
+    except Exception as e:
+        app.logger.error(f"Error in api_pod_describe: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/pod/logs', methods=['POST'])
 def api_pod_logs():
-    namespace = request.form['namespace']
-    pod_name = request.form['pod_name']
-    tail_lines = request.form.get('tail_lines', '1000')
-    command = f"kubectl logs {pod_name} -n {namespace} --tail={tail_lines}"
-    output = run_kubectl_command(command)
-    return jsonify(output=output)
+    try:
+        # Handle both JSON and form data
+        if request.is_json:
+            data = request.get_json()
+            namespace = data.get('namespace')
+            pod_name = data.get('pod_name')
+            tail_lines = data.get('tail_lines', 100)
+        else:
+            namespace = request.form['namespace']
+            pod_name = request.form['pod_name']
+            tail_lines = request.form.get('tail_lines', 100)
+            
+        if not namespace or not pod_name:
+            return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
+            
+        command = f"kubectl logs {pod_name} -n {namespace} --tail={tail_lines}"
+        output = run_kubectl_command(command)
+        return jsonify({"output": output})
+    except Exception as e:
+        app.logger.error(f"Error in api_pod_logs: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/pod/exec', methods=['POST'])
 def api_pod_exec():
-    namespace = request.form['namespace']
-    pod_name = request.form['pod_name']
-    command = request.form.get('command', 'ls -la')
-    kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
-    output = run_kubectl_command(kubectl_command)
-    return jsonify(output=output)
+    try:
+        # Handle both JSON and form data
+        if request.is_json:
+            data = request.get_json()
+            namespace = data.get('namespace')
+            pod_name = data.get('pod_name')
+            command = data.get('command', 'ps aux')
+        else:
+            namespace = request.form['namespace']
+            pod_name = request.form['pod_name']
+            command = request.form.get('command', 'ps aux')
+            
+        if not namespace or not pod_name:
+            return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
+            
+        kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
+        output = run_kubectl_command(kubectl_command)
+        return jsonify({"output": output})
+    except Exception as e:
+        app.logger.error(f"Error in api_pod_exec: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/git_status', methods=['GET'])
 def git_status():
@@ -263,6 +307,14 @@ def refresh_application():
         error_message = f"Error during refresh: {str(e)}"
         socketio.emit('refresh_log', {'message': error_message, 'status': 'error'})
         return jsonify({"status": "error", "message": error_message})
+
+@app.route('/health_check', methods=['GET'])
+def health_check():
+    """Simple health check endpoint to verify the application is running."""
+    return jsonify({
+        'status': 'ok',
+        'message': 'Application is running'
+    })
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
