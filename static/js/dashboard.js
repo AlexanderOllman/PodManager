@@ -1,5 +1,3 @@
-// HPE Private Cloud AI Resource Manager - Dashboard JavaScript
-
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize dashboard metrics
     updateDashboardMetrics();
@@ -466,71 +464,86 @@ function populateResourceTable(resourceType, items) {
 
 // Function to initialize action menu dropdowns
 function initializeActionMenus() {
-    // Remove existing event listeners
+    // Remove existing event listeners by using event delegation instead of direct binding
+    // This ensures that even dynamically added buttons will work
+    
+    // First, remove any existing global click handler for action menus
+    document.removeEventListener('click', handleActionMenuOutsideClick);
+    
+    // Add a single global click handler to close menus when clicking outside
+    document.addEventListener('click', handleActionMenuOutsideClick);
+    
+    // Remove existing action menu dropdowns to prevent duplicates
+    document.querySelectorAll('.action-menu-dropdown').forEach(dropdown => {
+        dropdown.remove();
+    });
+    
+    // Add click handlers to all action buttons using event delegation
     document.querySelectorAll('.action-button').forEach(button => {
+        // Remove existing click listeners by cloning and replacing
         const newButton = button.cloneNode(true);
         button.parentNode.replaceChild(newButton, button);
+        
+        // Add new click listener
+        newButton.addEventListener('click', handleActionButtonClick);
     });
-    
-    // Close any open menus when clicking elsewhere
-    document.addEventListener('click', function(event) {
-        if (!event.target.closest('.action-button') && !event.target.closest('.action-menu-dropdown')) {
-            document.querySelectorAll('.action-menu-dropdown').forEach(dropdown => {
-                dropdown.classList.remove('show');
-            });
-        }
-    });
-    
-    // Toggle dropdown on button click
-    document.querySelectorAll('.action-button').forEach(button => {
-        button.addEventListener('click', function(event) {
-            event.stopPropagation();
-            
-            // Close all other dropdowns
-            document.querySelectorAll('.action-menu-dropdown').forEach(dropdown => {
-                dropdown.classList.remove('show');
-            });
-            
-            // Create dropdown if it doesn't exist
-            let dropdown = this.nextElementSibling;
-            if (!dropdown || !dropdown.classList.contains('action-menu-dropdown')) {
-                dropdown = document.createElement('div');
-                dropdown.className = 'action-menu-dropdown';
-                
-                const resourceType = this.getAttribute('data-resource');
-                const name = this.getAttribute('data-name');
-                const namespace = this.getAttribute('data-namespace');
-                
-                // Add actions based on resource type
-                if (resourceType === 'pods') {
-                    dropdown.innerHTML = `
-                        <div class="action-menu-item" onclick="navigateToExplore('/explore/${namespace}/${name}')">
-                            <i class="fas fa-search"></i> Explore
-                        </div>
-                        <div class="action-menu-item" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">
-                            <i class="fas fa-file-alt"></i> Logs
-                        </div>
-                        <div class="action-menu-item" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
-                            <i class="fas fa-trash-alt"></i> Delete
-                        </div>
-                    `;
-                } else {
-                    dropdown.innerHTML = `
-                        <div class="action-menu-item" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">
-                            <i class="fas fa-file-alt"></i> Logs
-                        </div>
-                        <div class="action-menu-item" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
-                            <i class="fas fa-trash-alt"></i> Delete
-                        </div>
-                    `;
-                }
-                
-                this.parentNode.appendChild(dropdown);
-            }
-            
-            dropdown.classList.toggle('show');
+}
+
+// Handler for clicks outside action menus
+function handleActionMenuOutsideClick(event) {
+    if (!event.target.closest('.action-button') && !event.target.closest('.action-menu-dropdown')) {
+        document.querySelectorAll('.action-menu-dropdown').forEach(dropdown => {
+            dropdown.remove();
         });
+    }
+}
+
+// Handler for action button clicks
+function handleActionButtonClick(event) {
+    event.stopPropagation();
+    
+    // Close all other dropdowns
+    document.querySelectorAll('.action-menu-dropdown').forEach(dropdown => {
+        dropdown.remove();
     });
+    
+    // Create dropdown
+    const dropdown = document.createElement('div');
+    dropdown.className = 'action-menu-dropdown';
+    
+    const resourceType = this.getAttribute('data-resource');
+    const name = this.getAttribute('data-name');
+    const namespace = this.getAttribute('data-namespace');
+    
+    // Add actions based on resource type
+    if (resourceType === 'pods') {
+        dropdown.innerHTML = `
+            <div class="action-menu-item" onclick="navigateToExplore('/explore/${namespace}/${name}')">
+                <i class="fas fa-search"></i> Explore
+            </div>
+            <div class="action-menu-item" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">
+                <i class="fas fa-file-alt"></i> Logs
+            </div>
+            <div class="action-menu-item" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
+                <i class="fas fa-trash-alt"></i> Delete
+            </div>
+        `;
+    } else {
+        dropdown.innerHTML = `
+            <div class="action-menu-item" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">
+                <i class="fas fa-file-alt"></i> Logs
+            </div>
+            <div class="action-menu-item" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
+                <i class="fas fa-trash-alt"></i> Delete
+            </div>
+        `;
+    }
+    
+    // Position the dropdown relative to the button
+    this.parentNode.appendChild(dropdown);
+    
+    // Make sure the dropdown is visible
+    dropdown.classList.add('show');
 }
 
 // Function to switch between resource tabs

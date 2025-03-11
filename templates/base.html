@@ -19,6 +19,89 @@
     <script src="{{ url_for('static', filename='js/socket.io/socket.io.js') }}"></script>
     <script src="{{ url_for('static', filename='js/xterm/xterm.js') }}"></script>
     
+    <!-- Initialize Socket.IO -->
+    <script>
+        // Initialize Socket.IO connection
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                window.app = window.app || {};
+                window.app.socket = io();
+                
+                // Set up basic Socket.IO event listeners
+                window.app.socket.on('connect', function() {
+                    console.log('Socket.IO connected');
+                });
+                
+                window.app.socket.on('disconnect', function() {
+                    console.log('Socket.IO disconnected');
+                });
+                
+                window.app.socket.on('error', function(error) {
+                    console.error('Socket.IO error:', error);
+                });
+                
+                // Initialize sidebar toggle
+                const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+                const sidebar = document.querySelector('.sidebar');
+                const mainContent = document.querySelector('.main-content');
+                
+                if (sidebarToggleBtn) {
+                    sidebarToggleBtn.addEventListener('click', function() {
+                        sidebar.classList.toggle('sidebar-collapsed');
+                        mainContent.classList.toggle('main-content-expanded');
+                    });
+                }
+                
+                // Initialize bootstrap tabs manually instead of using data attributes
+                document.querySelectorAll('.sidebar-nav-link').forEach(navLink => {
+                    navLink.addEventListener('click', function(e) {
+                        e.preventDefault(); // Prevent default anchor behavior
+                        
+                        // Remove active class from all sidebar links
+                        document.querySelectorAll('.sidebar-nav-link').forEach(link => {
+                            link.classList.remove('active');
+                        });
+                        
+                        // Add active class to clicked link
+                        this.classList.add('active');
+                        
+                        // Get target tab ID
+                        const tabId = this.getAttribute('data-bs-target').substring(1); // Remove the # character
+                        
+                        // Hide all tab panes
+                        document.querySelectorAll('.tab-pane').forEach(pane => {
+                            pane.classList.remove('show', 'active');
+                        });
+                        
+                        // Show the selected tab pane
+                        const targetPane = document.getElementById(tabId);
+                        if (targetPane) {
+                            targetPane.classList.add('show', 'active');
+                        }
+                        
+                        // Call specific initialization functions if needed
+                        if (this.id === 'homeLink') {
+                            if (typeof initializeHomePage === 'function') {
+                                setTimeout(initializeHomePage, 100);
+                            }
+                        } else if (this.id === 'cliLink') {
+                            if (typeof initializeTerminal === 'function') {
+                                setTimeout(initializeTerminal, 100);
+                            }
+                        }
+                    });
+                });
+                
+                // Activate the default tab (home) if we're on the main page
+                if (window.location.pathname === '/') {
+                    document.getElementById('homeLink').click();
+                }
+            } catch (e) {
+                console.error('Failed to initialize Socket.IO:', e);
+            }
+        });
+    </script>
+    
     <!-- Main Dashboard JavaScript -->
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
     
@@ -100,201 +183,25 @@
 
     <!-- Base Action Script -->
     <script>
-        // Basic utility functions
-        function getStatusIcon(status) {
-            switch (status.toLowerCase()) {
-                case 'running':
-                    return '<i class="fas fa-check-circle status-icon status-running"></i>';
-                case 'pending':
-                    return '<i class="fas fa-clock status-icon status-pending"></i>';
-                case 'failed':
-                    return '<i class="fas fa-times-circle status-icon status-failed"></i>';
-                default:
-                    return '<i class="fas fa-question-circle status-icon status-unknown"></i>';
-            }
-        }
-        
-        // Script loading utilities 
-        function loadScript(url, callback) {
-            const script = document.createElement('script');
-            script.onload = callback;
-            script.onerror = function() {
-                console.error('Failed to load script:', url);
-                if (callback) callback(new Error(`Failed to load script: ${url}`));
-            };
-            script.src = url;
-            document.body.appendChild(script);
-        }
-
-        // Track loaded scripts
-        window.appLoaded = {
-            socketio: true,
-            terminal: true
-        };
-        
         // Global app state
         window.app = {
-            socket: null,
-            terminal: null,
-            init: false
+            socket: io(),
+            terminal: null
         };
         
-        // Initialize Socket.IO connection
-        try {
-            window.app.socket = io();
-            console.log('Socket.IO connected');
-        } catch (err) {
-            console.error('Failed to connect Socket.IO:', err);
-        }
-        
-        // Hide loading overlay
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('loading-overlay').style.display = 'none';
-            
-            // Initialize sidebar toggle
-            const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
-            const sidebar = document.querySelector('.sidebar');
-            const mainContent = document.querySelector('.main-content');
-            
-            if (sidebarToggleBtn) {
-                sidebarToggleBtn.addEventListener('click', function() {
-                    sidebar.classList.toggle('sidebar-collapsed');
-                    mainContent.classList.toggle('main-content-expanded');
-                });
-            }
-            
-            // Initialize bootstrap tabs manually instead of using data attributes
-            document.querySelectorAll('.sidebar-nav-link').forEach(navLink => {
-                navLink.addEventListener('click', function(e) {
-                    e.preventDefault(); // Prevent default anchor behavior
-                    
-                    // Remove active class from all sidebar links
-                    document.querySelectorAll('.sidebar-nav-link').forEach(link => {
-                        link.classList.remove('active');
-                    });
-                    
-                    // Add active class to clicked link
-                    this.classList.add('active');
-                    
-                    // Get target tab ID
-                    const tabId = this.getAttribute('data-bs-target').substring(1); // Remove the # character
-                    
-                    // Hide all tab panes
-                    document.querySelectorAll('.tab-pane').forEach(pane => {
-                        pane.classList.remove('show', 'active');
-                    });
-                    
-                    // Show the selected tab pane
-                    const targetPane = document.getElementById(tabId);
-                    if (targetPane) {
-                        targetPane.classList.add('show', 'active');
-                    }
-                    
-                    // Call specific initialization functions if needed
-                    if (this.id === 'homeLink') {
-                        if (typeof initializeHomePage === 'function') {
-                            setTimeout(initializeHomePage, 100);
-                        }
-                    } else if (this.id === 'cliLink') {
-                        if (typeof initializeTerminal === 'function') {
-                            setTimeout(initializeTerminal, 100);
-                        }
-                    } else if (this.id === 'eventsLink') {
-                        // Add any event tab initialization here
-                    }
-                });
-            });
-            
-            // Activate the default tab (home)
-            document.getElementById('homeLink').click();
-        });
-        
-        // Navigation related code
-        document.addEventListener('DOMContentLoaded', function() {
-            // Intercept clicks on pod explore links
-            document.body.addEventListener('click', function(e) {
-                const target = e.target.closest('a[href^="/explore/"]');
-                if (target) {
-                    e.preventDefault();
-                    const href = target.getAttribute('href');
-                    navigateToExplore(href);
-                }
-            });
-            
-            // Handle back navigation from the explore page
-            const homeLink = document.getElementById('homeLink');
-            if (homeLink) {
-                homeLink.addEventListener('click', function(e) {
-                    if (window.location.pathname !== '/') {
-                        e.preventDefault();
-                        navigateToHome();
-                    }
-                });
-            }
-        });
-        
+        // Function to navigate to explore page
         function navigateToExplore(url) {
-            fetch(url)
-                .then(response => response.text())
-                .then(html => {
-                    // Extract the content from the explore page
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const content = doc.querySelector('.main-content').innerHTML;
-                    
-                    // Store the current page state in history
-                    const currentState = document.querySelector('.main-content').innerHTML;
-                    window.history.pushState({content: currentState, page: 'home'}, '', '/');
-                    
-                    // Update the page content and history
-                    document.querySelector('.main-content').innerHTML = content;
-                    window.history.pushState({content: content, page: 'explore'}, '', url);
-                    
-                    // Initialize the explore page components
-                    if (typeof initializeExplorePage === 'function') {
-                        initializeExplorePage();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
+            window.location.href = url;
         }
         
-        function navigateToHome() {
-            fetch('/')
-                .then(response => response.text())
-                .then(html => {
-                    // Extract the content from the home page
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const content = doc.querySelector('.main-content').innerHTML;
-                    
-                    // Update the page content and history
-                    document.querySelector('.main-content').innerHTML = content;
-                    window.history.pushState({content: content, page: 'home'}, '', '/');
-                    
-                    // Initialize the home page components
-                    if (typeof initializeHomePage === 'function') {
-                        initializeHomePage();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
-        }
-        
-        window.addEventListener('popstate', function(event) {
-            if (event.state) {
-                document.querySelector('.main-content').innerHTML = event.state.content;
-                if (event.state.page === 'home' && typeof initializeHomePage === 'function') {
-                    initializeHomePage();
-                } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
-                    initializeExplorePage();
-                }
-            }
-        });
-        
+        // Function to run action on a resource
         function runAction(action, resourceType, namespace, name) {
+            // Close any open action menus
+            document.querySelectorAll('.action-menu-dropdown').forEach(dropdown => {
+                dropdown.remove();
+            });
+            
+            // Show the action modal
             const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
             actionModal.show();
             
@@ -335,6 +242,17 @@
                 actionResult.textContent = data.output;
                 document.getElementById('actionLoading').style.display = 'none';
                 actionResult.style.display = 'block';
+                
+                // If this was a delete action, refresh the resource table after a short delay
+                if (action === 'delete') {
+                    setTimeout(() => {
+                        const activeTab = document.querySelector('.resource-tab.active');
+                        if (activeTab) {
+                            const tabId = activeTab.getAttribute('data-tab');
+                            loadResourceData(tabId);
+                        }
+                    }, 1000);
+                }
             })
             .catch(error => {
                 console.error('Error:', error);

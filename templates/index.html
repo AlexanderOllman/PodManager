@@ -344,18 +344,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
         
-        // Initialize the application features
+        // Initialize the application (this will load all data and components)
         initializeApp();
-        
-        // Initial data load
-        updateDashboardMetrics();
-        loadResourceData('pods');
-        
-        // Initialize YAML upload
-        setupDropZone();
-        
-        // Initialize namespaces for Events tab
-        fetchNamespaces();
     });
     
     function initializeHomePage() {

@@ -362,55 +362,67 @@ body {
 .status-failed { color: var(--hpe-red); }
 .status-unknown { color: var(--mid-gray); }
 
-/* Action Menu Dropdown */
+/* Action Menu Styles */
 .action-menu {
-  position: relative;
-  display: inline-block;
+    position: relative;
 }
 
 .action-button {
-  background: none;
-  border: none;
-  color: var(--mid-gray);
-  cursor: pointer;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    background: none;
+    border: none;
+    color: #0077b8;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
 }
 
 .action-button:hover {
-  background-color: var(--off-white);
-  color: var(--hpe-green);
+    background-color: rgba(0, 119, 184, 0.1);
 }
 
 .action-menu-dropdown {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  background-color: white;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  min-width: 150px;
-  z-index: 100;
-  display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    display: none;
+    min-width: 150px;
+    z-index: 1000;
 }
 
 .action-menu-dropdown.show {
-  display: block;
+    display: block;
 }
 
 .action-menu-item {
-  padding: 8px 12px;
-  cursor: pointer;
-  transition: background-color var(--transition-speed) ease;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    white-space: nowrap;
 }
 
 .action-menu-item:hover {
-  background-color: var(--off-white);
-  color: var(--hpe-green);
+    background-color: #f5f5f5;
+}
+
+.action-menu-item i {
+    margin-right: 8px;
+    width: 16px;
+    text-align: center;
+}
+
+/* Ensure action menu is above other elements */
+.action-menu {
+    z-index: 100;
+}
+
+/* Ensure the dropdown appears on top of other elements */
+.action-menu-dropdown {
+    z-index: 1000;
 }
 
 /* Loading Indicators */
