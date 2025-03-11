@@ -203,16 +203,13 @@ function setupTerminal() {
             
             window.terminalInstance.open(document.getElementById('terminal'));
             
+            // Start interactive shell automatically when terminal is opened
+            startInteractiveShell();
+            
             // Setup command input handling
             let currentLine = '';
             let commandHistory = [];
             let historyIndex = -1;
-            
-            // Initial prompt
-            window.terminalInstance.writeln('Welcome to the pod terminal.');
-            window.terminalInstance.writeln('Type commands directly in this window and press Enter to execute.');
-            window.terminalInstance.writeln('');
-            window.terminalInstance.write('$ ');
             
             // Handle user input
             window.terminalInstance.onKey(({ key, domEvent }) => {
@@ -281,8 +278,10 @@ function setupTerminal() {
     }
 }
 
-function executeCommandInPod(command) {
-    if (!command) return;
+// New function to start interactive shell
+function startInteractiveShell() {
+    window.terminalInstance.clear();
+    window.terminalInstance.writeln('Starting interactive shell session...');
     
     fetch('/api/pod/exec', {
         method: 'POST',
@@ -292,7 +291,57 @@ function executeCommandInPod(command) {
         body: JSON.stringify({
             namespace: '{{ namespace }}',
             pod_name: '{{ pod_name }}',
-            command: command
+            interactive: true
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.interactive) {
+            // For security reasons, we need to give instructions to the user
+            window.terminalInstance.writeln('For security reasons, we need to open a new terminal window.');
+            window.terminalInstance.writeln('Please copy and paste one of the following commands into your terminal:');
+            window.terminalInstance.writeln('\r\n');
+            window.terminalInstance.writeln(`Try this first (bash):\r\n${data.bash_command}`);
+            window.terminalInstance.writeln(`\r\nIf that fails, try this (sh):\r\n${data.sh_command}`);
+            window.terminalInstance.writeln('\r\n');
+            
+            // Copy command to clipboard if supported
+            try {
+                navigator.clipboard.writeText(data.bash_command).then(
+                    function() {
+                        window.terminalInstance.writeln('Bash command copied to clipboard!');
+                    },
+                    function(err) {
+                        console.error('Could not copy text: ', err);
+                    }
+                );
+            } catch (e) {
+                console.error('Clipboard API not supported:', e);
+            }
+        } else {
+            window.terminalInstance.writeln('Failed to start interactive shell. Using regular command mode.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        window.terminalInstance.writeln('Error starting interactive shell.');
+    });
+}
+
+function executeCommandInPod(command) {
+    if (!command) return;
+    
+    // For regular commands
+    fetch('/api/pod/exec', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            namespace: '{{ namespace }}',
+            pod_name: '{{ pod_name }}',
+            command: command,
+            interactive: false
         })
     })
     .then(response => response.json())

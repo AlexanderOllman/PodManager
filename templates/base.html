@@ -29,7 +29,7 @@
     <nav class="top-navbar">
         <div class="top-navbar-brand">
             <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
-            <span>HPE Private Cloud AI Resource Manager</span>
+            <span><b>HPE Private Cloud AI</b> Resource Manager</span>
         </div>
     </nav>
 
@@ -163,17 +163,50 @@
                 });
             }
             
-            // Handle sidebar tab navigation
+            // Initialize bootstrap tabs manually instead of using data attributes
             document.querySelectorAll('.sidebar-nav-link').forEach(navLink => {
                 navLink.addEventListener('click', function(e) {
-                    // If the tab already has other event listeners, let them handle it
+                    e.preventDefault(); // Prevent default anchor behavior
+                    
+                    // Remove active class from all sidebar links
+                    document.querySelectorAll('.sidebar-nav-link').forEach(link => {
+                        link.classList.remove('active');
+                    });
+                    
+                    // Add active class to clicked link
+                    this.classList.add('active');
+                    
+                    // Get target tab ID
+                    const tabId = this.getAttribute('data-bs-target').substring(1); // Remove the # character
+                    
+                    // Hide all tab panes
+                    document.querySelectorAll('.tab-pane').forEach(pane => {
+                        pane.classList.remove('show', 'active');
+                    });
+                    
+                    // Show the selected tab pane
+                    const targetPane = document.getElementById(tabId);
+                    if (targetPane) {
+                        targetPane.classList.add('show', 'active');
+                    }
+                    
+                    // Call specific initialization functions if needed
                     if (this.id === 'homeLink') {
                         if (typeof initializeHomePage === 'function') {
                             setTimeout(initializeHomePage, 100);
                         }
+                    } else if (this.id === 'cliLink') {
+                        if (typeof initializeTerminal === 'function') {
+                            setTimeout(initializeTerminal, 100);
+                        }
+                    } else if (this.id === 'eventsLink') {
+                        // Add any event tab initialization here
                     }
                 });
             });
+            
+            // Activate the default tab (home)
+            document.getElementById('homeLink').click();
         });
         
         // Navigation related code

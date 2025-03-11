@@ -23,10 +23,15 @@ socketio = SocketIO(app)
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
 
-def run_kubectl_command(command):
+def run_kubectl_command(command, interactive=False):
     try:
-        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return result.stdout.decode('utf-8')
+        if interactive:
+            # For interactive sessions, just return the command to be executed in a terminal
+            return command
+        else:
+            # For non-interactive sessions, capture output
+            result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return result.stdout.decode('utf-8')
     except subprocess.CalledProcessError as e:
         return f"Error: {e.stderr.decode('utf-8')}"
 
@@ -163,9 +168,17 @@ def run_cli_command():
 @socketio.on('run_cli_command')
 def handle_cli_command(data):
     command = data.get('command', '')
+    is_interactive = data.get('interactive', False)
+    
     if command:
-        output = run_kubectl_command(command)
-        emit('output', {'data': output + '\n'})
+        if is_interactive:
+            # For interactive sessions, we'll start a pseudo-terminal session
+            # Send command back to client to initiate the session
+            emit('terminal_command', {'command': command})
+        else:
+            # Normal command execution with output
+            output = run_kubectl_command(command)
+            emit('output', {'data': output + '\n'})
     else:
         emit('output', {'data': 'Error: No command provided\n'})
 
@@ -310,17 +323,31 @@ def api_pod_exec():
             namespace = data.get('namespace')
             pod_name = data.get('pod_name')
             command = data.get('command', 'ps aux')
+            interactive = data.get('interactive', False)
         else:
             namespace = request.form['namespace']
             pod_name = request.form['pod_name']
             command = request.form.get('command', 'ps aux')
+            interactive = request.form.get('interactive', 'false').lower() == 'true'
             
         if not namespace or not pod_name:
             return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
             
-        kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
-        output = run_kubectl_command(kubectl_command)
-        return jsonify({"output": output})
+        if interactive:
+            # For interactive shell, try bash first, fallback to sh if needed
+            bash_cmd = f"kubectl exec -it {pod_name} -n {namespace} -- bash"
+            sh_cmd = f"kubectl exec -it {pod_name} -n {namespace} -- /bin/sh"
+            # Return both commands for the client to try
+            return jsonify({
+                "interactive": True,
+                "bash_command": bash_cmd,
+                "sh_command": sh_cmd
+            })
+        else:
+            # For regular commands, execute and return output
+            kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
+            output = run_kubectl_command(kubectl_command)
+            return jsonify({"output": output})
     except Exception as e:
         app.logger.error(f"Error in api_pod_exec: {str(e)}")
         return jsonify({"error": str(e)}), 500

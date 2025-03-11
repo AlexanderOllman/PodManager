@@ -191,8 +191,16 @@ function initializeTerminal() {
                 if (command.trim() !== '') {
                     terminal.writeln(`$ ${command}`);
                     
+                    // Check if this is a special interactive command (like bash or sh)
+                    const isInteractive = command.trim() === 'bash' || 
+                                        command.trim() === 'sh' || 
+                                        command.includes('kubectl exec -it');
+                    
                     if (window.app.socket) {
-                        window.app.socket.emit('run_cli_command', { command: command });
+                        window.app.socket.emit('run_cli_command', { 
+                            command: command,
+                            interactive: isInteractive
+                        });
                     }
                     
                     commandInput.value = '';
@@ -211,9 +219,40 @@ function initializeTerminal() {
             window.app.socket.on('output', function(data) {
                 terminal.write(data.data);
             });
+            
+            // Handle interactive terminal commands
+            window.app.socket.on('terminal_command', function(data) {
+                const command = data.command;
+                
+                // Create a temporary message with instructions
+                terminal.writeln('\r\nStarting interactive session...');
+                terminal.writeln('For security reasons, we need to open a new terminal window.');
+                terminal.writeln('Please copy and paste the following command into your terminal:');
+                terminal.writeln('\r\n');
+                terminal.writeln(`${command}`);
+                terminal.writeln('\r\n');
+                terminal.writeln('Press Ctrl+C or type "exit" to end the interactive session.');
+                
+                // Copy command to clipboard if supported
+                try {
+                    navigator.clipboard.writeText(command).then(
+                        function() {
+                            terminal.writeln('Command copied to clipboard!');
+                        },
+                        function(err) {
+                            console.error('Could not copy text: ', err);
+                        }
+                    );
+                } catch (e) {
+                    console.error('Clipboard API not supported:', e);
+                }
+            });
         }
         
         terminal.writeln('Terminal ready. Type commands below.');
+        terminal.writeln('Special commands:');
+        terminal.writeln('- Type "bash" or "sh" for an interactive shell');
+        terminal.writeln('- Type "kubectl exec -it <pod> -n <namespace> -- bash" for pod shell');
     } catch (error) {
         console.error('Failed to initialize terminal:', error);
     }

@@ -3,24 +3,24 @@
 /* Import MetricHPE font */
 @font-face {
   font-family: 'MetricHPE';
-  src: url('../fonts/MetricHPE/MetricHPE-Regular.woff2') format('woff2'),
-       url('../fonts/MetricHPE/MetricHPE-Regular.woff') format('woff');
+  src: url('../fonts/MetricHPE/MetricHPE-Web-Regular.eot') format('embedded-opentype'),
+       url('../fonts/MetricHPE/MetricHPE-Web-Regular.woff') format('woff');
   font-weight: normal;
   font-style: normal;
 }
 
 @font-face {
   font-family: 'MetricHPE';
-  src: url('../fonts/MetricHPE/MetricHPE-Medium.woff2') format('woff2'),
-       url('../fonts/MetricHPE/MetricHPE-Medium.woff') format('woff');
+  src: url('../fonts/MetricHPE/MetricHPE-Web-Medium.eot') format('embedded-opentype'),
+       url('../fonts/MetricHPE/MetricHPE-Web-Medium.woff') format('woff');
   font-weight: 500;
   font-style: normal;
 }
 
 @font-face {
   font-family: 'MetricHPE';
-  src: url('../fonts/MetricHPE/MetricHPE-Bold.woff2') format('woff2'),
-       url('../fonts/MetricHPE/MetricHPE-Bold.woff') format('woff');
+  src: url('../fonts/MetricHPE/MetricHPE-Web-Bold.eot') format('embedded-opentype'),
+       url('../fonts/MetricHPE/MetricHPE-Web-Bold.woff') format('woff');
   font-weight: 700;
   font-style: normal;
 }
