@@ -4,9 +4,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize dashboard metrics
     updateDashboardMetrics();
     
-    // Initialize sidebar toggle
-    initializeSidebar();
-    
     // Initialize action menus
     initializeActionMenus();
     
@@ -20,7 +17,207 @@ document.addEventListener('DOMContentLoaded', function() {
             switchTab(tabId);
         });
     });
+    
+    // Initialize terminal for CLI tab if needed
+    document.getElementById('cliLink')?.addEventListener('click', function() {
+        // Initialize terminal if needed
+        if (window.app && window.app.terminal === null && typeof Terminal !== 'undefined') {
+            initializeTerminal();
+        }
+    });
+    
+    // Initialize search functionality
+    const searchInput = document.getElementById('resourceSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            filterResourceTable(this.value);
+        });
+    }
+    
+    // Initialize refresh button
+    const refreshBtn = document.getElementById('refreshTableBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function() {
+            const activeTab = document.querySelector('.resource-tab.active');
+            if (activeTab) {
+                const resourceType = activeTab.getAttribute('data-tab');
+                loadResourceData(resourceType);
+            }
+        });
+    }
+    
+    // Initialize expand button
+    const expandBtn = document.getElementById('expandTableBtn');
+    if (expandBtn) {
+        expandBtn.addEventListener('click', function() {
+            expandTableToFullscreen();
+        });
+    }
+    
+    // Initialize close fullscreen button
+    const closeFullscreenBtn = document.getElementById('closeFullscreenBtn');
+    if (closeFullscreenBtn) {
+        closeFullscreenBtn.addEventListener('click', function() {
+            closeFullscreen();
+        });
+    }
 });
+
+// Function to filter resource table based on search term
+function filterResourceTable(searchTerm) {
+    const activeTab = document.querySelector('.resource-tab.active');
+    if (!activeTab) return;
+    
+    const resourceType = activeTab.getAttribute('data-tab');
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (!tableBody) return;
+    
+    const searchTermLower = searchTerm.toLowerCase().trim();
+    let hasVisibleRows = false;
+    
+    // Filter rows based on search term
+    tableBody.querySelectorAll('tr').forEach(row => {
+        if (row.classList.contains('no-results-row')) {
+            row.remove(); // Remove any existing "no results" rows
+            return;
+        }
+        
+        const text = row.textContent.toLowerCase();
+        const shouldShow = searchTermLower === '' || text.includes(searchTermLower);
+        row.style.display = shouldShow ? '' : 'none';
+        
+        if (shouldShow) {
+            hasVisibleRows = true;
+        }
+    });
+    
+    // If no rows are visible, add a "no results" row
+    if (!hasVisibleRows && searchTermLower !== '') {
+        const noResultsRow = document.createElement('tr');
+        noResultsRow.className = 'no-results-row';
+        noResultsRow.innerHTML = `<td colspan="7" class="text-center">No ${resourceType} matching "${searchTerm}"</td>`;
+        tableBody.appendChild(noResultsRow);
+    }
+}
+
+// Function to expand table to fullscreen
+function expandTableToFullscreen() {
+    const fullscreenMode = document.getElementById('fullscreenMode');
+    const fullscreenContent = document.getElementById('fullscreenContent');
+    const resourceTableContainer = document.querySelector('.resource-table-container');
+    
+    if (!fullscreenMode || !fullscreenContent || !resourceTableContainer) return;
+    
+    // Clone the resource table container
+    const clonedContainer = resourceTableContainer.cloneNode(true);
+    
+    // Clear previous content and append the clone
+    fullscreenContent.innerHTML = '';
+    fullscreenContent.appendChild(clonedContainer);
+    
+    // Show the fullscreen mode
+    fullscreenMode.style.display = 'flex';
+    
+    // Initialize tabs in fullscreen mode
+    fullscreenContent.querySelectorAll('.resource-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const tabId = this.getAttribute('data-tab');
+            const activeTab = document.querySelector(`.resource-tab[data-tab="${tabId}"]`);
+            if (activeTab) {
+                activeTab.click(); // Trigger click on the original tab to keep them in sync
+            }
+        });
+    });
+    
+    // Initialize search in fullscreen mode
+    const searchInput = fullscreenContent.querySelector('#resourceSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            filterResourceTable(this.value);
+        });
+    }
+    
+    // Initialize refresh in fullscreen mode
+    const refreshBtn = fullscreenContent.querySelector('#refreshTableBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function() {
+            const activeTab = document.querySelector('.resource-tab.active');
+            if (activeTab) {
+                const resourceType = activeTab.getAttribute('data-tab');
+                loadResourceData(resourceType);
+            }
+        });
+    }
+    
+    // Prevent body scrolling
+    document.body.style.overflow = 'hidden';
+}
+
+// Function to close fullscreen mode
+function closeFullscreen() {
+    const fullscreenMode = document.getElementById('fullscreenMode');
+    if (fullscreenMode) {
+        fullscreenMode.style.display = 'none';
+    }
+    
+    // Re-enable body scrolling
+    document.body.style.overflow = '';
+}
+
+// Function to initialize terminal
+function initializeTerminal() {
+    const terminalElement = document.getElementById('terminal');
+    if (!terminalElement) return;
+    
+    try {
+        // Initialize terminal
+        const terminal = new Terminal({
+            cursorBlink: true,
+            fontFamily: 'monospace',
+            fontSize: 14,
+            convertEol: true
+        });
+        
+        window.app.terminal = terminal;
+        terminal.open(terminalElement);
+        
+        // Set up command input handling
+        const commandInput = document.getElementById('commandInput');
+        const runCommandBtn = document.getElementById('runCommand');
+        
+        if (commandInput && runCommandBtn) {
+            runCommandBtn.addEventListener('click', function() {
+                const command = commandInput.value;
+                if (command.trim() !== '') {
+                    terminal.writeln(`$ ${command}`);
+                    
+                    if (window.app.socket) {
+                        window.app.socket.emit('run_cli_command', { command: command });
+                    }
+                    
+                    commandInput.value = '';
+                }
+            });
+            
+            commandInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    runCommandBtn.click();
+                }
+            });
+        }
+        
+        // Handle socket.io output
+        if (window.app.socket) {
+            window.app.socket.on('output', function(data) {
+                terminal.write(data.data);
+            });
+        }
+        
+        terminal.writeln('Terminal ready. Type commands below.');
+    } catch (error) {
+        console.error('Failed to initialize terminal:', error);
+    }
+}
 
 // Function to update dashboard metrics
 function updateDashboardMetrics() {
@@ -61,20 +258,6 @@ function updateDashboardMetrics() {
     document.getElementById('reserved-metric').textContent = '-';
 }
 
-// Function to initialize sidebar functionality
-function initializeSidebar() {
-    const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
-    const sidebar = document.querySelector('.sidebar');
-    const mainContent = document.querySelector('.main-content');
-    
-    if (sidebarToggleBtn) {
-        sidebarToggleBtn.addEventListener('click', function() {
-            sidebar.classList.toggle('sidebar-collapsed');
-            mainContent.classList.toggle('main-content-expanded');
-        });
-    }
-}
-
 // Function to load resource data
 function loadResourceData(resourceType) {
     const loadingElement = document.getElementById(`${resourceType}Loading`);
@@ -100,6 +283,12 @@ function loadResourceData(resourceType) {
         
         if (loadingElement) loadingElement.style.display = 'none';
         if (tableElement) tableElement.style.display = 'table';
+        
+        // Apply search filter if it exists
+        const searchInput = document.getElementById('resourceSearchInput');
+        if (searchInput && searchInput.value.trim() !== '') {
+            filterResourceTable(searchInput.value);
+        }
     })
     .catch(error => {
         console.error('Error:', error);
@@ -186,6 +375,12 @@ function populateResourceTable(resourceType, items) {
 
 // Function to initialize action menu dropdowns
 function initializeActionMenus() {
+    // Remove existing event listeners
+    document.querySelectorAll('.action-button').forEach(button => {
+        const newButton = button.cloneNode(true);
+        button.parentNode.replaceChild(newButton, button);
+    });
+    
     // Close any open menus when clicking elsewhere
     document.addEventListener('click', function(event) {
         if (!event.target.closest('.action-button') && !event.target.closest('.action-menu-dropdown')) {
@@ -218,14 +413,11 @@ function initializeActionMenus() {
                 // Add actions based on resource type
                 if (resourceType === 'pods') {
                     dropdown.innerHTML = `
-                        <div class="action-menu-item" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">
-                            <i class="fas fa-info-circle"></i> Describe
+                        <div class="action-menu-item" onclick="navigateToExplore('/explore/${namespace}/${name}')">
+                            <i class="fas fa-search"></i> Explore
                         </div>
                         <div class="action-menu-item" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">
                             <i class="fas fa-file-alt"></i> Logs
-                        </div>
-                        <div class="action-menu-item" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">
-                            <i class="fas fa-terminal"></i> Exec (ps)
                         </div>
                         <div class="action-menu-item" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
                             <i class="fas fa-trash-alt"></i> Delete
@@ -233,8 +425,8 @@ function initializeActionMenus() {
                     `;
                 } else {
                     dropdown.innerHTML = `
-                        <div class="action-menu-item" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">
-                            <i class="fas fa-info-circle"></i> Describe
+                        <div class="action-menu-item" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">
+                            <i class="fas fa-file-alt"></i> Logs
                         </div>
                         <div class="action-menu-item" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
                             <i class="fas fa-trash-alt"></i> Delete

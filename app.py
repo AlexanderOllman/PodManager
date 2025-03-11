@@ -160,6 +160,15 @@ def run_cli_command():
     thread.start()
     return jsonify(success=True)
 
+@socketio.on('run_cli_command')
+def handle_cli_command(data):
+    command = data.get('command', '')
+    if command:
+        output = run_kubectl_command(command)
+        emit('output', {'data': output + '\n'})
+    else:
+        emit('output', {'data': 'Error: No command provided\n'})
+
 @app.route('/upload_yaml', methods=['POST'])
 def upload_yaml():
     if 'file' not in request.files:

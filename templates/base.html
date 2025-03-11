@@ -42,22 +42,22 @@
                 </a>
             </li>
             <li class="sidebar-nav-item">
-                <a href="#cli" class="sidebar-nav-link" data-bs-toggle="tab" data-bs-target="#cli">
+                <a href="#cli" class="sidebar-nav-link" id="cliLink" data-bs-toggle="tab" data-bs-target="#cli">
                     <i class="fas fa-terminal"></i> <span>CLI</span>
                 </a>
             </li>
             <li class="sidebar-nav-item">
-                <a href="#yaml" class="sidebar-nav-link" data-bs-toggle="tab" data-bs-target="#yaml">
+                <a href="#yaml" class="sidebar-nav-link" id="yamlLink" data-bs-toggle="tab" data-bs-target="#yaml">
                     <i class="fas fa-file-upload"></i> <span>Upload YAML</span>
                 </a>
             </li>
             <li class="sidebar-nav-item">
-                <a href="#events" class="sidebar-nav-link" data-bs-toggle="tab" data-bs-target="#events">
+                <a href="#events" class="sidebar-nav-link" id="eventsLink" data-bs-toggle="tab" data-bs-target="#events">
                     <i class="fas fa-clock"></i> <span>Events</span>
                 </a>
             </li>
             <li class="sidebar-nav-item">
-                <a href="#settings" class="sidebar-nav-link" data-bs-toggle="tab" data-bs-target="#settings">
+                <a href="#settings" class="sidebar-nav-link" id="settingsLink" data-bs-toggle="tab" data-bs-target="#settings">
                     <i class="fas fa-cog"></i> <span>Settings</span>
                 </a>
             </li>
@@ -150,6 +150,30 @@
         // Hide loading overlay
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('loading-overlay').style.display = 'none';
+            
+            // Initialize sidebar toggle
+            const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+            const sidebar = document.querySelector('.sidebar');
+            const mainContent = document.querySelector('.main-content');
+            
+            if (sidebarToggleBtn) {
+                sidebarToggleBtn.addEventListener('click', function() {
+                    sidebar.classList.toggle('sidebar-collapsed');
+                    mainContent.classList.toggle('main-content-expanded');
+                });
+            }
+            
+            // Handle sidebar tab navigation
+            document.querySelectorAll('.sidebar-nav-link').forEach(navLink => {
+                navLink.addEventListener('click', function(e) {
+                    // If the tab already has other event listeners, let them handle it
+                    if (this.id === 'homeLink') {
+                        if (typeof initializeHomePage === 'function') {
+                            setTimeout(initializeHomePage, 100);
+                        }
+                    }
+                });
+            });
         });
         
         // Navigation related code
@@ -168,8 +192,10 @@
             const homeLink = document.getElementById('homeLink');
             if (homeLink) {
                 homeLink.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    navigateToHome();
+                    if (window.location.pathname !== '/') {
+                        e.preventDefault();
+                        navigateToHome();
+                    }
                 });
             }
         });

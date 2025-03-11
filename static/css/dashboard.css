@@ -194,6 +194,9 @@ body {
   box-shadow: var(--card-shadow);
   overflow: hidden;
   margin-bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 220px); /* Prevent table from overflowing screen */
 }
 
 .resource-table-header {
@@ -203,6 +206,75 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.resource-table-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--dark-gray);
+}
+
+.resource-table-search-container {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+  width: 100%;
+}
+
+.resource-table-search {
+  flex-grow: 1;
+  position: relative;
+}
+
+.resource-table-search input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  border: 1px solid var(--light-gray);
+  border-radius: 4px;
+}
+
+.resource-table-search i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--mid-gray);
+}
+
+.resource-table-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.table-action-button {
+  background: none;
+  border: 1px solid var(--light-gray);
+  border-radius: 4px;
+  color: var(--mid-gray);
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-speed) ease;
+}
+
+.table-action-button i {
+  margin-right: 6px;
+}
+
+.table-action-button:hover {
+  background-color: var(--off-white);
+  color: var(--hpe-green);
+  border-color: var(--hpe-green);
+}
+
+.resource-table-content {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
 }
 
 .resource-table {
@@ -217,6 +289,9 @@ body {
   font-weight: 500;
   color: var(--mid-gray);
   border-bottom: 1px solid var(--light-gray);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .resource-table td {
@@ -230,6 +305,55 @@ body {
 
 .resource-table tr:hover {
   background-color: var(--off-white);
+}
+
+/* Full screen mode for table */
+.fullscreen-mode {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: white;
+  z-index: 1050;
+  padding: 20px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.fullscreen-mode .resource-table-container {
+  flex: 1;
+  max-height: none;
+  margin-bottom: 0;
+}
+
+.fullscreen-mode .resource-table-content {
+  height: calc(100vh - 180px);
+}
+
+.fullscreen-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.fullscreen-title {
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.fullscreen-close {
+  background: none;
+  border: none;
+  color: var(--mid-gray);
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.fullscreen-close:hover {
+  color: var(--hpe-green);
 }
 
 /* Status Indicators */
