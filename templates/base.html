@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}HPE Private Cloud AI Resource Manager{% endblock %}</title>
+    <title>{% block title %}Kubernetes Dashboard{% endblock %}</title>
     <!-- CSS Files -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
     <link href="{{ url_for('static', filename='js/xterm/xterm.css') }}" rel="stylesheet" />
-    <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet" />
     
     <!-- Core JavaScript Libraries - No defer to ensure they load first -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
@@ -174,26 +174,14 @@
     {% block additional_styles %}{% endblock %}
 </head>
 <body>
-    <!-- Top Navigation Bar -->
-    <nav class="top-navbar">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
-                <span>HPE Private Cloud AI Resource Manager</span>
-            </a>
-            <div class="ms-auto d-flex align-items-center">
-                <button id="sidebarToggle" class="sidebar-toggle me-2">
-                    <i class="fas fa-bars"></i>
-                </button>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container-fluid p-0">
-        <div class="row g-0">
+    <div class="container-fluid">
+        <div class="row">
             <!-- Sidebar -->
-            <nav class="sidebar" id="sidebar">
-                <div class="position-sticky">
+            <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" onerror="this.src='data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22100%22%20height%3D%22100%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%20preserveAspectRatio%3D%22none%22%3E%3Cdefs%3E%3Cstyle%20type%3D%22text%2Fcss%22%3E%23holder_16eb5dfb3cf%20text%20%7B%20fill%3A%23999%3Bfont-weight%3Anormal%3Bfont-family%3A-apple-system%2CBlinkMacSystemFont%2C%26quot%3BSegoe%20UI%26quot%3B%2CRoboto%2C%26quot%3BHelvetica%20Neue%26quot%3B%2CArial%2C%26quot%3BNoto%20Sans%26quot%3B%2Csans-serif%2C%26quot%3BApple%20Color%20Emoji%26quot%3B%2C%26quot%3BSegoe%20UI%20Emoji%26quot%3B%2C%26quot%3BSegoe%20UI%20Symbol%26quot%3B%2C%26quot%3BNoto%20Color%20Emoji%26quot%3B%2C%20monospace%3Bfont-size%3A10pt%20%7D%20%3C%2Fstyle%3E%3C%2Fdefs%3E%3Cg%20id%3D%22holder_16eb5dfb3cf%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23373940%22%3E%3C%2Frect%3E%3Cg%3E%3Ctext%20x%3D%2236.5%22%20y%3D%2256.5%22%3EK8S%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E';">
+                </div>
+                <div class="position-sticky pt-3">
                     <ul class="nav flex-column">
                         <li class="nav-item">
                             <a class="nav-link active" href="#home" data-bs-toggle="tab" data-bs-target="#home" id="homeLink">
@@ -225,7 +213,7 @@
             </nav>
 
             <!-- Main content -->
-            <main class="main-content" id="main-content">
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" id="main-content">
                 {% block content %}{% endblock %}
             </main>
         </div>
@@ -449,34 +437,7 @@
         }
     </script>
     
-    <!-- Main Application JavaScript -->
-    <script>
-        // Wait for document to be fully loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            // Toggle sidebar
-            const sidebarToggle = document.getElementById('sidebarToggle');
-            const sidebar = document.getElementById('sidebar');
-            const mainContent = document.getElementById('main-content');
-            
-            if (sidebarToggle && sidebar && mainContent) {
-                sidebarToggle.addEventListener('click', function() {
-                    sidebar.classList.toggle('collapsed');
-                    mainContent.classList.toggle('expanded');
-                });
-            }
-
-            // Initialize tooltips and popovers
-            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-            tooltipTriggerList.map(function (tooltipTriggerEl) {
-                return new bootstrap.Tooltip(tooltipTriggerEl);
-            });
-
-            const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
-            popoverTriggerList.map(function (popoverTriggerEl) {
-                return new bootstrap.Popover(popoverTriggerEl);
-            });
-        });
-    </script>
-    {% block additional_scripts %}{% endblock %}
+    <!-- Page-specific scripts -->
+    {% block page_scripts %}{% endblock %}
 </body>
 </html> 

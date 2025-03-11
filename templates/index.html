@@ -1,32 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}HPE Private Cloud AI Resource Manager{% endblock %}
+{% block title %}Kubernetes Dashboard{% endblock %}
 
 {% block content %}
 <div class="tab-content" id="mainContent">
     <div class="tab-pane fade show active" id="home" role="tabpanel" aria-labelledby="home-tab">
-        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3">
-            <h1 class="h2">Dashboard</h1>
-        </div>
-
-        <!-- Dashboard Cards/Tiles -->
-        <div class="dashboard-cards">
-            <div class="card">
-                <div class="card-value" id="podCount">-</div>
-                <div class="card-label">Total Pods</div>
-            </div>
-            <div class="card">
-                <div class="card-value" id="totalCPU">-</div>
-                <div class="card-label">Allocated vCPU</div>
-            </div>
-            <div class="card">
-                <div class="card-value" id="totalGPU">-</div>
-                <div class="card-label">Allocated GPUs</div>
-            </div>
-            <div class="card">
-                <div class="card-value" id="futureStat">-</div>
-                <div class="card-label">Future Metric</div>
-            </div>
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h1 class="h2">Kubernetes Resources</h1>
         </div>
 
         <!-- Tabs -->
@@ -57,8 +37,8 @@
                 <div class="loading-container" id="podsLoading">
                     <div class="spinner"></div>
                 </div>
-                <div class="resource-table-container">
-                    <table class="resource-table" id="podsTable">
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="podsTable">
                         <thead>
                             <tr>
                                 <th>Namespace</th>
@@ -80,8 +60,8 @@
                 <div class="loading-container" id="servicesLoading">
                     <div class="spinner"></div>
                 </div>
-                <div class="resource-table-container">
-                    <table class="resource-table" id="servicesTable">
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="servicesTable">
                         <thead>
                             <tr>
                                 <th>Namespace</th>
@@ -104,8 +84,8 @@
                 <div class="loading-container" id="inferenceLoading">
                     <div class="spinner"></div>
                 </div>
-                <div class="resource-table-container">
-                    <table class="resource-table" id="inferenceservicesTable">
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="inferenceservicesTable">
                         <thead>
                             <tr>
                                 <th>Namespace</th>
@@ -128,8 +108,8 @@
                 <div class="loading-container" id="deploymentsLoading">
                     <div class="spinner"></div>
                 </div>
-                <div class="resource-table-container">
-                    <table class="resource-table" id="deploymentsTable">
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="deploymentsTable">
                         <thead>
                             <tr>
                                 <th>Namespace</th>
@@ -151,8 +131,8 @@
                 <div class="loading-container" id="configmapsLoading">
                     <div class="spinner"></div>
                 </div>
-                <div class="resource-table-container">
-                    <table class="resource-table" id="configmapsTable">
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="configmapsTable">
                         <thead>
                             <tr>
                                 <th>Namespace</th>
@@ -172,8 +152,8 @@
                 <div class="loading-container" id="secretsLoading">
                     <div class="spinner"></div>
                 </div>
-                <div class="resource-table-container">
-                    <table class="resource-table" id="secretsTable">
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="secretsTable">
                         <thead>
                             <tr>
                                 <th>Namespace</th>
@@ -557,7 +537,7 @@ function addResourceControls(resourceType) {
     if (!tabPane) return;
     
     // Find where to insert controls (before the table)
-    let tableContainer = tabPane.querySelector('.resource-table-container');
+    let tableContainer = tabPane.querySelector('.table-responsive');
     if (!tableContainer) return;
     
     // Create controls container
@@ -1325,446 +1305,6 @@ document.addEventListener('click', function(e) {
         // Navigate to the explore page using full page navigation
         window.location.href = url;
     }
-});
-
-// Update the dashboard metrics on page load
-function updateDashboardMetrics() {
-    // Get pod count
-    $.post('/get_resources', { resource_type: 'pods' }, function(response) {
-        if (response.format === 'table' && response.data && response.data.items) {
-            $('#podCount').text(response.data.items.length);
-        }
-    });
-
-    // Calculate total allocated CPU and GPU
-    let totalCPU = 0;
-    let totalGPU = 0;
-
-    $.post('/get_resources', { resource_type: 'pods' }, function(response) {
-        if (response.format === 'table' && response.data && response.data.items) {
-            response.data.items.forEach(pod => {
-                if (pod.status.phase === 'Running' && pod.spec.containers) {
-                    pod.spec.containers.forEach(container => {
-                        if (container.resources && container.resources.requests) {
-                            // Count CPU
-                            if (container.resources.requests.cpu) {
-                                const cpuStr = container.resources.requests.cpu;
-                                if (cpuStr.endsWith('m')) {
-                                    totalCPU += parseInt(cpuStr.slice(0, -1)) / 1000;
-                                } else {
-                                    totalCPU += parseInt(cpuStr);
-                                }
-                            }
-
-                            // Count GPU
-                            if (container.resources.requests['nvidia.com/gpu']) {
-                                totalGPU += parseInt(container.resources.requests['nvidia.com/gpu']);
-                            }
-                        }
-                    });
-                }
-            });
-
-            // Update the dashboard
-            $('#totalCPU').text(totalCPU.toFixed(1));
-            $('#totalGPU').text(totalGPU);
-        }
-    });
-}
-
-// Function to generate the action dropdown menu
-function generateActionsDropdown(namespace, resourceName, resourceType) {
-    let actionsHtml = '<div class="action-dropdown">';
-    actionsHtml += '<button class="three-dots-menu" data-bs-toggle="dropdown" aria-expanded="false"><i class="fas fa-ellipsis-v"></i></button>';
-    actionsHtml += '<div class="dropdown-menu dropdown-menu-end">';
-    
-    if (resourceType === 'pods') {
-        actionsHtml += `<a class="dropdown-item view-details" href="#" data-namespace="${namespace}" data-name="${resourceName}" data-action="describe">Describe</a>`;
-        actionsHtml += `<a class="dropdown-item view-logs" href="#" data-namespace="${namespace}" data-name="${resourceName}">Logs</a>`;
-        actionsHtml += `<a class="dropdown-item view-explore" href="/explore/${namespace}/${resourceName}" target="_blank">Explore</a>`;
-        actionsHtml += `<a class="dropdown-item delete-resource" href="#" data-namespace="${namespace}" data-name="${resourceName}" data-resource-type="${resourceType}">Delete</a>`;
-    } else {
-        actionsHtml += `<a class="dropdown-item view-details" href="#" data-namespace="${namespace}" data-name="${resourceName}" data-resource-type="${resourceType}" data-action="describe">Describe</a>`;
-        actionsHtml += `<a class="dropdown-item delete-resource" href="#" data-namespace="${namespace}" data-name="${resourceName}" data-resource-type="${resourceType}">Delete</a>`;
-    }
-    
-    actionsHtml += '</div></div>';
-    return actionsHtml;
-}
-
-// Update existing resource table population functions to use the new dropdown
-function loadResources(resourceType) {
-    // Show loading spinner
-    $(`#${resourceType}Loading`).show();
-    
-    // Hide the table while loading
-    $(`#${resourceType}Table`).closest('.resource-table-container').hide();
-    
-    $.post('/get_resources', { resource_type: resourceType }, function(response) {
-        // Hide loading spinner
-        $(`#${resourceType}Loading`).hide();
-        
-        // Show the table
-        $(`#${resourceType}Table`).closest('.resource-table-container').show();
-        
-        if (response.format === 'table' && response.data) {
-            const items = response.data.items || [];
-            
-            // Call the appropriate function to populate the table
-            switch(resourceType) {
-                case 'pods':
-                    populatePodsTable(items);
-                    break;
-                case 'services':
-                    populateServicesTable(items);
-                    break;
-                case 'inferenceservices':
-                    populateInferenceServicesTable(items);
-                    break;
-                case 'deployments':
-                    populateDeploymentsTable(items);
-                    break;
-                case 'configmaps':
-                    populateConfigMapsTable(items);
-                    break;
-                case 'secrets':
-                    populateSecretsTable(items);
-                    break;
-            }
-        } else {
-            $(`#${resourceType}Table tbody`).html('<tr><td colspan="100%">No data available</td></tr>');
-        }
-    });
-}
-
-// Function for pods table
-function populatePodsTable(pods) {
-    const table = $('#podsTable tbody');
-    table.empty();
-    
-    pods.forEach(function(pod) {
-        const statusClass = getStatusClass(pod.status.phase);
-        const ready = `${pod.status.containerStatuses ? pod.status.containerStatuses.filter(cs => cs.ready).length : 0}/${pod.spec.containers.length}`;
-        const restarts = pod.status.containerStatuses ? pod.status.containerStatuses.reduce((sum, cs) => sum + cs.restartCount, 0) : 0;
-        const age = calculateAge(pod.metadata.creationTimestamp);
-        
-        const row = $('<tr>');
-        row.append($('<td>').text(pod.metadata.namespace));
-        row.append($('<td>').text(pod.metadata.name));
-        row.append($('<td>').text(ready));
-        row.append($('<td>').html(`<span class="status-icon status-${statusClass.toLowerCase()}"></span>${pod.status.phase}`));
-        row.append($('<td>').text(restarts));
-        row.append($('<td>').text(age));
-        row.append($('<td>').html(generateActionsDropdown(pod.metadata.namespace, pod.metadata.name, 'pods')));
-        
-        table.append(row);
-    });
-    
-    // Initialize action handlers
-    initializeActionHandlers();
-}
-
-// Function for services table
-function populateServicesTable(services) {
-    const table = $('#servicesTable tbody');
-    table.empty();
-    
-    services.forEach(function(service) {
-        const row = $('<tr>');
-        
-        // Extract service details
-        const namespace = service.metadata.namespace;
-        const name = service.metadata.name;
-        const type = service.spec.type;
-        const clusterIP = service.spec.clusterIP;
-        const externalIP = service.status && service.status.loadBalancer && service.status.loadBalancer.ingress 
-            ? service.status.loadBalancer.ingress.map(ing => ing.ip || ing.hostname).join(', ') 
-            : '-';
-        
-        // Format ports
-        const portsStr = service.spec.ports 
-            ? service.spec.ports.map(p => `${p.port}${p.targetPort ? `:${p.targetPort}` : ''}/${p.protocol || 'TCP'}`).join(', ')
-            : '-';
-            
-        const age = calculateAge(service.metadata.creationTimestamp);
-        
-        // Create the row cells
-        row.append($('<td>').text(namespace));
-        row.append($('<td>').text(name));
-        row.append($('<td>').text(type));
-        row.append($('<td>').text(clusterIP));
-        row.append($('<td>').text(externalIP));
-        row.append($('<td>').text(portsStr));
-        row.append($('<td>').text(age));
-        row.append($('<td>').html(generateActionsDropdown(namespace, name, 'services')));
-        
-        table.append(row);
-    });
-    
-    // Initialize action handlers
-    initializeActionHandlers();
-}
-
-// Function for inference services table
-function populateInferenceServicesTable(inferenceServices) {
-    const table = $('#inferenceservicesTable tbody');
-    table.empty();
-    
-    inferenceServices.forEach(function(svc) {
-        const row = $('<tr>');
-        
-        // Extract details
-        const namespace = svc.metadata.namespace;
-        const name = svc.metadata.name;
-        const url = svc.status && svc.status.url ? svc.status.url : '-';
-        const ready = svc.status && svc.status.conditions ? 
-            svc.status.conditions.some(c => c.type === 'Ready' && c.status === 'True') ? 'True' : 'False'
-            : 'Unknown';
-        const defaultTraffic = svc.status && svc.status.components && svc.status.components.default ? 
-            svc.status.components.default.traffic || '100%' : '100%';
-        const canaryTraffic = svc.status && svc.status.components && svc.status.components.canary ?
-            svc.status.components.canary.traffic || '0%' : '0%';
-        const age = calculateAge(svc.metadata.creationTimestamp);
-        
-        // Create row cells
-        row.append($('<td>').text(namespace));
-        row.append($('<td>').text(name));
-        row.append($('<td>').text(url));
-        row.append($('<td>').text(ready));
-        row.append($('<td>').text(defaultTraffic));
-        row.append($('<td>').text(canaryTraffic));
-        row.append($('<td>').text(age));
-        row.append($('<td>').html(generateActionsDropdown(namespace, name, 'inferenceservices')));
-        
-        table.append(row);
-    });
-    
-    // Initialize action handlers
-    initializeActionHandlers();
-}
-
-// Function for deployments table
-function populateDeploymentsTable(deployments) {
-    const table = $('#deploymentsTable tbody');
-    table.empty();
-    
-    deployments.forEach(function(deployment) {
-        const row = $('<tr>');
-        
-        // Extract deployment details
-        const namespace = deployment.metadata.namespace;
-        const name = deployment.metadata.name;
-        const ready = `${deployment.status.readyReplicas || 0}/${deployment.status.replicas || 0}`;
-        const upToDate = deployment.status.updatedReplicas || 0;
-        const available = deployment.status.availableReplicas || 0;
-        const age = calculateAge(deployment.metadata.creationTimestamp);
-        
-        // Create row cells
-        row.append($('<td>').text(namespace));
-        row.append($('<td>').text(name));
-        row.append($('<td>').text(ready));
-        row.append($('<td>').text(upToDate));
-        row.append($('<td>').text(available));
-        row.append($('<td>').text(age));
-        row.append($('<td>').html(generateActionsDropdown(namespace, name, 'deployments')));
-        
-        table.append(row);
-    });
-    
-    // Initialize action handlers
-    initializeActionHandlers();
-}
-
-// Function for configmaps table
-function populateConfigMapsTable(configmaps) {
-    const table = $('#configmapsTable tbody');
-    table.empty();
-    
-    configmaps.forEach(function(configmap) {
-        const row = $('<tr>');
-        
-        // Extract configmap details
-        const namespace = configmap.metadata.namespace;
-        const name = configmap.metadata.name;
-        const dataCount = configmap.data ? Object.keys(configmap.data).length : 0;
-        const age = calculateAge(configmap.metadata.creationTimestamp);
-        
-        // Create row cells
-        row.append($('<td>').text(namespace));
-        row.append($('<td>').text(name));
-        row.append($('<td>').text(dataCount));
-        row.append($('<td>').text(age));
-        row.append($('<td>').html(generateActionsDropdown(namespace, name, 'configmaps')));
-        
-        table.append(row);
-    });
-    
-    // Initialize action handlers
-    initializeActionHandlers();
-}
-
-// Function for secrets table
-function populateSecretsTable(secrets) {
-    const table = $('#secretsTable tbody');
-    table.empty();
-    
-    secrets.forEach(function(secret) {
-        const row = $('<tr>');
-        
-        // Extract secret details
-        const namespace = secret.metadata.namespace;
-        const name = secret.metadata.name;
-        const type = secret.type || 'Opaque';
-        const dataCount = secret.data ? Object.keys(secret.data).length : 0;
-        const age = calculateAge(secret.metadata.creationTimestamp);
-        
-        // Create row cells
-        row.append($('<td>').text(namespace));
-        row.append($('<td>').text(name));
-        row.append($('<td>').text(type));
-        row.append($('<td>').text(dataCount));
-        row.append($('<td>').text(age));
-        row.append($('<td>').html(generateActionsDropdown(namespace, name, 'secrets')));
-        
-        table.append(row);
-    });
-    
-    // Initialize action handlers
-    initializeActionHandlers();
-}
-
-// Helper functions
-function getStatusClass(status) {
-    switch(status) {
-        case 'Running':
-            return 'Running';
-        case 'Pending':
-            return 'Pending';
-        case 'Failed':
-            return 'Failed';
-        default:
-            return 'Unknown';
-    }
-}
-
-function calculateAge(timestamp) {
-    const created = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now - created;
-    const diffSec = Math.floor(diffMs / 1000);
-    
-    if (diffSec < 60) return `${diffSec}s`;
-    
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin}m`;
-    
-    const diffHour = Math.floor(diffMin / 60);
-    if (diffHour < 24) return `${diffHour}h`;
-    
-    const diffDay = Math.floor(diffHour / 24);
-    return `${diffDay}d`;
-}
-
-// Initialize action handlers for the dropdown menu items
-function initializeActionHandlers() {
-    // Describe resource
-    $('.view-details').off('click').on('click', function(e) {
-        e.preventDefault();
-        
-        const namespace = $(this).data('namespace');
-        const name = $(this).data('name');
-        const resourceType = $(this).data('resource-type') || 'pods';
-        const action = $(this).data('action') || 'describe';
-        
-        $('#actionModalLabel').text(`${action.charAt(0).toUpperCase() + action.slice(1)} ${resourceType.charAt(0).toUpperCase() + resourceType.slice(1).replace(/s$/, '')}`);
-        $('#actionResult').empty();
-        $('#actionLoading').show();
-        $('#actionModal').modal('show');
-        
-        $.post('/run_action', {
-            resource_type: resourceType,
-            namespace: namespace,
-            name: name,
-            action: action
-        }, function(response) {
-            $('#actionLoading').hide();
-            $('#actionResult').text(response.output);
-        });
-    });
-    
-    // View logs
-    $('.view-logs').off('click').on('click', function(e) {
-        e.preventDefault();
-        
-        const namespace = $(this).data('namespace');
-        const name = $(this).data('name');
-        
-        $('#actionModalLabel').text('Pod Logs');
-        $('#actionResult').empty();
-        $('#actionLoading').show();
-        $('#actionModal').modal('show');
-        
-        $.post('/api/pod/logs', {
-            namespace: namespace,
-            pod_name: name
-        }, function(response) {
-            $('#actionLoading').hide();
-            $('#actionResult').text(response.logs);
-        });
-    });
-    
-    // Delete resource
-    $('.delete-resource').off('click').on('click', function(e) {
-        e.preventDefault();
-        
-        const namespace = $(this).data('namespace');
-        const name = $(this).data('name');
-        const resourceType = $(this).data('resource-type');
-        
-        if (confirm(`Are you sure you want to delete ${resourceType} "${name}" in namespace "${namespace}"?`)) {
-            $('#actionModalLabel').text(`Delete ${resourceType}`);
-            $('#actionResult').empty();
-            $('#actionLoading').show();
-            $('#actionModal').modal('show');
-            
-            $.post('/run_action', {
-                resource_type: resourceType,
-                namespace: namespace,
-                name: name,
-                action: 'delete'
-            }, function(response) {
-                $('#actionLoading').hide();
-                $('#actionResult').text(response.output);
-                
-                // Reload the resources table after deletion
-                setTimeout(function() {
-                    loadResources(resourceType);
-                }, 1000);
-            });
-        }
-    });
-}
-
-// Initialize the dashboard and action handlers when the page is ready
-$(document).ready(function() {
-    // Update dashboard metrics
-    updateDashboardMetrics();
-    
-    // Load initial resources
-    loadResources('pods');
-    
-    // Tab change handlers
-    $('#resourceTabs button').on('click', function (e) {
-        const target = $(this).data('bs-target').substring(1);
-        loadResources(target);
-    });
-    
-    // Refresh data periodically
-    setInterval(function() {
-        const activeTab = $('#resourceTabs button.active').data('bs-target').substring(1);
-        loadResources(activeTab);
-        updateDashboardMetrics();
-    }, 30000); // Refresh every 30 seconds
 });
 </script>
 {% endblock %}
