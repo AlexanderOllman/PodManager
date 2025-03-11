@@ -382,15 +382,105 @@ function fetchResourcesForAllTabs() {
     resourceTypes.forEach(resourceType => {
         showLoading(resourceType);
         
-        // Set up click handlers for tabs
-        const tabElement = document.querySelector(`#${resourceType}-tab`);
-        if (tabElement) {
-            tabElement.addEventListener('click', () => fetchResourceData(resourceType));
-        }
+        // Add refresh button and search bar to each resource tab
+        addResourceControls(resourceType);
     });
     
-    // Then fetch them one by one
+    // Then fetch them one by one for initial load
     fetchResourcesSequentially(resourceTypes, 0);
+}
+
+// Add refresh button and search bar to each resource tab
+function addResourceControls(resourceType) {
+    const tabPane = document.getElementById(resourceType);
+    if (!tabPane) return;
+    
+    // Find where to insert controls (before the table)
+    let tableContainer = tabPane.querySelector('.table-responsive');
+    if (!tableContainer) return;
+    
+    // Create controls container
+    const controlsContainer = document.createElement('div');
+    controlsContainer.className = 'mb-3 d-flex justify-content-between align-items-center';
+    
+    // Create search input
+    const searchContainer = document.createElement('div');
+    searchContainer.className = 'input-group w-50';
+    searchContainer.innerHTML = `
+        <input type="text" class="form-control" placeholder="Filter ${resourceType}..." id="${resourceType}Search">
+        <button class="btn btn-outline-secondary" type="button" onclick="clearSearch('${resourceType}')">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    
+    // Create refresh button
+    const refreshButton = document.createElement('button');
+    refreshButton.className = 'btn btn-primary';
+    refreshButton.innerHTML = `<i class="fas fa-sync-alt"></i> Refresh ${capitalizeFirstLetter(resourceType)}`;
+    refreshButton.onclick = function() { fetchResourceData(resourceType); };
+    
+    // Add components to the container
+    controlsContainer.appendChild(searchContainer);
+    controlsContainer.appendChild(refreshButton);
+    
+    // Insert controls before the table
+    tabPane.insertBefore(controlsContainer, tableContainer);
+    
+    // Add event listener for search input
+    const searchInput = document.getElementById(`${resourceType}Search`);
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            filterResources(resourceType, this.value);
+        });
+    }
+}
+
+// Capitalize first letter helper (for button labels)
+function capitalizeFirstLetter(string) {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+// Clear search field and reset table
+function clearSearch(resourceType) {
+    const searchInput = document.getElementById(`${resourceType}Search`);
+    if (searchInput) {
+        searchInput.value = '';
+        filterResources(resourceType, '');
+    }
+}
+
+// Filter resources based on search term
+function filterResources(resourceType, searchTerm) {
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (!tableBody) return;
+    
+    const rows = tableBody.querySelectorAll('tr');
+    const searchTermLower = searchTerm.toLowerCase();
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        const shouldShow = searchTerm === '' || text.includes(searchTermLower);
+        row.style.display = shouldShow ? '' : 'none';
+    });
+    
+    // Show a message if no results
+    let noResultsRow = tableBody.querySelector('.no-results-row');
+    
+    if (searchTerm !== '' && ![...rows].some(row => row.style.display !== 'none' && !row.classList.contains('no-results-row'))) {
+        // No visible rows and search is active
+        if (!noResultsRow) {
+            noResultsRow = document.createElement('tr');
+            noResultsRow.className = 'no-results-row';
+            noResultsRow.innerHTML = `<td colspan="7" class="text-center">No ${resourceType} matching "${searchTerm}"</td>`;
+            tableBody.appendChild(noResultsRow);
+        } else {
+            noResultsRow.querySelector('td').textContent = `No ${resourceType} matching "${searchTerm}"`;
+            noResultsRow.style.display = '';
+        }
+    } else if (noResultsRow) {
+        // Hide the no results message if there are visible rows or search is cleared
+        noResultsRow.style.display = 'none';
+    }
 }
 
 // Sequential resource fetching with a small delay between each
@@ -523,8 +613,12 @@ function fetchResourcesSequentially(resourceTypes, index) {
     });
 }
 
-// Resource data fetching (for individual tab clicks)
+// Resource data fetching (for individual tab clicks or refresh button)
 function fetchResourceData(resourceType) {
+    // Save the current search term before refreshing
+    const searchInput = document.getElementById(`${resourceType}Search`);
+    const searchTerm = searchInput ? searchInput.value : '';
+    
     showLoading(resourceType);
     
     fetch('/get_resources', {
@@ -624,6 +718,11 @@ function fetchResourceData(resourceType) {
         });
         
         hideLoading(resourceType);
+        
+        // Reapply search filter after loading new data
+        if (searchTerm) {
+            filterResources(resourceType, searchTerm);
+        }
     })
     .catch(error => {
         console.error(`Error fetching ${resourceType}:`, error);
