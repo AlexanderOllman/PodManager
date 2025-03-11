@@ -61,6 +61,34 @@ document.addEventListener('DOMContentLoaded', function() {
             closeFullscreen();
         });
     }
+
+    // Set up Socket.IO event listeners for refresh log
+    if (window.app && window.app.socket) {
+        window.app.socket.on('refresh_log', function(data) {
+            const refreshLog = document.getElementById('refreshLog');
+            if (refreshLog) {
+                const logEntry = document.createElement('div');
+                const timestamp = new Date().toLocaleTimeString();
+                
+                // Set class based on status
+                if (data.status === 'error') {
+                    logEntry.className = 'text-danger';
+                } else if (data.status === 'warning') {
+                    logEntry.className = 'text-warning';
+                } else if (data.status === 'success') {
+                    logEntry.className = 'text-success';
+                } else {
+                    logEntry.className = 'text-info';
+                }
+                
+                logEntry.innerHTML = `[${timestamp}] ${data.message}`;
+                refreshLog.appendChild(logEntry);
+                
+                // Auto-scroll to the bottom
+                refreshLog.scrollTop = refreshLog.scrollHeight;
+            }
+        });
+    }
 });
 
 // Function to filter resource table based on search term
@@ -316,23 +344,47 @@ function loadResourceData(resourceType) {
     .then(data => {
         if (data.format === 'table' && data.data && data.data.items) {
             populateResourceTable(resourceType, data.data.items);
+            
+            // Track that this resource is loaded
+            window.loadedResources = window.loadedResources || {};
+            window.loadedResources[resourceType] = true;
+            
+            // Apply search filter if it exists
+            const searchInput = document.getElementById('resourceSearchInput');
+            if (searchInput && searchInput.value.trim() !== '') {
+                filterResourceTable(searchInput.value);
+            }
         } else {
             console.error('Invalid data format received');
+            showLoadingError(resourceType, 'Invalid data format received');
         }
         
         if (loadingElement) loadingElement.style.display = 'none';
         if (tableElement) tableElement.style.display = 'table';
-        
-        // Apply search filter if it exists
-        const searchInput = document.getElementById('resourceSearchInput');
-        if (searchInput && searchInput.value.trim() !== '') {
-            filterResourceTable(searchInput.value);
-        }
     })
     .catch(error => {
-        console.error('Error:', error);
+        console.error(`Error loading ${resourceType}:`, error);
         if (loadingElement) loadingElement.style.display = 'none';
+        showLoadingError(resourceType, error.message);
     });
+}
+
+// Function to show loading error
+function showLoadingError(resourceType, errorMessage) {
+    const tableElement = document.getElementById(`${resourceType}Table`);
+    if (tableElement) {
+        tableElement.style.display = 'table';
+        const tbody = tableElement.querySelector('tbody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center text-danger">
+                        <i class="fas fa-exclamation-triangle"></i> Error loading ${resourceType}: ${errorMessage}
+                    </td>
+                </tr>
+            `;
+        }
+    }
 }
 
 // Function to populate resource table with data
@@ -537,4 +589,506 @@ function getAge(timestamp) {
     } else {
         return `${diffMinutes}m`;
     }
-} 
+}
+
+// GitHub update function
+function updateFromGithub() {
+    const repoUrl = document.getElementById('githubRepoUrl').value;
+    const resultDiv = document.getElementById('githubResult');
+    
+    if (!repoUrl) {
+        resultDiv.innerHTML = '<div class="alert alert-warning">Please enter a GitHub repository URL</div>';
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
+    
+    fetch('/update_from_github', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ repo_url: repoUrl })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check-circle"></i> Update successful! You may need to restart the application for changes to take effect.</div>';
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Error: ${data.message}</div>`;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</div>`;
+    });
+}
+
+// Refresh application function
+function refreshApplication() {
+    const resultDiv = document.getElementById('appControlResult');
+    resultDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Refreshing application...';
+    
+    fetch('/refresh_application', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check-circle"></i> Application refreshed successfully!</div>';
+            // Reload the page after a brief delay
+            setTimeout(() => {
+                window.location.reload();
+            }, 3000);
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Error: ${data.message}</div>`;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</div>`;
+    });
+}
+
+// Restart application function
+function restartApplication() {
+    const resultDiv = document.getElementById('appControlResult');
+    
+    if (confirm('Are you sure you want to restart the application? This will temporarily disconnect all users.')) {
+        resultDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Restarting application...';
+        
+        fetch('/restart', {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check-circle"></i> Restart initiated. The page will refresh shortly...</div>';
+                // Poll for application availability
+                checkApplicationStatus(resultDiv);
+            } else {
+                resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> Error: ${data.message}</div>`;
+            }
+        })
+        .catch(error => {
+            // If we get an error here, it's likely because the server is already restarting
+            console.log('Server restarting, waiting for it to come back online...');
+            resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-sync-alt fa-spin"></i> Application is restarting. Waiting for it to come back online...</div>';
+            // Start polling
+            checkApplicationStatus(resultDiv);
+        });
+    }
+}
+
+// Function to poll server status during restart
+function checkApplicationStatus(resultDiv) {
+    const MAX_ATTEMPTS = 30; // Try for up to 30 seconds
+    let attempts = 0;
+    
+    const checkServer = function() {
+        attempts++;
+        
+        fetch('/health_check', { 
+            method: 'GET',
+            headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        })
+        .then(response => {
+            if (response.ok) {
+                // Server is back online!
+                resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check-circle"></i> Application restarted successfully! Refreshing page...</div>';
+                
+                // Refresh the page after a short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                // Server responded but with an error
+                if (attempts < MAX_ATTEMPTS) {
+                    setTimeout(checkServer, 1000);
+                } else {
+                    handleTimeout(resultDiv);
+                }
+            }
+        })
+        .catch(error => {
+            // Server is still down, or network error
+            if (attempts < MAX_ATTEMPTS) {
+                setTimeout(checkServer, 1000);
+            } else {
+                handleTimeout(resultDiv);
+            }
+        });
+    };
+    
+    // Function to handle timeout case
+    const handleTimeout = function(resultDiv) {
+        resultDiv.innerHTML = `
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i> The application is taking longer than expected to restart.
+                <button class="btn btn-sm btn-primary mt-2" onclick="window.location.reload()">
+                    Refresh Now
+                </button>
+            </div>
+        `;
+    };
+    
+    // Start polling after a short delay
+    setTimeout(checkServer, 2000);
+}
+
+// Function to clear the refresh log
+function clearRefreshLog() {
+    const refreshLog = document.getElementById('refreshLog');
+    if (refreshLog) {
+        refreshLog.innerHTML = '<div class="text-muted">-- Log will appear here during refresh/restart operations --</div>';
+    }
+}
+
+// Initialize drop zone for YAML upload
+function setupDropZone() {
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('yamlFileInput');
+    const uploadButton = document.getElementById('uploadYaml');
+    
+    if (!dropZone || !fileInput) return;
+    
+    dropZone.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+            updateDropZoneThumbnail(dropZone, fileInput.files[0]);
+            if (uploadButton) uploadButton.disabled = false;
+        }
+    });
+    
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drop-zone-dragover');
+    });
+    
+    ['dragleave', 'dragend'].forEach(type => {
+        dropZone.addEventListener(type, () => {
+            dropZone.classList.remove('drop-zone-dragover');
+        });
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            updateDropZoneThumbnail(dropZone, e.dataTransfer.files[0]);
+            if (uploadButton) uploadButton.disabled = false;
+        }
+        
+        dropZone.classList.remove('drop-zone-dragover');
+    });
+    
+    // Add YAML upload functionality
+    if (uploadButton) {
+        uploadButton.addEventListener('click', function() {
+            const file = fileInput.files[0];
+            if (file) {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const resultDiv = document.getElementById('yamlResult');
+                if (resultDiv) resultDiv.innerHTML = '<div class="spinner-border text-primary" role="status"></div> Applying YAML...';
+                
+                fetch('/upload_yaml', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (resultDiv) {
+                        if (data.error) {
+                            resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                        } else {
+                            resultDiv.innerHTML = `<div class="alert alert-success">YAML applied successfully!</div><pre>${data.output}</pre>`;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error uploading YAML:', error);
+                    if (resultDiv) {
+                        resultDiv.innerHTML = `<div class="alert alert-danger">Error uploading YAML: ${error.message}</div>`;
+                    }
+                });
+            }
+        });
+    }
+}
+
+// Update thumbnail for drop zone
+function updateDropZoneThumbnail(dropZone, file) {
+    const prompt = dropZone.querySelector('.drop-zone__prompt');
+    if (prompt) {
+        prompt.style.display = 'none';
+    }
+    
+    let thumbnail = dropZone.querySelector('.drop-zone__thumb');
+    if (!thumbnail) {
+        thumbnail = document.createElement('div');
+        thumbnail.classList.add('drop-zone__thumb');
+        dropZone.appendChild(thumbnail);
+    }
+    
+    // Set the file name
+    thumbnail.textContent = file.name;
+    
+    // If it's an image, show preview (optional for YAML files)
+    if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = () => {
+            thumbnail.style.backgroundImage = `url('${reader.result}')`;
+            thumbnail.textContent = '';
+        };
+        reader.readAsDataURL(file);
+    } else {
+        thumbnail.style.backgroundImage = '';
+    }
+}
+
+// Fetch namespaces for events tab
+function fetchNamespaces() {
+    const namespaceSelect = document.getElementById('namespaceSelect');
+    if (!namespaceSelect) return;
+    
+    fetch('/get_namespaces')
+        .then(response => response.json())
+        .then(data => {
+            if (data.namespaces) {
+                // Clear existing options except the first one
+                while (namespaceSelect.options.length > 1) {
+                    namespaceSelect.remove(1);
+                }
+                
+                // Add namespaces
+                data.namespaces.forEach(namespace => {
+                    const option = document.createElement('option');
+                    option.value = namespace;
+                    option.textContent = namespace;
+                    namespaceSelect.appendChild(option);
+                });
+                
+                // Set up event listener for selection changes
+                if (!namespaceSelect.hasEventListener) {
+                    namespaceSelect.addEventListener('change', function() {
+                        if (this.value) {
+                            fetchEventsByNamespace(this.value);
+                        }
+                    });
+                    namespaceSelect.hasEventListener = true;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching namespaces:', error);
+        });
+}
+
+// Fetch events for a specific namespace
+function fetchEventsByNamespace(namespace) {
+    const eventsLoading = document.getElementById('eventsLoading');
+    const eventsTable = document.getElementById('eventsTable');
+    
+    if (eventsLoading) eventsLoading.style.display = 'flex';
+    if (eventsTable) eventsTable.style.display = 'none';
+    
+    fetch('/get_events', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `namespace=${namespace}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Assuming the response has events in a similar format to resources
+        if (eventsLoading) eventsLoading.style.display = 'none';
+        if (eventsTable) {
+            eventsTable.style.display = 'table';
+            const tbody = eventsTable.querySelector('tbody');
+            if (tbody && data.events) {
+                tbody.innerHTML = '';
+                data.events.forEach(event => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${event.namespace || namespace}</td>
+                        <td>${event.type || '-'}</td>
+                        <td>${event.reason || '-'}</td>
+                        <td>${event.object || '-'}</td>
+                        <td>${event.message || '-'}</td>
+                        <td>${event.age || '-'}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+                
+                if (data.events.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center">No events found in namespace ${namespace}</td></tr>`;
+                }
+            } else {
+                const tbody = eventsTable.querySelector('tbody');
+                if (tbody) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center">No events data available</td></tr>`;
+                }
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching events:', error);
+        if (eventsLoading) eventsLoading.style.display = 'none';
+        if (eventsTable) {
+            eventsTable.style.display = 'table';
+            const tbody = eventsTable.querySelector('tbody');
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Error loading events: ${error.message}</td></tr>`;
+            }
+        }
+    });
+}
+
+// Check Git availability for settings page
+function checkGitAvailability() {
+    fetch('/git_status')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.available) {
+                // Show a warning if Git is not available
+                const githubResult = document.getElementById('githubResult');
+                if (githubResult) {
+                    githubResult.innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i> Git functionality is not available.
+                            <p>Please ensure git is installed on the server and properly configured.</p>
+                        </div>
+                    `;
+                }
+                
+                // Disable Git-related buttons
+                const updateFromGithubBtn = document.getElementById('updateFromGithub');
+                if (updateFromGithubBtn) updateFromGithubBtn.disabled = true;
+            }
+        })
+        .catch(error => {
+            console.error('Error checking Git availability:', error);
+        });
+}
+
+// Add resource controls to resource tabs
+function initializeResourceControls() {
+    const resourceTabs = document.querySelectorAll('.resource-tab');
+    resourceTabs.forEach(tab => {
+        const resourceType = tab.getAttribute('data-tab');
+        // Set up event listener if not already set
+        if (!tab.hasClickListener) {
+            tab.addEventListener('click', function() {
+                // Only fetch data if not already loaded
+                if (!window.loadedResources || !window.loadedResources[resourceType]) {
+                    loadResourceData(resourceType);
+                }
+            });
+            tab.hasClickListener = true;
+        }
+    });
+
+    // Set up refresh button
+    const refreshBtn = document.getElementById('refreshTableBtn');
+    if (refreshBtn && !refreshBtn.hasClickListener) {
+        refreshBtn.addEventListener('click', function() {
+            const activeTab = document.querySelector('.custom-tab.active');
+            if (activeTab) {
+                const resourceType = activeTab.getAttribute('data-tab');
+                // Force refresh by clearing the cached data
+                if (window.loadedResources) {
+                    delete window.loadedResources[resourceType];
+                }
+                loadResourceData(resourceType);
+            }
+        });
+        refreshBtn.hasClickListener = true;
+    }
+
+    // Set up search input
+    const searchInput = document.getElementById('resourceSearchInput');
+    if (searchInput && !searchInput.hasInputListener) {
+        searchInput.addEventListener('input', function() {
+            filterResourceTable(this.value);
+        });
+        searchInput.hasInputListener = true;
+    }
+}
+
+// Initialize the application
+function initializeApp() {
+    // Track loaded resources to avoid unnecessary reloading
+    window.loadedResources = window.loadedResources || {};
+    
+    // Initialize components
+    initializeResourceControls();
+    setupDropZone();
+    fetchNamespaces();
+    checkGitAvailability();
+    
+    // Set up Socket.IO event listeners for refresh log
+    if (window.app && window.app.socket) {
+        const refreshLog = document.getElementById('refreshLog');
+        if (refreshLog) {
+            window.app.socket.on('refresh_log', function(data) {
+                const logEntry = document.createElement('div');
+                const timestamp = new Date().toLocaleTimeString();
+                
+                // Set class based on status
+                if (data.status === 'error') {
+                    logEntry.className = 'text-danger';
+                } else if (data.status === 'warning') {
+                    logEntry.className = 'text-warning';
+                } else if (data.status === 'success') {
+                    logEntry.className = 'text-success';
+                } else {
+                    logEntry.className = 'text-info';
+                }
+                
+                logEntry.innerHTML = `[${timestamp}] ${data.message}`;
+                refreshLog.appendChild(logEntry);
+                
+                // Auto-scroll to the bottom
+                refreshLog.scrollTop = refreshLog.scrollHeight;
+            });
+        }
+    } else {
+        console.warn('Socket.IO not available for event listeners');
+    }
+}
+
+// Utility - Capitalize first letter
+function capitalizeFirstLetter(string) {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+// Initialize the application when the DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    initializeApp();
+    
+    // Set up page visibility change detection
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            // Check if the active tab needs to be refreshed
+            const activeTab = document.querySelector('.custom-tab.active');
+            if (activeTab) {
+                const resourceType = activeTab.getAttribute('data-tab');
+                // Only refresh if we haven't loaded this resource yet
+                if (!window.loadedResources || !window.loadedResources[resourceType]) {
+                    loadResourceData(resourceType);
+                }
+            }
+        }
+    });
+}); 
