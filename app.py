@@ -23,15 +23,10 @@ socketio = SocketIO(app)
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
 
-def run_kubectl_command(command, interactive=False):
+def run_kubectl_command(command):
     try:
-        if interactive:
-            # For interactive sessions, just return the command to be executed in a terminal
-            return command
-        else:
-            # For non-interactive sessions, capture output
-            result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            return result.stdout.decode('utf-8')
+        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return result.stdout.decode('utf-8')
     except subprocess.CalledProcessError as e:
         return f"Error: {e.stderr.decode('utf-8')}"
 
@@ -50,81 +45,6 @@ def get_resources():
         return jsonify(format='table', data=resources)
     except json.JSONDecodeError:
         return jsonify(format='error', message=f"Unable to fetch {resource_type}")
-
-@app.route('/api/metrics/pods_count', methods=['GET'])
-def get_pods_count():
-    command = "kubectl get pods -A -o json"
-    output = run_kubectl_command(command)
-    
-    try:
-        pods_data = json.loads(output)
-        pods_count = len(pods_data.get('items', []))
-        return jsonify(count=pods_count)
-    except json.JSONDecodeError:
-        return jsonify(count=0)
-
-@app.route('/api/metrics/vcpu_count', methods=['GET'])
-def get_vcpu_count():
-    command = "kubectl get pods -A -o json"
-    output = run_kubectl_command(command)
-    
-    total_vcpu = 0
-    try:
-        pods_data = json.loads(output)
-        for pod in pods_data.get('items', []):
-            for container in pod.get('spec', {}).get('containers', []):
-                resources = container.get('resources', {})
-                requests = resources.get('requests', {})
-                limits = resources.get('limits', {})
-                
-                # Try to get CPU from requests, then limits
-                cpu_value = requests.get('cpu') or limits.get('cpu') or '0'
-                
-                # Convert CPU value to a number
-                if cpu_value.endswith('m'):
-                    # Convert milliCPU to CPU
-                    cpu_num = int(cpu_value[:-1]) / 1000
-                else:
-                    # Handle values like '1' or '0.5'
-                    try:
-                        cpu_num = float(cpu_value)
-                    except ValueError:
-                        cpu_num = 0
-                        
-                total_vcpu += cpu_num
-                
-        return jsonify(count=round(total_vcpu, 1))
-    except json.JSONDecodeError:
-        return jsonify(count=0)
-
-@app.route('/api/metrics/gpu_count', methods=['GET'])
-def get_gpu_count():
-    command = "kubectl get pods -A -o json"
-    output = run_kubectl_command(command)
-    
-    total_gpus = 0
-    try:
-        pods_data = json.loads(output)
-        for pod in pods_data.get('items', []):
-            for container in pod.get('spec', {}).get('containers', []):
-                resources = container.get('resources', {})
-                requests = resources.get('requests', {})
-                limits = resources.get('limits', {})
-                
-                # Look for NVIDIA GPU resources
-                for resource_type in ['nvidia.com/gpu', 'amd.com/gpu']:
-                    gpu_value = requests.get(resource_type) or limits.get(resource_type) or '0'
-                    
-                    try:
-                        gpu_num = int(gpu_value)
-                    except ValueError:
-                        gpu_num = 0
-                        
-                    total_gpus += gpu_num
-                
-        return jsonify(count=total_gpus)
-    except json.JSONDecodeError:
-        return jsonify(count=0)
 
 @app.route('/run_action', methods=['POST'])
 def run_action():
@@ -164,23 +84,6 @@ def run_cli_command():
     thread = threading.Thread(target=run_command, args=(command, sid))
     thread.start()
     return jsonify(success=True)
-
-@socketio.on('run_cli_command')
-def handle_cli_command(data):
-    command = data.get('command', '')
-    is_interactive = data.get('interactive', False)
-    
-    if command:
-        if is_interactive:
-            # For interactive sessions, we'll start a pseudo-terminal session
-            # Send command back to client to initiate the session
-            emit('terminal_command', {'command': command})
-        else:
-            # Normal command execution with output
-            output = run_kubectl_command(command)
-            emit('output', {'data': output + '\n'})
-    else:
-        emit('output', {'data': 'Error: No command provided\n'})
 
 @app.route('/upload_yaml', methods=['POST'])
 def upload_yaml():
@@ -323,31 +226,17 @@ def api_pod_exec():
             namespace = data.get('namespace')
             pod_name = data.get('pod_name')
             command = data.get('command', 'ps aux')
-            interactive = data.get('interactive', False)
         else:
             namespace = request.form['namespace']
             pod_name = request.form['pod_name']
             command = request.form.get('command', 'ps aux')
-            interactive = request.form.get('interactive', 'false').lower() == 'true'
             
         if not namespace or not pod_name:
             return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
             
-        if interactive:
-            # For interactive shell, try bash first, fallback to sh if needed
-            bash_cmd = f"kubectl exec -it {pod_name} -n {namespace} -- bash"
-            sh_cmd = f"kubectl exec -it {pod_name} -n {namespace} -- /bin/sh"
-            # Return both commands for the client to try
-            return jsonify({
-                "interactive": True,
-                "bash_command": bash_cmd,
-                "sh_command": sh_cmd
-            })
-        else:
-            # For regular commands, execute and return output
-            kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
-            output = run_kubectl_command(kubectl_command)
-            return jsonify({"output": output})
+        kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
+        output = run_kubectl_command(kubectl_command)
+        return jsonify({"output": output})
     except Exception as e:
         app.logger.error(f"Error in api_pod_exec: {str(e)}")
         return jsonify({"error": str(e)}), 500

@@ -4,167 +4,243 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}HPE Private Cloud AI Resource Manager{% endblock %}</title>
-    
     <!-- CSS Files -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/dashboard.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='js/xterm/xterm.css') }}" rel="stylesheet" />
+    <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet" />
     
-    <!-- Core JavaScript Libraries -->
+    <!-- Core JavaScript Libraries - No defer to ensure they load first -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
-    <!-- Socket.IO and Terminal -->
+    <!-- Load Socket.IO and Terminal directly to ensure they're available -->
     <script src="{{ url_for('static', filename='js/socket.io/socket.io.js') }}"></script>
     <script src="{{ url_for('static', filename='js/xterm/xterm.js') }}"></script>
     
-    <!-- Initialize Socket.IO -->
-    <script>
-        // Initialize Socket.IO connection
-        document.addEventListener('DOMContentLoaded', function() {
-            try {
-                window.app = window.app || {};
-                window.app.socket = io();
-                
-                // Set up basic Socket.IO event listeners
-                window.app.socket.on('connect', function() {
-                    console.log('Socket.IO connected');
-                });
-                
-                window.app.socket.on('disconnect', function() {
-                    console.log('Socket.IO disconnected');
-                });
-                
-                window.app.socket.on('error', function(error) {
-                    console.error('Socket.IO error:', error);
-                });
-                
-                // Initialize sidebar toggle
-                const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
-                const sidebar = document.querySelector('.sidebar');
-                const mainContent = document.querySelector('.main-content');
-                
-                if (sidebarToggleBtn) {
-                    sidebarToggleBtn.addEventListener('click', function() {
-                        sidebar.classList.toggle('sidebar-collapsed');
-                        mainContent.classList.toggle('main-content-expanded');
-                    });
-                }
-                
-                // Initialize bootstrap tabs manually instead of using data attributes
-                document.querySelectorAll('.sidebar-nav-link').forEach(navLink => {
-                    navLink.addEventListener('click', function(e) {
-                        e.preventDefault(); // Prevent default anchor behavior
-                        
-                        // Remove active class from all sidebar links
-                        document.querySelectorAll('.sidebar-nav-link').forEach(link => {
-                            link.classList.remove('active');
-                        });
-                        
-                        // Add active class to clicked link
-                        this.classList.add('active');
-                        
-                        // Get target tab ID
-                        const tabId = this.getAttribute('data-bs-target').substring(1); // Remove the # character
-                        
-                        // Hide all tab panes
-                        document.querySelectorAll('.tab-pane').forEach(pane => {
-                            pane.classList.remove('show', 'active');
-                        });
-                        
-                        // Show the selected tab pane
-                        const targetPane = document.getElementById(tabId);
-                        if (targetPane) {
-                            targetPane.classList.add('show', 'active');
-                        }
-                        
-                        // Call specific initialization functions if needed
-                        if (this.id === 'homeLink') {
-                            if (typeof initializeHomePage === 'function') {
-                                setTimeout(initializeHomePage, 100);
-                            }
-                        } else if (this.id === 'cliLink') {
-                            if (typeof initializeTerminal === 'function') {
-                                setTimeout(initializeTerminal, 100);
-                            }
-                        }
-                    });
-                });
-                
-                // Activate the default tab (home) if we're on the main page
-                if (window.location.pathname === '/') {
-                    document.getElementById('homeLink').click();
-                }
-            } catch (e) {
-                console.error('Failed to initialize Socket.IO:', e);
-            }
-        });
-    </script>
-    
-    <!-- Main Dashboard JavaScript -->
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-    
+    <!-- Style definitions remain the same -->
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+        .logo-container {
+            background-color: white;
+            border-radius: 50%;
+            width: 100px;
+            height: 100px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px auto;
+        }
+        .logo-container img {
+            max-width: 80%;
+            max-height: 80%;
+        }
+        .sidebar {
+            height: 100vh;
+            background-color: #01a982;
+            transition: width 0.3s ease;
+            width: 60px;
+            overflow: hidden;
+        }
+        .sidebar:hover {
+            width: 250px;
+        }
+        .sidebar .nav-link {
+            color: white;
+            white-space: nowrap;
+        }
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            color: white;
+            width: 20px;
+        }
+        .logo {
+            height: 50px;
+            object-fit: contain;
+        }
+        .status-icon {
+            margin-right: 5px;
+        }
+        .status-running { color: #28a745; }
+        .status-pending { color: #ffc107; }
+        .status-failed { color: #dc3545; }
+        .status-unknown { color: #6c757d; }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #007bff;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-container, .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+        }
+        .header {
+            background-color: #01a982;
+            color: white;
+            padding: 15px 0;
+            margin-bottom: 20px;
+        }
+        .tab-content {
+            padding: 20px;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 70vh;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .terminal-container {
+            height: 70vh;
+            background-color: #000;
+            color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #terminal {
+            width: 100%;
+            height: 100%;
+        }
+        .command-input {
+            margin-top: 10px;
+            display: flex;
+        }
+        .command-input input {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 20px;
+            width: 480px;
+            font-family: sans-serif;
+            margin: 100px auto;
+            padding: 20px;
+        }
+        .drop-zone--over {
+            border-style: solid;
+        }
+        .drop-zone__prompt {
+            color: #999;
+            font-size: 20px;
+            text-align: center;
+            padding: 20px;
+        }
+        .drop-zone__input {
+            display: none;
+        }
+        .drop-zone__thumb {
+            width: 100%;
+            height: 150px;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #cccccc;
+            background-size: cover;
+            position: relative;
+        }
+        .drop-zone__thumb::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 5px 0;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.75);
+            font-size: 14px;
+            text-align: center;
+        }
+        #main-content {
+            min-height: 100vh;
+        }
+        #app-content {
+            display: none;
+        }
+    </style>
     {% block additional_styles %}{% endblock %}
 </head>
 <body>
     <!-- Top Navigation Bar -->
     <nav class="top-navbar">
-        <div class="top-navbar-brand">
-            <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
-            <span><b>HPE Private Cloud AI</b> Resource Manager</span>
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
+                <span>HPE Private Cloud AI Resource Manager</span>
+            </a>
+            <div class="ms-auto d-flex align-items-center">
+                <button id="sidebarToggle" class="sidebar-toggle me-2">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
         </div>
     </nav>
 
-    <!-- Sidebar -->
-    <aside class="sidebar">
-        <ul class="sidebar-nav">
-            <li class="sidebar-nav-item">
-                <a href="#home" class="sidebar-nav-link active" id="homeLink" data-bs-toggle="tab" data-bs-target="#home">
-                    <i class="fas fa-home"></i> <span>Home</span>
-                </a>
-            </li>
-            <li class="sidebar-nav-item">
-                <a href="#cli" class="sidebar-nav-link" id="cliLink" data-bs-toggle="tab" data-bs-target="#cli">
-                    <i class="fas fa-terminal"></i> <span>CLI</span>
-                </a>
-            </li>
-            <li class="sidebar-nav-item">
-                <a href="#yaml" class="sidebar-nav-link" id="yamlLink" data-bs-toggle="tab" data-bs-target="#yaml">
-                    <i class="fas fa-file-upload"></i> <span>Upload YAML</span>
-                </a>
-            </li>
-            <li class="sidebar-nav-item">
-                <a href="#events" class="sidebar-nav-link" id="eventsLink" data-bs-toggle="tab" data-bs-target="#events">
-                    <i class="fas fa-clock"></i> <span>Events</span>
-                </a>
-            </li>
-            <li class="sidebar-nav-item">
-                <a href="#settings" class="sidebar-nav-link" id="settingsLink" data-bs-toggle="tab" data-bs-target="#settings">
-                    <i class="fas fa-cog"></i> <span>Settings</span>
-                </a>
-            </li>
-        </ul>
-        <div class="sidebar-toggle" id="sidebar-toggle-btn">
-            <i class="fas fa-chevron-left"></i>
+    <div class="container-fluid p-0">
+        <div class="row g-0">
+            <!-- Sidebar -->
+            <nav class="sidebar" id="sidebar">
+                <div class="position-sticky">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#home" data-bs-toggle="tab" data-bs-target="#home" id="homeLink">
+                                <i class="fas fa-home"></i> <span>Home</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#cli" data-bs-toggle="tab" data-bs-target="#cli">
+                                <i class="fas fa-terminal"></i> <span>CLI</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#yaml" data-bs-toggle="tab" data-bs-target="#yaml">
+                                <i class="fas fa-file-upload"></i> <span>Upload YAML</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#events" data-bs-toggle="tab" data-bs-target="#events">
+                                <i class="fa fa-clock-o"></i> <span>Events</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#settings" data-bs-toggle="tab" data-bs-target="#settings">
+                                <i class="fas fa-cog"></i> <span>Settings</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Main content -->
+            <main class="main-content" id="main-content">
+                {% block content %}{% endblock %}
+            </main>
         </div>
-    </aside>
+    </div>
 
-    <!-- Main Content -->
-    <main class="main-content">
-        {% block content %}{% endblock %}
-    </main>
-
-    <!-- Action Modal -->
+    <!-- Modal for displaying action results -->
     <div class="modal fade" id="actionModal" tabindex="-1" aria-labelledby="actionModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
-            <div class="modal-content custom-modal">
-                <div class="modal-header custom-modal-header">
+            <div class="modal-content">
+                <div class="modal-header">
                     <h5 class="modal-title" id="actionModalLabel">Action Result</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body custom-modal-body">
-                    <div id="actionLoading" class="loading-container" style="display: none;">
+                <div class="modal-body">
+                    <div id="actionLoading" class="loading" style="display: none;">
                         <div class="spinner"></div>
                     </div>
                     <pre id="actionResult"></pre>
@@ -173,7 +249,7 @@
         </div>
     </div>
 
-    <!-- Loading Overlay -->
+    <!-- Loading indicator for scripts -->
     <div id="loading-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; display: flex; justify-content: center; align-items: center; color: white; font-size: 20px;">
         <div class="text-center">
             <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;"></div>
@@ -181,27 +257,147 @@
         </div>
     </div>
 
-    <!-- Base Action Script -->
+    <!-- Base utilities script -->
     <script>
-        // Global app state
-        window.app = {
-            socket: io(),
-            terminal: null
-        };
-        
-        // Function to navigate to explore page
-        function navigateToExplore(url) {
-            window.location.href = url;
+        // Basic utility functions that don't depend on external libraries
+        function getStatusIcon(status) {
+            switch (status.toLowerCase()) {
+                case 'running':
+                    return '<i class="fas fa-check-circle status-icon status-running"></i>';
+                case 'pending':
+                    return '<i class="fas fa-clock status-icon status-pending"></i>';
+                case 'failed':
+                    return '<i class="fas fa-times-circle status-icon status-failed"></i>';
+                default:
+                    return '<i class="fas fa-question-circle status-icon status-unknown"></i>';
+            }
         }
         
-        // Function to run action on a resource
-        function runAction(action, resourceType, namespace, name) {
-            // Close any open action menus
-            document.querySelectorAll('.action-menu-dropdown').forEach(dropdown => {
-                dropdown.remove();
+        // Script loading utilities 
+        function loadScript(url, callback) {
+            const script = document.createElement('script');
+            script.onload = callback;
+            script.onerror = function() {
+                console.error('Failed to load script:', url);
+                if (callback) callback(new Error(`Failed to load script: ${url}`));
+            };
+            script.src = url;
+            document.body.appendChild(script);
+        }
+
+        // Track loaded scripts - set Socket.IO and Terminal to true since we're loading them directly
+        window.appLoaded = {
+            socketio: true,
+            terminal: true
+        };
+        
+        // Global app state
+        window.app = {
+            socket: null,
+            terminal: null,
+            init: false
+        };
+    </script>
+    
+    <!-- Connect Socket.IO directly -->
+    <script>
+        // Initialize Socket.IO connection - no need to load the script
+        try {
+            window.app.socket = io();
+            console.log('Socket.IO connected');
+        } catch (err) {
+            console.error('Failed to connect Socket.IO:', err);
+        }
+        
+        // Hide loading overlay since we're loading scripts directly
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('loading-overlay').style.display = 'none';
+        });
+        
+        // Navigation related code
+        document.addEventListener('DOMContentLoaded', function() {
+            // Intercept clicks on pod explore links
+            document.body.addEventListener('click', function(e) {
+                const target = e.target.closest('a[href^="/explore/"]');
+                if (target) {
+                    e.preventDefault();
+                    const href = target.getAttribute('href');
+                    navigateToExplore(href);
+                }
             });
             
-            // Show the action modal
+            // Handle back navigation from the explore page
+            const homeLink = document.getElementById('homeLink');
+            if (homeLink) {
+                homeLink.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    navigateToHome();
+                });
+            }
+        });
+        
+        function navigateToExplore(url) {
+            fetch(url)
+                .then(response => response.text())
+                .then(html => {
+                    // Extract the content from the explore page
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const content = doc.querySelector('#main-content').innerHTML;
+                    
+                    // Store the current page state in history
+                    const currentState = document.getElementById('main-content').innerHTML;
+                    window.history.pushState({content: currentState, page: 'home'}, '', '/');
+                    
+                    // Update the page content and history
+                    document.getElementById('main-content').innerHTML = content;
+                    window.history.pushState({content: content, page: 'explore'}, '', url);
+                    
+                    // Initialize the explore page components
+                    if (typeof initializeExplorePage === 'function') {
+                        initializeExplorePage();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+        
+        function navigateToHome() {
+            fetch('/')
+                .then(response => response.text())
+                .then(html => {
+                    // Extract the content from the home page
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const content = doc.querySelector('#main-content').innerHTML;
+                    
+                    // Update the page content and history
+                    document.getElementById('main-content').innerHTML = content;
+                    window.history.pushState({content: content, page: 'home'}, '', '/');
+                    
+                    // Initialize the home page components
+                    if (typeof initializeHomePage === 'function') {
+                        initializeHomePage();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+        
+        window.addEventListener('popstate', function(event) {
+            if (event.state) {
+                document.getElementById('main-content').innerHTML = event.state.content;
+                if (event.state.page === 'home' && typeof initializeHomePage === 'function') {
+                    initializeHomePage();
+                } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
+                    initializeExplorePage();
+                }
+            }
+        });
+        
+        function runAction(action, resourceType, namespace, name) {
             const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
             actionModal.show();
             
@@ -239,20 +435,10 @@
             .then(response => response.json())
             .then(data => {
                 const actionResult = document.getElementById('actionResult');
-                actionResult.textContent = data.output;
+                // Use pre element to preserve formatting
+                actionResult.innerHTML = `<pre>${data.output}</pre>`;
                 document.getElementById('actionLoading').style.display = 'none';
                 actionResult.style.display = 'block';
-                
-                // If this was a delete action, refresh the resource table after a short delay
-                if (action === 'delete') {
-                    setTimeout(() => {
-                        const activeTab = document.querySelector('.resource-tab.active');
-                        if (activeTab) {
-                            const tabId = activeTab.getAttribute('data-tab');
-                            loadResourceData(tabId);
-                        }
-                    }, 1000);
-                }
             })
             .catch(error => {
                 console.error('Error:', error);
@@ -263,7 +449,34 @@
         }
     </script>
     
-    <!-- Page-specific scripts -->
-    {% block page_scripts %}{% endblock %}
+    <!-- Main Application JavaScript -->
+    <script>
+        // Wait for document to be fully loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Toggle sidebar
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            
+            if (sidebarToggle && sidebar && mainContent) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('collapsed');
+                    mainContent.classList.toggle('expanded');
+                });
+            }
+
+            // Initialize tooltips and popovers
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+
+            const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+            popoverTriggerList.map(function (popoverTriggerEl) {
+                return new bootstrap.Popover(popoverTriggerEl);
+            });
+        });
+    </script>
+    {% block additional_scripts %}{% endblock %}
 </body>
 </html> 
