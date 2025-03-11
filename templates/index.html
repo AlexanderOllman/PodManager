@@ -269,6 +269,21 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Since scripts are loaded in head, we can initialize right away
     initializeApp();
+    
+    // Add page visibility change detection for better navigation handling
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            console.log('Page is now visible, checking resource loading state...');
+            // Check if any tab content is visible but not loaded
+            const activeTabId = document.querySelector('.tab-pane.active').id;
+            if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
+                if (!window.loadedResources || !window.loadedResources[activeTabId]) {
+                    console.log(`Active tab ${activeTabId} not loaded, fetching data...`);
+                    fetchResourceData(activeTabId);
+                }
+            }
+        }
+    });
 });
 
 // Main application initialization
@@ -502,6 +517,18 @@ function fetchResourcesForAllTabs() {
         // If no tab is active, load pods as default
         fetchResourceData('pods');
     }
+    
+    // Set up a failsafe to check if the resources loaded correctly
+    setTimeout(() => {
+        const activeTabId = document.querySelector('.tab-pane.active').id;
+        if (activeTabId && resourceTypes.includes(activeTabId)) {
+            const tableBody = document.querySelector(`#${activeTabId}Table tbody`);
+            if (tableBody && (tableBody.children.length === 0 || !window.loadedResources[activeTabId])) {
+                console.log(`No data found in ${activeTabId} after initial load, retrying...`);
+                fetchResourceData(activeTabId);
+            }
+        }
+    }, 5000);
 }
 
 // Add refresh button and search bar to each resource tab

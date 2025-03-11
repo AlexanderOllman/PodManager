@@ -95,7 +95,8 @@ function initializeExplorePage() {
     // Back button handler that uses SPA navigation
     document.getElementById('backButton').addEventListener('click', function(e) {
         e.preventDefault();
-        navigateToHome();
+        console.log("Returning to home page");
+        window.location.href = '/'; // Use direct navigation instead of SPA
     });
 }
 
