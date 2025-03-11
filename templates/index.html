@@ -3,229 +3,276 @@
 {% block title %}HPE Private Cloud AI Resource Manager{% endblock %}
 
 {% block content %}
-<div class="container-fluid p-0">
-    <!-- Page Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3 mb-0 text-gray-800">Dashboard</h1>
-        <div>
-            <button class="btn btn-sm btn-outline-secondary me-2" id="refreshButton">
-                <i class="fas fa-sync-alt"></i> Refresh
-            </button>
+<div class="content-header">
+    <h1>Dashboard</h1>
+    <p class="text-muted">Monitor and manage your Kubernetes resources</p>
+</div>
+
+<!-- Dashboard Metrics Cards -->
+<div class="dashboard-metrics">
+    <div class="metric-card">
+        <div class="metric-label">Total Pods</div>
+        <div class="metric-value" id="pods-count">-</div>
+        <div class="metric-description">Active pod instances</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Allocated vCPUs</div>
+        <div class="metric-value" id="vcpu-count">-</div>
+        <div class="metric-description">Total vCPU cores in use</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Allocated GPUs</div>
+        <div class="metric-value" id="gpu-count">-</div>
+        <div class="metric-description">Total GPUs assigned to pods</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Reserved</div>
+        <div class="metric-value" id="reserved-metric">-</div>
+        <div class="metric-description">Future metric</div>
+    </div>
+</div>
+
+<!-- Resource Tabs -->
+<div class="resource-table-container">
+    <div class="resource-table-header">
+        <h2>Resources</h2>
+        <div class="custom-tabs">
+            <button class="custom-tab active resource-tab" data-tab="pods">Pods</button>
+            <button class="custom-tab resource-tab" data-tab="services">Services</button>
+            <button class="custom-tab resource-tab" data-tab="inferenceservices">InferenceServices</button>
+            <button class="custom-tab resource-tab" data-tab="deployments">Deployments</button>
+            <button class="custom-tab resource-tab" data-tab="configmaps">ConfigMaps</button>
+            <button class="custom-tab resource-tab" data-tab="secrets">Secrets</button>
         </div>
     </div>
 
-    <!-- Resource Metrics Cards -->
-    <div class="row mb-4" id="metricCards">
-        <!-- Pod Count Card -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="dashboard-card">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="metric-label">Total Pods</div>
-                    <div class="metric-icon">
-                        <i class="fas fa-cube"></i>
-                    </div>
-                </div>
-                <div class="metric-value" id="podCount">0</div>
-                <div class="small text-muted">Active pods across all namespaces</div>
+    <!-- Tab content -->
+    <div class="tab-content">
+        <!-- Pods Tab -->
+        <div class="tab-pane fade show active" id="pods" role="tabpanel">
+            <div class="loading-container" id="podsLoading">
+                <div class="spinner"></div>
+                <p>Loading pods...</p>
             </div>
+            <table class="resource-table" id="podsTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Namespace</th>
+                        <th>Name</th>
+                        <th>Ready</th>
+                        <th>Status</th>
+                        <th>Restarts</th>
+                        <th>Age</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Table content will be dynamically populated -->
+                </tbody>
+            </table>
         </div>
 
-        <!-- vCPU Allocation Card -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="dashboard-card">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="metric-label">Allocated vCPUs</div>
-                    <div class="metric-icon">
-                        <i class="fas fa-microchip"></i>
-                    </div>
-                </div>
-                <div class="metric-value" id="vcpuCount">0</div>
-                <div class="small text-muted">Total vCPUs assigned to pods</div>
+        <!-- Services Tab -->
+        <div class="tab-pane fade" id="services" role="tabpanel">
+            <div class="loading-container" id="servicesLoading">
+                <div class="spinner"></div>
+                <p>Loading services...</p>
             </div>
+            <table class="resource-table" id="servicesTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Namespace</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Cluster-IP</th>
+                        <th>External-IP</th>
+                        <th>Ports</th>
+                        <th>Age</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Table content will be dynamically populated -->
+                </tbody>
+            </table>
         </div>
 
-        <!-- GPU Allocation Card -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="dashboard-card">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="metric-label">Allocated GPUs</div>
-                    <div class="metric-icon">
-                        <i class="fas fa-server"></i>
-                    </div>
-                </div>
-                <div class="metric-value" id="gpuCount">0</div>
-                <div class="small text-muted">Total GPUs assigned to pods</div>
+        <!-- InferenceServices Tab -->
+        <div class="tab-pane fade" id="inferenceservices" role="tabpanel">
+            <div class="loading-container" id="inferenceservicesLoading">
+                <div class="spinner"></div>
+                <p>Loading inference services...</p>
             </div>
+            <table class="resource-table" id="inferenceservicesTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Namespace</th>
+                        <th>Name</th>
+                        <th>URL</th>
+                        <th>Ready</th>
+                        <th>Default Traffic</th>
+                        <th>Canary Traffic</th>
+                        <th>Age</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Table content will be dynamically populated -->
+                </tbody>
+            </table>
         </div>
 
-        <!-- Future Metric Card -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="dashboard-card">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="metric-label">Reserved</div>
-                    <div class="metric-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                </div>
-                <div class="metric-value" id="futureMetric">--</div>
-                <div class="small text-muted">Reserved for future metrics</div>
+        <!-- Deployments Tab -->
+        <div class="tab-pane fade" id="deployments" role="tabpanel">
+            <div class="loading-container" id="deploymentsLoading">
+                <div class="spinner"></div>
+                <p>Loading deployments...</p>
+            </div>
+            <table class="resource-table" id="deploymentsTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Namespace</th>
+                        <th>Name</th>
+                        <th>Ready</th>
+                        <th>Up-to-date</th>
+                        <th>Available</th>
+                        <th>Age</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Table content will be dynamically populated -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ConfigMaps Tab -->
+        <div class="tab-pane fade" id="configmaps" role="tabpanel">
+            <div class="loading-container" id="configmapsLoading">
+                <div class="spinner"></div>
+                <p>Loading config maps...</p>
+            </div>
+            <table class="resource-table" id="configmapsTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Namespace</th>
+                        <th>Name</th>
+                        <th>Age</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Table content will be dynamically populated -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Secrets Tab -->
+        <div class="tab-pane fade" id="secrets" role="tabpanel">
+            <div class="loading-container" id="secretsLoading">
+                <div class="spinner"></div>
+                <p>Loading secrets...</p>
+            </div>
+            <table class="resource-table" id="secretsTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Namespace</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Age</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Table content will be dynamically populated -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- CLI, YAML Upload, Events, and Settings tabs content is left untouched, but would be styled the same way -->
+<div class="tab-content d-none" id="otherTabsContent">
+    <div class="tab-pane fade" id="cli" role="tabpanel" aria-labelledby="cli-tab">
+        <div class="terminal-container">
+            <div id="terminal"></div>
+            <div class="command-input">
+                <input type="text" id="commandInput" class="form-control" placeholder="Enter command...">
+                <button id="runCommand" class="btn btn-primary">Run</button>
             </div>
         </div>
     </div>
-
-    <!-- Resource Management Section -->
-    <div class="card shadow mb-4">
-        <div class="card-header bg-transparent py-3 d-flex justify-content-between align-items-center">
-            <h6 class="m-0 font-weight-bold text-primary">Resource Management</h6>
-            <!-- Resource filter buttons -->
-            <div class="nav nav-tabs card-header-tabs" id="resourceTabs" role="tablist">
-                <button class="nav-link active" id="pods-tab" data-bs-toggle="tab" data-bs-target="#pods" type="button" role="tab" aria-controls="pods" aria-selected="true">Pods</button>
-                <button class="nav-link" id="services-tab" data-bs-toggle="tab" data-bs-target="#services" type="button" role="tab" aria-controls="services" aria-selected="false">Services</button>
-                <button class="nav-link" id="inferenceservices-tab" data-bs-toggle="tab" data-bs-target="#inferenceservices" type="button" role="tab" aria-controls="inferenceservices" aria-selected="false">InferenceServices</button>
-                <button class="nav-link" id="deployments-tab" data-bs-toggle="tab" data-bs-target="#deployments" type="button" role="tab" aria-controls="deployments" aria-selected="false">Deployments</button>
-                <button class="nav-link" id="configmaps-tab" data-bs-toggle="tab" data-bs-target="#configmaps" type="button" role="tab" aria-controls="configmaps" aria-selected="false">ConfigMaps</button>
-                <button class="nav-link" id="secrets-tab" data-bs-toggle="tab" data-bs-target="#secrets" type="button" role="tab" aria-controls="secrets" aria-selected="false">Secrets</button>
-            </div>
+    
+    <div class="tab-pane fade" id="yaml" role="tabpanel" aria-labelledby="yaml-tab">
+        <div class="drop-zone" id="dropZone">
+            <span class="drop-zone__prompt">Drop YAML file here or click to upload</span>
+            <input type="file" name="yamlFile" class="drop-zone__input" id="yamlFileInput">
         </div>
-        <div class="card-body p-0">
-            <div class="tab-content" id="resourceTabsContent">
-                <div class="tab-pane fade show active" id="pods" role="tabpanel" aria-labelledby="pods-tab">
-                    <div class="loading-container" id="podsLoading">
-                        <div class="spinner"></div>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="resource-table" id="podsTable">
-                            <thead>
-                                <tr>
-                                    <th>Namespace</th>
-                                    <th>Name</th>
-                                    <th>Ready</th>
-                                    <th>Status</th>
-                                    <th>Restarts</th>
-                                    <th>Age</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Table content will be dynamically populated -->
-                            </tbody>
-                        </table>
-                    </div>
+        <div class="mt-3 text-center">
+            <button id="uploadYaml" class="btn btn-primary" disabled>Apply YAML</button>
+        </div>
+        <div id="yamlResult" class="mt-3"></div>
+    </div>
+    
+    <div class="tab-pane fade" id="events" role="tabpanel" aria-labelledby="events-tab">
+        <div class="form-group mb-3">
+            <label for="namespaceSelect">Namespace:</label>
+            <select id="namespaceSelect" class="form-control">
+                <option value="all">All Namespaces</option>
+            </select>
+        </div>
+        <div class="loading-container" id="eventsLoading">
+            <div class="spinner"></div>
+        </div>
+        <div class="table-responsive">
+            <table class="resource-table" id="eventsTable">
+                <thead>
+                    <tr>
+                        <th>Namespace</th>
+                        <th>Type</th>
+                        <th>Reason</th>
+                        <th>Object</th>
+                        <th>Message</th>
+                        <th>Age</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Table content will be dynamically populated -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
+        <div class="card">
+            <div class="card-header">
+                Application Settings
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">GitHub Integration</h5>
+                <p class="card-text">Update the application from a GitHub repository:</p>
+                <div class="mb-3">
+                    <label for="githubRepoUrl" class="form-label">GitHub Repository URL:</label>
+                    <input type="text" class="form-control" id="githubRepoUrl" value="{{ github_repo_url }}">
                 </div>
-                <div class="tab-pane fade" id="services" role="tabpanel" aria-labelledby="services-tab">
-                    <div class="loading-container" id="servicesLoading">
-                        <div class="spinner"></div>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="resource-table" id="servicesTable">
-                            <thead>
-                                <tr>
-                                    <th>Namespace</th>
-                                    <th>Name</th>
-                                    <th>Type</th>
-                                    <th>Cluster-IP</th>
-                                    <th>External-IP</th>
-                                    <th>Ports</th>
-                                    <th>Age</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Table content will be dynamically populated -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="tab-pane fade" id="inferenceservices" role="tabpanel" aria-labelledby="inferenceservices-tab">
-                    <div class="loading-container" id="inferenceLoading">
-                        <div class="spinner"></div>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="resource-table" id="inferenceservicesTable">
-                            <thead>
-                                <tr>
-                                    <th>Namespace</th>
-                                    <th>Name</th>
-                                    <th>URL</th>
-                                    <th>Ready</th>
-                                    <th>Default Traffic</th>
-                                    <th>Canary Traffic</th>
-                                    <th>Age</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Table content will be dynamically populated -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="tab-pane fade" id="deployments" role="tabpanel" aria-labelledby="deployments-tab">
-                    <div class="loading-container" id="deploymentsLoading">
-                        <div class="spinner"></div>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="resource-table" id="deploymentsTable">
-                            <thead>
-                                <tr>
-                                    <th>Namespace</th>
-                                    <th>Name</th>
-                                    <th>Ready</th>
-                                    <th>Up-to-date</th>
-                                    <th>Available</th>
-                                    <th>Age</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Table content will be dynamically populated -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="tab-pane fade" id="configmaps" role="tabpanel" aria-labelledby="configmaps-tab">
-                    <div class="loading-container" id="configmapsLoading">
-                        <div class="spinner"></div>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="resource-table" id="configmapsTable">
-                            <thead>
-                                <tr>
-                                    <th>Namespace</th>
-                                    <th>Name</th>
-                                    <th>Data</th>
-                                    <th>Age</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Table content will be dynamically populated -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="tab-pane fade" id="secrets" role="tabpanel" aria-labelledby="secrets-tab">
-                    <div class="loading-container" id="secretsLoading">
-                        <div class="spinner"></div>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="resource-table" id="secretsTable">
-                            <thead>
-                                <tr>
-                                    <th>Namespace</th>
-                                    <th>Name</th>
-                                    <th>Type</th>
-                                    <th>Data</th>
-                                    <th>Age</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Table content will be dynamically populated -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <button id="updateFromGithub" class="btn btn-primary">Update from GitHub</button>
+                <div id="githubResult" class="mt-3"></div>
+                
+                <hr>
+                
+                <h5 class="card-title">Application Control</h5>
+                <p class="card-text">Manage the application:</p>
+                <button id="refreshApp" class="btn btn-secondary me-2">Refresh Application</button>
+                <button id="restartApp" class="btn btn-danger">Restart Application</button>
+                <div id="appControlResult" class="mt-3"></div>
+                
+                <hr>
+                
+                <h5 class="card-title">About</h5>
+                <p class="card-text">
+                    HPE Private Cloud AI Resource Manager<br>
+                    A Kubernetes resource management dashboard.
+                </p>
             </div>
         </div>
     </div>
@@ -234,358 +281,40 @@
 
 {% block page_scripts %}
 <script>
-    // Function to format resource age
-    function formatAge(date) {
-        const now = new Date();
-        const created = new Date(date);
-        const diffMs = now - created;
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-        
-        if (diffDays > 0) {
-            return `${diffDays}d${diffHours}h`;
-        } else if (diffHours > 0) {
-            return `${diffHours}h${diffMinutes}m`;
-        } else {
-            return `${diffMinutes}m`;
-        }
-    }
-    
-    // Function to create action dropdown
-    function createActionDropdown(resourceType, namespace, name) {
-        return `
-            <div class="dropdown">
-                <button class="btn btn-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="fas fa-ellipsis-v"></i>
-                </button>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}'); return false;"><i class="fas fa-info-circle me-2"></i>Describe</a></li>
-                    ${resourceType === 'pod' ? `<li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}'); return false;"><i class="fas fa-list-alt me-2"></i>Logs</a></li>` : ''}
-                    ${resourceType === 'pod' ? `<li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}'); return false;"><i class="fas fa-terminal me-2"></i>Processes</a></li>` : ''}
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item text-danger" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}'); return false;"><i class="fas fa-trash-alt me-2"></i>Delete</a></li>
-                </ul>
-            </div>
-        `;
-    }
-    
-    // Function to update the metrics at the top of the dashboard
-    function updateMetrics(resources) {
-        // Update pod count
-        const podCount = document.getElementById('podCount');
-        if (podCount && resources && resources.pods) {
-            podCount.textContent = resources.pods.items.length;
-        }
-        
-        // Calculate vCPU count
-        const vcpuCount = document.getElementById('vcpuCount');
-        if (vcpuCount && resources && resources.pods) {
-            let totalCPU = 0;
-            resources.pods.items.forEach(pod => {
-                if (pod.spec && pod.spec.containers) {
-                    pod.spec.containers.forEach(container => {
-                        if (container.resources && container.resources.requests && container.resources.requests.cpu) {
-                            const cpu = container.resources.requests.cpu;
-                            // Convert millicores to cores (e.g., "500m" -> 0.5)
-                            if (typeof cpu === 'string' && cpu.endsWith('m')) {
-                                totalCPU += parseInt(cpu.slice(0, -1)) / 1000;
-                            }
-                            // Convert cores as strings to numbers (e.g., "2" -> 2)
-                            else if (typeof cpu === 'string') {
-                                totalCPU += parseFloat(cpu);
-                            }
-                            // Handle numeric values
-                            else if (typeof cpu === 'number') {
-                                totalCPU += cpu;
-                            }
-                        }
-                    });
-                }
-            });
-            vcpuCount.textContent = totalCPU.toFixed(1);
-        }
-        
-        // Calculate GPU count
-        const gpuCount = document.getElementById('gpuCount');
-        if (gpuCount && resources && resources.pods) {
-            let totalGPU = 0;
-            resources.pods.items.forEach(pod => {
-                if (pod.spec && pod.spec.containers) {
-                    pod.spec.containers.forEach(container => {
-                        // Check for NVIDIA GPUs
-                        if (container.resources && container.resources.limits) {
-                            const nvidiaSetting = container.resources.limits['nvidia.com/gpu'];
-                            if (nvidiaSetting) {
-                                totalGPU += parseInt(nvidiaSetting);
-                            }
-                        }
-                    });
-                }
-            });
-            gpuCount.textContent = totalGPU;
-        }
-    }
-    
-    // Function to populate pods table
-    function populatePodsTable(data) {
-        const tbody = document.querySelector('#podsTable tbody');
-        tbody.innerHTML = '';
-        
-        if (!data || !data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4">No pods found</td></tr>';
-            return;
-        }
-        
-        data.items.forEach(item => {
-            const row = document.createElement('tr');
-            
-            // Get container statuses to determine ready state
-            const containerCount = item.spec.containers.length;
-            let readyCount = 0;
-            let restartCount = 0;
-            
-            if (item.status.containerStatuses) {
-                item.status.containerStatuses.forEach(container => {
-                    if (container.ready) readyCount++;
-                    restartCount += container.restartCount;
-                });
-            }
-            
-            // Create table row
-            row.innerHTML = `
-                <td>${item.metadata.namespace}</td>
-                <td><a href="/explore/${item.metadata.namespace}/${item.metadata.name}">${item.metadata.name}</a></td>
-                <td>${readyCount}/${containerCount}</td>
-                <td>${getStatusIcon(item.status.phase)}</td>
-                <td>${restartCount}</td>
-                <td>${formatAge(item.metadata.creationTimestamp)}</td>
-                <td>${createActionDropdown('pod', item.metadata.namespace, item.metadata.name)}</td>
-            `;
-            
-            tbody.appendChild(row);
-        });
-    }
-    
-    // Function to populate services table
-    function populateServicesTable(data) {
-        const tbody = document.querySelector('#servicesTable tbody');
-        tbody.innerHTML = '';
-        
-        if (!data || !data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4">No services found</td></tr>';
-            return;
-        }
-        
-        data.items.forEach(item => {
-            const row = document.createElement('tr');
-            
-            // Format ports
-            let ports = '';
-            if (item.spec.ports) {
-                ports = item.spec.ports.map(port => {
-                    return `${port.port}${port.name ? ` (${port.name})` : ''}${port.nodePort ? ` → ${port.nodePort}` : ''}`;
-                }).join(', ');
-            }
-            
-            // Create table row
-            row.innerHTML = `
-                <td>${item.metadata.namespace}</td>
-                <td>${item.metadata.name}</td>
-                <td>${item.spec.type}</td>
-                <td>${item.spec.clusterIP}</td>
-                <td>${item.status.loadBalancer && item.status.loadBalancer.ingress ? 
-                    item.status.loadBalancer.ingress.map(ing => ing.ip || ing.hostname).join(', ') : 
-                    '<span class="text-muted">-</span>'}</td>
-                <td>${ports}</td>
-                <td>${formatAge(item.metadata.creationTimestamp)}</td>
-                <td>${createActionDropdown('service', item.metadata.namespace, item.metadata.name)}</td>
-            `;
-            
-            tbody.appendChild(row);
-        });
-    }
-    
-    // Function to populate inference services table
-    function populateInferenceServicesTable(data) {
-        const tbody = document.querySelector('#inferenceservicesTable tbody');
-        tbody.innerHTML = '';
-        
-        if (!data || !data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4">No inference services found</td></tr>';
-            return;
-        }
-        
-        data.items.forEach(item => {
-            const row = document.createElement('tr');
-            
-            // Create table row
-            row.innerHTML = `
-                <td>${item.metadata.namespace}</td>
-                <td>${item.metadata.name}</td>
-                <td>${item.status && item.status.url ? `<a href="${item.status.url}" target="_blank">${item.status.url}</a>` : '-'}</td>
-                <td>${item.status && item.status.conditions ? getStatusIcon(item.status.conditions[0].status) : getStatusIcon('Unknown')}</td>
-                <td>${item.status && item.status.traffic ? item.status.traffic[0].percent + '%' : '0%'}</td>
-                <td>${item.status && item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent + '%' : '0%'}</td>
-                <td>${formatAge(item.metadata.creationTimestamp)}</td>
-                <td>${createActionDropdown('inferenceservice', item.metadata.namespace, item.metadata.name)}</td>
-            `;
-            
-            tbody.appendChild(row);
-        });
-    }
-    
-    // Function to populate deployments table
-    function populateDeploymentsTable(data) {
-        const tbody = document.querySelector('#deploymentsTable tbody');
-        tbody.innerHTML = '';
-        
-        if (!data || !data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4">No deployments found</td></tr>';
-            return;
-        }
-        
-        data.items.forEach(item => {
-            const row = document.createElement('tr');
-            
-            // Create table row
-            row.innerHTML = `
-                <td>${item.metadata.namespace}</td>
-                <td>${item.metadata.name}</td>
-                <td>${item.status.readyReplicas || 0}/${item.status.replicas || 0}</td>
-                <td>${item.status.updatedReplicas || 0}</td>
-                <td>${item.status.availableReplicas || 0}</td>
-                <td>${formatAge(item.metadata.creationTimestamp)}</td>
-                <td>${createActionDropdown('deployment', item.metadata.namespace, item.metadata.name)}</td>
-            `;
-            
-            tbody.appendChild(row);
-        });
-    }
-    
-    // Function to populate configmaps table
-    function populateConfigMapsTable(data) {
-        const tbody = document.querySelector('#configmapsTable tbody');
-        tbody.innerHTML = '';
-        
-        if (!data || !data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">No configmaps found</td></tr>';
-            return;
-        }
-        
-        data.items.forEach(item => {
-            const row = document.createElement('tr');
-            
-            // Create table row
-            row.innerHTML = `
-                <td>${item.metadata.namespace}</td>
-                <td>${item.metadata.name}</td>
-                <td>${item.data ? Object.keys(item.data).length : 0} items</td>
-                <td>${formatAge(item.metadata.creationTimestamp)}</td>
-                <td>${createActionDropdown('configmap', item.metadata.namespace, item.metadata.name)}</td>
-            `;
-            
-            tbody.appendChild(row);
-        });
-    }
-    
-    // Function to populate secrets table
-    function populateSecretsTable(data) {
-        const tbody = document.querySelector('#secretsTable tbody');
-        tbody.innerHTML = '';
-        
-        if (!data || !data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">No secrets found</td></tr>';
-            return;
-        }
-        
-        data.items.forEach(item => {
-            const row = document.createElement('tr');
-            
-            // Create table row
-            row.innerHTML = `
-                <td>${item.metadata.namespace}</td>
-                <td>${item.metadata.name}</td>
-                <td>${item.type}</td>
-                <td>${item.data ? Object.keys(item.data).length : 0} items</td>
-                <td>${formatAge(item.metadata.creationTimestamp)}</td>
-                <td>${createActionDropdown('secret', item.metadata.namespace, item.metadata.name)}</td>
-            `;
-            
-            tbody.appendChild(row);
-        });
-    }
-    
-    // Function to load all resources
-    function loadResources() {
-        const resourceTypes = [
-            { id: 'pods', loading: '#podsLoading', populateFunc: populatePodsTable },
-            { id: 'services', loading: '#servicesLoading', populateFunc: populateServicesTable },
-            { id: 'inferenceservices', loading: '#inferenceLoading', populateFunc: populateInferenceServicesTable },
-            { id: 'deployments', loading: '#deploymentsLoading', populateFunc: populateDeploymentsTable },
-            { id: 'configmaps', loading: '#configmapsLoading', populateFunc: populateConfigMapsTable },
-            { id: 'secrets', loading: '#secretsLoading', populateFunc: populateSecretsTable }
-        ];
-        
-        // Create a resource cache to be used for metric calculations
-        const resourceCache = {};
-        
-        resourceTypes.forEach(resource => {
-            const loadingElement = document.querySelector(resource.loading);
-            if (loadingElement) loadingElement.style.display = 'flex';
-            
-            fetch('/get_resources', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `resource_type=${resource.id}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.format === 'table' && data.data) {
-                    // Store the data in the cache
-                    resourceCache[resource.id] = data.data;
-                    
-                    // Populate the table
-                    resource.populateFunc(data.data);
-                    
-                    // Update the dashboard metrics
-                    updateMetrics(resourceCache);
-                } else {
-                    console.error(`Error loading ${resource.id}:`, data.message);
-                }
-                
-                // Hide loading indicator
-                if (loadingElement) loadingElement.style.display = 'none';
-            })
-            .catch(error => {
-                console.error(`Error loading ${resource.id}:`, error);
-                if (loadingElement) loadingElement.style.display = 'none';
-            });
-        });
-    }
-    
-    // Initialize dashboard functionality once DOM is loaded
     document.addEventListener('DOMContentLoaded', function() {
-        // Load all resource data
-        loadResources();
-        
-        // Set up refresh button
-        const refreshButton = document.getElementById('refreshButton');
-        if (refreshButton) {
-            refreshButton.addEventListener('click', function() {
-                loadResources();
-            });
+        // Show only the current active tab content
+        function showActiveTabsOnly() {
+            const activeTab = document.querySelector('.sidebar-nav-link.active');
+            if (activeTab) {
+                const targetId = activeTab.getAttribute('data-bs-target').substring(1);
+                
+                // Handle main dashboard content vs other tabs
+                if (targetId === 'home') {
+                    document.getElementById('otherTabsContent').classList.add('d-none');
+                } else {
+                    document.getElementById('otherTabsContent').classList.remove('d-none');
+                }
+            }
         }
         
-        // Auto-refresh every 60 seconds
-        setInterval(loadResources, 60000);
+        // Initialize things
+        document.querySelectorAll('.sidebar-nav-link').forEach(navLink => {
+            navLink.addEventListener('click', showActiveTabsOnly);
+        });
+        
+        // Initial call
+        showActiveTabsOnly();
+        
+        // Terminal initialization for CLI tab
+        document.getElementById('homeLink').addEventListener('click', function() {
+            updateDashboardMetrics();
+        });
     });
     
-    // Make the initialization function available globally
-    window.initializeHomePage = function() {
-        loadResources();
-    };
+    function initializeHomePage() {
+        // Re-initialize dashboard elements when returning to home page
+        updateDashboardMetrics();
+        loadResourceData('pods');
+    }
 </script>
 {% endblock %}

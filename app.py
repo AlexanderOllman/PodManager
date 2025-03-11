@@ -46,6 +46,81 @@ def get_resources():
     except json.JSONDecodeError:
         return jsonify(format='error', message=f"Unable to fetch {resource_type}")
 
+@app.route('/api/metrics/pods_count', methods=['GET'])
+def get_pods_count():
+    command = "kubectl get pods -A -o json"
+    output = run_kubectl_command(command)
+    
+    try:
+        pods_data = json.loads(output)
+        pods_count = len(pods_data.get('items', []))
+        return jsonify(count=pods_count)
+    except json.JSONDecodeError:
+        return jsonify(count=0)
+
+@app.route('/api/metrics/vcpu_count', methods=['GET'])
+def get_vcpu_count():
+    command = "kubectl get pods -A -o json"
+    output = run_kubectl_command(command)
+    
+    total_vcpu = 0
+    try:
+        pods_data = json.loads(output)
+        for pod in pods_data.get('items', []):
+            for container in pod.get('spec', {}).get('containers', []):
+                resources = container.get('resources', {})
+                requests = resources.get('requests', {})
+                limits = resources.get('limits', {})
+                
+                # Try to get CPU from requests, then limits
+                cpu_value = requests.get('cpu') or limits.get('cpu') or '0'
+                
+                # Convert CPU value to a number
+                if cpu_value.endswith('m'):
+                    # Convert milliCPU to CPU
+                    cpu_num = int(cpu_value[:-1]) / 1000
+                else:
+                    # Handle values like '1' or '0.5'
+                    try:
+                        cpu_num = float(cpu_value)
+                    except ValueError:
+                        cpu_num = 0
+                        
+                total_vcpu += cpu_num
+                
+        return jsonify(count=round(total_vcpu, 1))
+    except json.JSONDecodeError:
+        return jsonify(count=0)
+
+@app.route('/api/metrics/gpu_count', methods=['GET'])
+def get_gpu_count():
+    command = "kubectl get pods -A -o json"
+    output = run_kubectl_command(command)
+    
+    total_gpus = 0
+    try:
+        pods_data = json.loads(output)
+        for pod in pods_data.get('items', []):
+            for container in pod.get('spec', {}).get('containers', []):
+                resources = container.get('resources', {})
+                requests = resources.get('requests', {})
+                limits = resources.get('limits', {})
+                
+                # Look for NVIDIA GPU resources
+                for resource_type in ['nvidia.com/gpu', 'amd.com/gpu']:
+                    gpu_value = requests.get(resource_type) or limits.get(resource_type) or '0'
+                    
+                    try:
+                        gpu_num = int(gpu_value)
+                    except ValueError:
+                        gpu_num = 0
+                        
+                    total_gpus += gpu_num
+                
+        return jsonify(count=total_gpus)
+    except json.JSONDecodeError:
+        return jsonify(count=0)
+
 @app.route('/run_action', methods=['POST'])
 def run_action():
     action = request.form['action']

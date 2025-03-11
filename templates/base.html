@@ -4,377 +4,84 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}HPE Private Cloud AI Resource Manager{% endblock %}</title>
+    
     <!-- CSS Files -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/dashboard.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='js/xterm/xterm.css') }}" rel="stylesheet" />
     
-    <!-- Core JavaScript Libraries - No defer to ensure they load first -->
+    <!-- Core JavaScript Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
-    <!-- Load Socket.IO and Terminal directly to ensure they're available -->
+    <!-- Socket.IO and Terminal -->
     <script src="{{ url_for('static', filename='js/socket.io/socket.io.js') }}"></script>
     <script src="{{ url_for('static', filename='js/xterm/xterm.js') }}"></script>
     
-    <!-- Style definitions for our modern UI -->
-    <style>
-        :root {
-            --primary-color: #01a982; /* HPE green */
-            --secondary-color: #425563; /* HPE secondary */
-            --bg-color: #f5f7fa;
-            --card-bg: #ffffff;
-            --text-primary: #333333;
-            --text-secondary: #6c757d;
-            --border-color: #e4e7eb;
-            --hover-color: #f8f9fa;
-        }
-        
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            margin: 0;
-            padding: 0;
-        }
-        
-        /* Top navigation styles */
-        .top-navbar {
-            background-color: white;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            padding: 0.5rem 1.5rem;
-            position: fixed;
-            top: 0;
-            width: 100%;
-            z-index: 1030;
-            height: 60px;
-        }
-        
-        .brand-logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .brand-logo img {
-            height: 30px;
-        }
-        
-        .brand-text {
-            font-weight: 600;
-            font-size: 1.2rem;
-            color: var(--primary-color);
-        }
-        
-        /* Sidebar styles */
-        .sidebar {
-            position: fixed;
-            left: 0;
-            top: 60px;
-            height: calc(100vh - 60px);
-            width: 240px;
-            background-color: white;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
-            z-index: 1020;
-            transition: all 0.3s;
-        }
-        
-        .sidebar-collapsed {
-            width: 70px;
-        }
-        
-        .sidebar .nav-link {
-            display: flex;
-            align-items: center;
-            padding: 12px 20px;
-            color: var(--secondary-color);
-            transition: all 0.2s;
-            border-left: 3px solid transparent;
-        }
-        
-        .sidebar .nav-link:hover {
-            background-color: var(--hover-color);
-            color: var(--primary-color);
-        }
-        
-        .sidebar .nav-link.active {
-            background-color: rgba(1, 169, 130, 0.1);
-            color: var(--primary-color);
-            border-left: 3px solid var(--primary-color);
-        }
-        
-        .sidebar .nav-link i {
-            margin-right: 15px;
-            width: 20px;
-            text-align: center;
-        }
-        
-        .sidebar-toggle {
-            background: none;
-            border: none;
-            color: var(--secondary-color);
-            padding: 10px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .sidebar-toggle:hover {
-            color: var(--primary-color);
-        }
-        
-        /* Main content area */
-        .main-content {
-            margin-left: 240px;
-            margin-top: 60px;
-            padding: 20px;
-            transition: all 0.3s;
-            min-height: calc(100vh - 60px);
-        }
-        
-        .main-content-expanded {
-            margin-left: 70px;
-        }
-        
-        /* Dashboard card styles */
-        .dashboard-card {
-            background-color: var(--card-bg);
-            border-radius: 8px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
-            padding: 20px;
-            height: 100%;
-            transition: all 0.2s;
-            border: 1px solid var(--border-color);
-        }
-        
-        .dashboard-card:hover {
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
-        
-        .metric-value {
-            font-size: 2.2rem;
-            font-weight: 600;
-            color: var(--primary-color);
-            margin: 10px 0;
-        }
-        
-        .metric-label {
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .metric-icon {
-            color: var(--primary-color);
-            font-size: 1.5rem;
-            opacity: 0.8;
-        }
-        
-        /* Table styles */
-        .resource-table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            background-color: var(--card-bg);
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
-        }
-        
-        .resource-table thead th {
-            background-color: #f8f9fa;
-            color: var(--text-secondary);
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 0.8rem;
-            letter-spacing: 0.5px;
-            padding: 15px;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .resource-table tbody td {
-            padding: 12px 15px;
-            border-bottom: 1px solid var(--border-color);
-            vertical-align: middle;
-        }
-        
-        .resource-table tbody tr:last-child td {
-            border-bottom: none;
-        }
-        
-        .resource-table tbody tr:hover {
-            background-color: var(--hover-color);
-        }
-        
-        .dropdown-menu {
-            border-radius: 8px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            border: 1px solid var(--border-color);
-            padding: 8px 0;
-        }
-        
-        .dropdown-item {
-            padding: 8px 20px;
-            color: var(--text-primary);
-        }
-        
-        .dropdown-item:hover {
-            background-color: rgba(1, 169, 130, 0.1);
-            color: var(--primary-color);
-        }
-        
-        /* Status indicators */
-        .status-icon {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-right: 5px;
-        }
-        
-        .status-running { background-color: #01a982; }
-        .status-pending { background-color: #ffb400; }
-        .status-failed { background-color: #ff454f; }
-        .status-unknown { background-color: #a2a9b0; }
-        
-        /* Loading spinners */
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(1, 169, 130, 0.1);
-            border-radius: 50%;
-            border-top: 3px solid var(--primary-color);
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .loading-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 200px;
-        }
-        
-        /* Modal styles */
-        .modal-content {
-            border-radius: 8px;
-            border: none;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-        }
-        
-        .modal-header {
-            border-bottom: 1px solid var(--border-color);
-            padding: 20px 25px;
-        }
-        
-        .modal-body {
-            padding: 25px;
-        }
-        
-        .modal-footer {
-            border-top: 1px solid var(--border-color);
-            padding: 15px 25px;
-        }
-        
-        /* Terminal styles */
-        .terminal-container {
-            height: 70vh;
-            background-color: #000;
-            color: #fff;
-            padding: 10px;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        pre {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            max-height: 70vh;
-            overflow-y: auto;
-            font-family: monospace;
-            white-space: pre-wrap;
-            margin: 0;
-        }
-    </style>
+    <!-- Main Dashboard JavaScript -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    
     {% block additional_styles %}{% endblock %}
 </head>
 <body>
     <!-- Top Navigation Bar -->
     <nav class="top-navbar">
-        <div class="container-fluid">
-            <div class="d-flex justify-content-between align-items-center">
-                <div class="brand-logo">
-                    <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Element Logo">
-                    <span class="brand-text">HPE Private Cloud AI Resource Manager</span>
-                </div>
-                <div class="d-flex align-items-center">
-                    <div class="me-3">
-                        <!-- We can add user info or additional controls here -->
-                    </div>
-                </div>
-            </div>
+        <div class="top-navbar-brand">
+            <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
+            <span>HPE Private Cloud AI Resource Manager</span>
         </div>
     </nav>
 
     <!-- Sidebar -->
-    <div class="sidebar" id="sidebar">
-        <div class="py-3 px-3 d-flex justify-content-between align-items-center">
-            <button class="sidebar-toggle d-none d-md-block" id="sidebarToggle">
-                <i class="fas fa-bars"></i>
-            </button>
-        </div>
-        <ul class="nav flex-column">
-            <li class="nav-item">
-                <a class="nav-link active" href="#home" data-bs-toggle="tab" data-bs-target="#home" id="homeLink">
-                    <i class="fas fa-tachometer-alt"></i> <span class="nav-text">Dashboard</span>
+    <aside class="sidebar">
+        <ul class="sidebar-nav">
+            <li class="sidebar-nav-item">
+                <a href="#home" class="sidebar-nav-link active" id="homeLink" data-bs-toggle="tab" data-bs-target="#home">
+                    <i class="fas fa-home"></i> <span>Home</span>
                 </a>
             </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#cli" data-bs-toggle="tab" data-bs-target="#cli">
-                    <i class="fas fa-terminal"></i> <span class="nav-text">Terminal</span>
+            <li class="sidebar-nav-item">
+                <a href="#cli" class="sidebar-nav-link" data-bs-toggle="tab" data-bs-target="#cli">
+                    <i class="fas fa-terminal"></i> <span>CLI</span>
                 </a>
             </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#yaml" data-bs-toggle="tab" data-bs-target="#yaml">
-                    <i class="fas fa-file-upload"></i> <span class="nav-text">Upload YAML</span>
+            <li class="sidebar-nav-item">
+                <a href="#yaml" class="sidebar-nav-link" data-bs-toggle="tab" data-bs-target="#yaml">
+                    <i class="fas fa-file-upload"></i> <span>Upload YAML</span>
                 </a>
             </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#events" data-bs-toggle="tab" data-bs-target="#events">
-                    <i class="fas fa-clock"></i> <span class="nav-text">Events</span>
+            <li class="sidebar-nav-item">
+                <a href="#events" class="sidebar-nav-link" data-bs-toggle="tab" data-bs-target="#events">
+                    <i class="fas fa-clock"></i> <span>Events</span>
                 </a>
             </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#settings" data-bs-toggle="tab" data-bs-target="#settings">
-                    <i class="fas fa-cog"></i> <span class="nav-text">Settings</span>
+            <li class="sidebar-nav-item">
+                <a href="#settings" class="sidebar-nav-link" data-bs-toggle="tab" data-bs-target="#settings">
+                    <i class="fas fa-cog"></i> <span>Settings</span>
                 </a>
             </li>
         </ul>
-    </div>
+        <div class="sidebar-toggle" id="sidebar-toggle-btn">
+            <i class="fas fa-chevron-left"></i>
+        </div>
+    </aside>
 
     <!-- Main Content -->
-    <div class="main-content" id="main-content">
+    <main class="main-content">
         {% block content %}{% endblock %}
-    </div>
+    </main>
 
-    <!-- Modal for displaying action results -->
+    <!-- Action Modal -->
     <div class="modal fade" id="actionModal" tabindex="-1" aria-labelledby="actionModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
+            <div class="modal-content custom-modal">
+                <div class="modal-header custom-modal-header">
                     <h5 class="modal-title" id="actionModalLabel">Action Result</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <div id="actionLoading" class="loading" style="display: none;">
+                <div class="modal-body custom-modal-body">
+                    <div id="actionLoading" class="loading-container" style="display: none;">
                         <div class="spinner"></div>
                     </div>
                     <pre id="actionResult"></pre>
@@ -383,20 +90,28 @@
         </div>
     </div>
 
-    <!-- Loading indicator -->
-    <div id="loading-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255,255,255,0.8); z-index: 9999; display: flex; justify-content: center; align-items: center; color: var(--primary-color); font-size: 20px;">
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 9999; display: flex; justify-content: center; align-items: center; color: white; font-size: 20px;">
         <div class="text-center">
-            <div class="spinner" style="width: 3rem; height: 3rem;"></div>
+            <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;"></div>
             <div class="mt-3">Loading application...</div>
         </div>
     </div>
 
-    <!-- Base utilities script -->
+    <!-- Base Action Script -->
     <script>
-        // Status icon utility
+        // Basic utility functions
         function getStatusIcon(status) {
-            const statusClass = status.toLowerCase();
-            return `<span class="status-icon status-${statusClass}"></span>${status}`;
+            switch (status.toLowerCase()) {
+                case 'running':
+                    return '<i class="fas fa-check-circle status-icon status-running"></i>';
+                case 'pending':
+                    return '<i class="fas fa-clock status-icon status-pending"></i>';
+                case 'failed':
+                    return '<i class="fas fa-times-circle status-icon status-failed"></i>';
+                default:
+                    return '<i class="fas fa-question-circle status-icon status-unknown"></i>';
+            }
         }
         
         // Script loading utilities 
@@ -435,23 +150,6 @@
         // Hide loading overlay
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('loading-overlay').style.display = 'none';
-            
-            // Toggle sidebar
-            const sidebarToggle = document.getElementById('sidebarToggle');
-            const sidebar = document.getElementById('sidebar');
-            const mainContent = document.getElementById('main-content');
-            
-            if (sidebarToggle) {
-                sidebarToggle.addEventListener('click', function() {
-                    sidebar.classList.toggle('sidebar-collapsed');
-                    mainContent.classList.toggle('main-content-expanded');
-                    
-                    const navTexts = document.querySelectorAll('.nav-text');
-                    navTexts.forEach(text => {
-                        text.style.display = sidebar.classList.contains('sidebar-collapsed') ? 'none' : 'inline';
-                    });
-                });
-            }
         });
         
         // Navigation related code
@@ -483,14 +181,14 @@
                     // Extract the content from the explore page
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
-                    const content = doc.querySelector('#main-content').innerHTML;
+                    const content = doc.querySelector('.main-content').innerHTML;
                     
                     // Store the current page state in history
-                    const currentState = document.getElementById('main-content').innerHTML;
+                    const currentState = document.querySelector('.main-content').innerHTML;
                     window.history.pushState({content: currentState, page: 'home'}, '', '/');
                     
                     // Update the page content and history
-                    document.getElementById('main-content').innerHTML = content;
+                    document.querySelector('.main-content').innerHTML = content;
                     window.history.pushState({content: content, page: 'explore'}, '', url);
                     
                     // Initialize the explore page components
@@ -510,10 +208,10 @@
                     // Extract the content from the home page
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
-                    const content = doc.querySelector('#main-content').innerHTML;
+                    const content = doc.querySelector('.main-content').innerHTML;
                     
                     // Update the page content and history
-                    document.getElementById('main-content').innerHTML = content;
+                    document.querySelector('.main-content').innerHTML = content;
                     window.history.pushState({content: content, page: 'home'}, '', '/');
                     
                     // Initialize the home page components
@@ -528,7 +226,7 @@
         
         window.addEventListener('popstate', function(event) {
             if (event.state) {
-                document.getElementById('main-content').innerHTML = event.state.content;
+                document.querySelector('.main-content').innerHTML = event.state.content;
                 if (event.state.page === 'home' && typeof initializeHomePage === 'function') {
                     initializeHomePage();
                 } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
