@@ -56,14 +56,16 @@
             </div>
         </div>
         <div class="tab-pane fade" id="access" role="tabpanel" aria-labelledby="access-tab">
+            <div class="alert alert-info mb-3">
+                <h5><i class="fas fa-info-circle"></i> Interactive Pod Terminal</h5>
+                <p>You can now type commands directly in the terminal below. Press Enter to execute.</p>
+                <ul>
+                    <li>Commands are executed in the pod's environment</li>
+                    <li>Use <kbd>Up</kbd> and <kbd>Down</kbd> arrow keys to navigate through command history</li>
+                </ul>
+            </div>
             <div class="terminal-container">
                 <div id="terminal"></div>
-            </div>
-            <div class="command-input">
-                <input type="text" id="commandInput" class="form-control" placeholder="Enter command to execute">
-                <button class="btn btn-primary" id="runCommand">
-                    <i class="fas fa-play"></i> Run
-                </button>
             </div>
         </div>
     </div>
@@ -86,12 +88,6 @@ function initializeExplorePage() {
     // Set up button handlers
     document.getElementById('refreshLogs').addEventListener('click', loadPodLogs);
     document.getElementById('downloadLogs').addEventListener('click', downloadLogs);
-    document.getElementById('runCommand').addEventListener('click', runCommand);
-    document.getElementById('commandInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            runCommand();
-        }
-    });
     
     // Back button handler that uses SPA navigation
     document.getElementById('backButton').addEventListener('click', function(e) {
@@ -168,6 +164,10 @@ function setupTerminal() {
         if (!window.terminalInstance) {
             window.terminalInstance = new Terminal({
                 cursorBlink: true,
+                fontFamily: 'monospace',
+                fontSize: 14,
+                convertEol: true,
+                scrollback: 1000,
                 theme: {
                     background: '#000000',
                     foreground: '#ffffff'
@@ -175,43 +175,113 @@ function setupTerminal() {
             });
             
             window.terminalInstance.open(document.getElementById('terminal'));
+            
+            // Setup command input handling
+            let currentLine = '';
+            let commandHistory = [];
+            let historyIndex = -1;
+            
+            // Initial prompt
+            window.terminalInstance.writeln('Welcome to the pod terminal.');
+            window.terminalInstance.writeln('Type commands directly in this window and press Enter to execute.');
+            window.terminalInstance.writeln('');
+            window.terminalInstance.write('$ ');
+            
+            // Handle user input
+            window.terminalInstance.onKey(({ key, domEvent }) => {
+                const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.ctrlKey && !domEvent.metaKey;
+                
+                // Handle special keys
+                if (domEvent.keyCode === 13) { // Enter key
+                    // Send command to server
+                    if (currentLine.trim()) {
+                        // Add to history
+                        commandHistory.push(currentLine);
+                        historyIndex = commandHistory.length;
+                        
+                        // Execute in pod
+                        executeCommandInPod(currentLine);
+                        
+                        // Visual feedback
+                        window.terminalInstance.write('\r\n');
+                        currentLine = '';
+                    } else {
+                        // Empty command, just show new prompt
+                        window.terminalInstance.write('\r\n$ ');
+                    }
+                } else if (domEvent.keyCode === 8) { // Backspace
+                    if (currentLine.length > 0) {
+                        currentLine = currentLine.slice(0, -1);
+                        window.terminalInstance.write('\b \b'); // Erase character
+                    }
+                } else if (domEvent.keyCode === 38) { // Up arrow - history
+                    if (historyIndex > 0) {
+                        historyIndex--;
+                        // Clear current line
+                        window.terminalInstance.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                        // Display command from history
+                        currentLine = commandHistory[historyIndex];
+                        window.terminalInstance.write(currentLine);
+                    }
+                } else if (domEvent.keyCode === 40) { // Down arrow - history
+                    if (historyIndex < commandHistory.length - 1) {
+                        historyIndex++;
+                        // Clear current line
+                        window.terminalInstance.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                        // Display next command from history
+                        currentLine = commandHistory[historyIndex];
+                        window.terminalInstance.write(currentLine);
+                    } else if (historyIndex === commandHistory.length - 1) {
+                        historyIndex = commandHistory.length;
+                        // Clear current line
+                        window.terminalInstance.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                        currentLine = '';
+                    }
+                } else if (printable) {
+                    // Regular printable character
+                    currentLine += key;
+                    window.terminalInstance.write(key);
+                }
+            });
+        } else {
+            // Terminal already exists, just reset it
+            window.terminalInstance.clear();
+            window.terminalInstance.writeln('Welcome to the pod terminal.');
+            window.terminalInstance.writeln('Type commands directly in this window and press Enter to execute.');
+            window.terminalInstance.writeln('');
+            window.terminalInstance.write('$ ');
         }
-        
-        // Clear and initialize terminal contents
-        window.terminalInstance.clear();
-        window.terminalInstance.writeln('Welcome to the pod terminal.');
-        window.terminalInstance.writeln('Enter a command and click "Run" to execute it in the pod.');
-        window.terminalInstance.writeln('');
     }
 }
 
-function runCommand() {
-    const command = document.getElementById('commandInput').value;
+function executeCommandInPod(command) {
     if (!command) return;
     
-    if (window.terminalInstance) {
-        window.terminalInstance.writeln(`> ${command}`);
-        
-        fetch('/api/pod/exec', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `namespace=${namespace}&pod_name=${podName}&command=${encodeURIComponent(command)}`
+    fetch('/api/pod/exec', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            namespace: '{{ namespace }}',
+            pod_name: '{{ pod_name }}',
+            command: command
         })
-        .then(response => response.json())
-        .then(data => {
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.output) {
             window.terminalInstance.writeln(data.output);
-            window.terminalInstance.writeln('');
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            window.terminalInstance.writeln('Error executing command.');
-            window.terminalInstance.writeln('');
-        });
-        
-        document.getElementById('commandInput').value = '';
-    }
+        } else {
+            window.terminalInstance.writeln('Command executed with no output.');
+        }
+        window.terminalInstance.write('\r\n$ ');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        window.terminalInstance.writeln('Error executing command.');
+        window.terminalInstance.write('\r\n$ ');
+    });
 }
 
 // Initialize the page when it's loaded directly or via SPA navigation
