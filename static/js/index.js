@@ -7,6 +7,19 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM content loaded, initializing application...');
     
+    // Initialize Bootstrap components if needed
+    if (typeof bootstrap !== 'undefined') {
+        // Initialize tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
+        console.log('Bootstrap components initialized');
+    } else {
+        console.warn('Bootstrap not available, some components may not work as expected');
+    }
+    
     // Since scripts are loaded in head, we can initialize right away
     initializeApp();
     
@@ -29,6 +42,21 @@ document.addEventListener('DOMContentLoaded', function() {
 // Main application initialization
 function initializeApp() {
     console.log('Initializing application...');
+    
+    // Initialize window.app global state if not exists
+    window.app = window.app || {};
+    
+    // Initialize socket.io connection
+    if (typeof io !== 'undefined') {
+        try {
+            window.app.socket = io();
+            console.log('Socket.io connection established');
+        } catch (e) {
+            console.error('Failed to initialize socket.io connection:', e);
+        }
+    } else {
+        console.warn('Socket.io not available, real-time updates will not work');
+    }
     
     // Initialize components that don't require special dependencies
     fetchResourcesForAllTabs();
@@ -329,8 +357,14 @@ function fetchResourceData(resourceType) {
     
     console.log(`Fetching data for ${resourceType}...`);
     
-    // Make the API request
-    fetch(`/api/${resourceType}`)
+    // Make the API request using the correct endpoint
+    const formData = new FormData();
+    formData.append('resource_type', resourceType);
+    
+    fetch('/get_resources', {
+        method: 'POST',
+        body: formData
+    })
         .then(response => {
             if (!response.ok) {
                 throw new Error(`Failed to fetch ${resourceType}`);
@@ -339,7 +373,13 @@ function fetchResourceData(resourceType) {
         })
         .then(data => {
             // Process and render the data
-            renderResourceData(resourceType, data);
+            if (data.format === 'table' && data.data) {
+                renderResourceData(resourceType, data.data.items);
+            } else if (data.format === 'error') {
+                throw new Error(data.message || `Error fetching ${resourceType}`);
+            } else {
+                throw new Error(`Invalid response format for ${resourceType}`);
+            }
             
             // Hide loading indicator
             hideLoading(resourceType);
@@ -481,22 +521,24 @@ function fetchNamespaces() {
     const namespaceSelect = document.getElementById('yamlNamespace');
     if (!namespaceSelect) return;
     
-    fetch('/api/namespaces')
+    fetch('/get_namespaces')
         .then(response => response.json())
         .then(data => {
-            if (data && data.length > 0) {
+            if (data.namespaces && data.namespaces.length > 0) {
                 // Clear previous options except for the default
                 while (namespaceSelect.options.length > 1) {
                     namespaceSelect.remove(1);
                 }
                 
                 // Add new options
-                data.forEach(namespace => {
+                data.namespaces.forEach(namespace => {
                     const option = document.createElement('option');
                     option.value = namespace;
                     option.textContent = namespace;
                     namespaceSelect.appendChild(option);
                 });
+            } else if (data.error) {
+                console.error('Error fetching namespaces:', data.error);
             }
         })
         .catch(error => {
@@ -846,29 +888,68 @@ function renderResourceData(resourceType, data) {
 // Component-specific renderers for each resource type
 function renderPods(pods, tableBody) {
     pods.forEach(pod => {
+        // Extract data from Kubernetes API format
+        const metadata = pod.metadata || {};
+        const status = pod.status || {};
+        const spec = pod.spec || {};
+        
+        // Calculate ready containers
+        const containerStatuses = status.containerStatuses || [];
+        const readyContainers = containerStatuses.filter(container => container.ready).length;
+        const totalContainers = containerStatuses.length;
+        const readyString = `${readyContainers}/${totalContainers}`;
+        
+        // Get pod status
+        let podStatus = status.phase || 'Unknown';
+        if (status.reason) {
+            podStatus = status.reason;
+        }
+        
+        // Calculate restarts
+        let restarts = 0;
+        containerStatuses.forEach(container => {
+            restarts += container.restartCount || 0;
+        });
+        
+        // Calculate age
+        const creationTimestamp = new Date(metadata.creationTimestamp);
+        const now = new Date();
+        const ageInSeconds = (now - creationTimestamp) / 1000;
+        let age = '';
+        
+        if (ageInSeconds < 60) {
+            age = `${Math.round(ageInSeconds)}s`;
+        } else if (ageInSeconds < 3600) {
+            age = `${Math.round(ageInSeconds / 60)}m`;
+        } else if (ageInSeconds < 86400) {
+            age = `${Math.round(ageInSeconds / 3600)}h`;
+        } else {
+            age = `${Math.round(ageInSeconds / 86400)}d`;
+        }
+        
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${pod.namespace}</td>
+            <td>${metadata.namespace}</td>
             <td>
-                <a href="/explore/${pod.namespace}/${pod.name}" class="explore-pod-link" data-namespace="${pod.namespace}" data-pod-name="${pod.name}">
-                    ${pod.name}
+                <a href="/explore/${metadata.namespace}/${metadata.name}" class="explore-pod-link" data-namespace="${metadata.namespace}" data-pod-name="${metadata.name}">
+                    ${metadata.name}
                 </a>
             </td>
-            <td>${pod.ready}</td>
-            <td>${getStatusIcon(pod.status)} ${pod.status}</td>
-            <td>${pod.restarts}</td>
-            <td>${pod.age}</td>
+            <td>${readyString}</td>
+            <td>${getStatusIcon(podStatus)} ${podStatus}</td>
+            <td>${restarts}</td>
+            <td>${age}</td>
             <td>
                 <div class="btn-group">
                     <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                         Actions
                     </button>
                     <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#" onclick="runAction('describe', 'pod', '${pod.namespace}', '${pod.name}')">Describe</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="runAction('logs', 'pod', '${pod.namespace}', '${pod.name}')">Logs</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="runAction('exec', 'pod', '${pod.namespace}', '${pod.name}')">Processes</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="runAction('describe', 'pod', '${metadata.namespace}', '${metadata.name}')">Describe</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="runAction('logs', 'pod', '${metadata.namespace}', '${metadata.name}')">Logs</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="runAction('exec', 'pod', '${metadata.namespace}', '${metadata.name}')">Processes</a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-danger" href="#" onclick="runAction('delete', 'pod', '${pod.namespace}', '${pod.name}')">Delete</a></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="runAction('delete', 'pod', '${metadata.namespace}', '${metadata.name}')">Delete</a></li>
                     </ul>
                 </div>
             </td>
@@ -878,6 +959,120 @@ function renderPods(pods, tableBody) {
 }
 
 // Add similar render functions for other resource types if needed
+
+// Helper function to get status icon
+function getStatusIcon(status) {
+    if (status.toLowerCase() === 'running') {
+        return '<i class="fas fa-circle text-success"></i>';
+    } else if (status.toLowerCase().includes('error') || status.toLowerCase().includes('failed')) {
+        return '<i class="fas fa-circle text-danger"></i>';
+    } else if (status.toLowerCase() === 'pending') {
+        return '<i class="fas fa-circle text-warning"></i>';
+    } else {
+        return '<i class="fas fa-circle text-secondary"></i>';
+    }
+}
+
+// Run action on resource
+function runAction(action, resourceType, namespace, resourceName) {
+    console.log(`Running ${action} on ${resourceType} ${resourceName} in namespace ${namespace}`);
+    
+    // Create modal if it doesn't exist
+    let actionModal = document.getElementById('actionModal');
+    if (!actionModal) {
+        // Create modal element
+        actionModal = document.createElement('div');
+        actionModal.className = 'modal fade';
+        actionModal.id = 'actionModal';
+        actionModal.setAttribute('tabindex', '-1');
+        actionModal.setAttribute('aria-labelledby', 'actionModalLabel');
+        actionModal.setAttribute('aria-hidden', 'true');
+        
+        // Set modal HTML content
+        actionModal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="actionModalLabel">Action Result</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="loading-container" id="actionLoading">
+                            <div class="spinner"></div>
+                        </div>
+                        <pre id="actionOutput" style="max-height: 500px; overflow-y: auto;"></pre>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add modal to body
+        document.body.appendChild(actionModal);
+    }
+    
+    // Get modal elements
+    const modalTitle = document.getElementById('actionModalLabel');
+    const loadingElement = document.getElementById('actionLoading');
+    const outputElement = document.getElementById('actionOutput');
+    
+    // Set modal title
+    modalTitle.textContent = `${capitalizeFirstLetter(action)} ${resourceType}: ${resourceName}`;
+    
+    // Show loading and hide output
+    loadingElement.style.display = 'flex';
+    outputElement.style.display = 'none';
+    outputElement.textContent = '';
+    
+    // Show modal
+    const modalElement = bootstrap.Modal.getOrCreateInstance(actionModal);
+    modalElement.show();
+    
+    // Prepare form data
+    const formData = new FormData();
+    formData.append('action', action);
+    formData.append('resource_type', resourceType);
+    formData.append('resource_name', resourceName);
+    formData.append('namespace', namespace);
+    
+    // Make API request
+    fetch('/run_action', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Hide loading indicator
+        loadingElement.style.display = 'none';
+        outputElement.style.display = 'block';
+        
+        if (data.format === 'text') {
+            outputElement.textContent = data.output;
+        } else if (data.format === 'error') {
+            outputElement.textContent = `Error: ${data.message}`;
+        } else {
+            outputElement.textContent = 'Invalid response format';
+        }
+        
+        // For delete action, refresh the table if successful
+        if (action === 'delete' && !data.format === 'error') {
+            setTimeout(() => {
+                if (window.loadedResources) {
+                    delete window.loadedResources[resourceType + 's']; // Add 's' for plural
+                }
+                fetchResourceData(resourceType + 's'); // Add 's' for plural
+            }, 2000);
+        }
+    })
+    .catch(error => {
+        console.error(`Error running ${action}:`, error);
+        loadingElement.style.display = 'none';
+        outputElement.style.display = 'block';
+        outputElement.textContent = `Error: ${error.message}`;
+    });
+}
 
 // Navigation function to handle explore pod links
 document.addEventListener('click', function(e) {
