@@ -580,5 +580,52 @@ def api_cli_exec():
         app.logger.error(f"Error in api_cli_exec: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/charts')
+def charts():
+    """Render the charts management page."""
+    return render_template('charts.html')
+
+@app.route('/api/charts', methods=['GET'])
+def get_charts():
+    """Get all charts from the ChartMuseum instance."""
+    try:
+        import requests
+        response = requests.get('http://127.0.0.1:8855/api/charts')
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": f"Error fetching charts: Status code {response.status_code}"}), response.status_code
+    except Exception as e:
+        app.logger.error(f"Error in get_charts: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/charts/<chart_name>', methods=['DELETE'])
+def delete_chart(chart_name):
+    """Delete a chart by name."""
+    try:
+        import requests
+        response = requests.delete(f'http://127.0.0.1:8855/api/charts/{chart_name}')
+        if response.status_code == 200:
+            return jsonify({"status": "success", "message": f"Chart {chart_name} deleted successfully"})
+        else:
+            return jsonify({"error": f"Error deleting chart: Status code {response.status_code}"}), response.status_code
+    except Exception as e:
+        app.logger.error(f"Error in delete_chart: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/charts/<chart_name>/<version>', methods=['DELETE'])
+def delete_chart_version(chart_name, version):
+    """Delete a specific version of a chart."""
+    try:
+        import requests
+        response = requests.delete(f'http://127.0.0.1:8855/api/charts/{chart_name}/{version}')
+        if response.status_code == 200:
+            return jsonify({"status": "success", "message": f"Chart {chart_name} version {version} deleted successfully"})
+        else:
+            return jsonify({"error": f"Error deleting chart version: Status code {response.status_code}"}), response.status_code
+    except Exception as e:
+        app.logger.error(f"Error in delete_chart_version: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
