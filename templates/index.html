@@ -7,10 +7,16 @@
     /* Dashboard card styles */
     .card {
         transition: all 0.3s ease;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid rgba(0,0,0,0.1);
     }
     .card:hover {
         transform: translateY(-5px);
         box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+    .card-body {
+        padding: 1.25rem;
     }
     .avatar-sm {
         width: 3rem;
@@ -18,9 +24,31 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        border-radius: 8px;
     }
     .avatar-title {
         font-size: 1.2rem;
+    }
+    .card-title {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    /* Pod status indicators */
+    .pod-status {
+        transition: all 0.3s ease;
+        border-radius: 6px;
+        padding: 5px 0;
+    }
+    .pod-status:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+    .pod-status i {
+        font-size: 1.2rem;
+        margin-bottom: 5px;
+    }
+    .pod-status .fw-bold {
+        font-size: 1.2rem;
+        line-height: 1;
     }
     /* GPU card filter styles */
     .gpu-filter-card {
@@ -97,6 +125,17 @@
         text-align: center;
         margin-top: 10px;
     }
+    /* Metric counters */
+    .counter-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #495057;
+        margin-bottom: 0.2rem;
+    }
+    .counter-info {
+        font-size: 14px;
+        color: #6c757d;
+    }
 </style>
 {% endblock %}
 
@@ -113,14 +152,32 @@
             <div class="col-md-3">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted fw-normal mt-0">Total Pods</h6>
-                                <h3 class="my-2" id="totalPodsCount">-</h3>
-                                <p class="mb-0 text-muted"><span class="text-success me-2"><i class="fas fa-arrow-up"></i> Active</span></p>
+                        <div class="d-flex">
+                            <div class="avatar-sm rounded bg-info me-3">
+                                <span class="avatar-title rounded">
+                                    <i class="fas fa-cubes text-white"></i>
+                                </span>
                             </div>
-                            <div class="avatar-sm rounded-circle bg-primary align-self-center">
-                                <i class="fas fa-server avatar-title text-white"></i>
+                            <div class="w-100">
+                                <h5 class="card-title">Total Pods</h5>
+                                <h3 class="counter-value" id="totalPodsCount">-</h3>
+                                <div class="mt-3 d-flex justify-content-between">
+                                    <div class="pod-status text-center px-1" style="flex: 1;">
+                                        <div class="text-success"><i class="fas fa-check-circle"></i></div>
+                                        <div class="fw-bold" id="runningPodsCount">-</div>
+                                        <div class="small text-muted">Running</div>
+                                    </div>
+                                    <div class="pod-status text-center px-1" style="flex: 1;">
+                                        <div class="text-primary"><i class="fas fa-flag-checkered"></i></div>
+                                        <div class="fw-bold" id="succeededPodsCount">-</div>
+                                        <div class="small text-muted">Succeeded</div>
+                                    </div>
+                                    <div class="pod-status text-center px-1" style="flex: 1;">
+                                        <div class="text-danger"><i class="fas fa-exclamation-circle"></i></div>
+                                        <div class="fw-bold" id="errorPodsCount">-</div>
+                                        <div class="small text-muted">Error</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -131,17 +188,16 @@
             <div class="col-md-3">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted fw-normal mt-0">vCPU Usage</h6>
-                                <h3 class="my-2"><span id="totalCPUPercentage">-%</span></h3>
-                                <p class="mb-0 text-muted">
-                                    <span class="text-success me-2"><i class="fas fa-microchip"></i></span>
-                                    <span id="totalCPUCount">-</span>/<span id="totalCPUCapacity">256</span> Cores
-                                </p>
+                        <div class="d-flex">
+                            <div class="avatar-sm rounded bg-primary me-3">
+                                <span class="avatar-title rounded">
+                                    <i class="fas fa-microchip text-white"></i>
+                                </span>
                             </div>
-                            <div class="avatar-sm rounded-circle bg-success align-self-center">
-                                <i class="fas fa-microchip avatar-title text-white"></i>
+                            <div class="w-100">
+                                <h5 class="card-title">vCPU Usage</h5>
+                                <h3 class="counter-value" id="totalCPUCount">-</h3>
+                                <p class="counter-info"><span id="totalCPUPercentage">-</span>% of <span id="totalCPUCapacity">256</span> Cores</p>
                             </div>
                         </div>
                     </div>
@@ -152,17 +208,19 @@
             <div class="col-md-3">
                 <div class="card border-0 shadow-sm h-100 gpu-filter-card" id="gpuCard" role="button">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted fw-normal mt-0">Total GPUs</h6>
-                                <h3 class="my-2" id="totalGPUCount">-</h3>
-                                <p class="mb-0 text-muted">
-                                    <span class="text-success me-2"><i class="fas fa-tachometer-alt"></i></span>
-                                    <span id="gpuFilterStatus">Click to filter by GPU</span>
-                                </p>
+                        <div class="d-flex">
+                            <div class="avatar-sm rounded bg-success me-3">
+                                <span class="avatar-title rounded">
+                                    <i class="fas fa-tachometer-alt text-white"></i>
+                                </span>
                             </div>
-                            <div class="avatar-sm rounded-circle bg-info align-self-center">
-                                <i class="fas fa-tachometer-alt avatar-title text-white"></i>
+                            <div class="w-100">
+                                <h5 class="card-title">GPU Resources</h5>
+                                <h3 class="counter-value" id="totalGPUCount">-</h3>
+                                <p class="d-flex align-items-center counter-info">
+                                    <span id="gpuFilterStatus">Click to filter</span>
+                                    <button id="clearGPUFilter" class="btn btn-sm btn-outline-secondary ms-2" style="display: none;">Clear</button>
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -173,14 +231,18 @@
             <div class="col-md-3">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted fw-normal mt-0">Resource Metric</h6>
-                                <h3 class="my-2">-</h3>
-                                <p class="mb-0 text-muted"><span class="text-muted me-2"><i class="fas fa-clock"></i> Coming Soon</span></p>
+                        <div class="d-flex">
+                            <div class="avatar-sm rounded bg-warning me-3">
+                                <span class="avatar-title rounded">
+                                    <i class="fas fa-chart-line text-white"></i>
+                                </span>
                             </div>
-                            <div class="avatar-sm rounded-circle bg-warning align-self-center">
-                                <i class="fas fa-chart-line avatar-title text-white"></i>
+                            <div class="w-100">
+                                <h5 class="card-title">Resource Metric</h5>
+                                <h3 class="counter-value">-</h3>
+                                <p class="counter-info">
+                                    <i class="fas fa-clock me-1"></i> Coming Soon
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -1671,7 +1733,11 @@ function clearRefreshLog() {
 function updateDashboardMetrics(pods) {
     // Calculate total pods count
     const totalPods = pods.length;
-    document.getElementById('totalPodsCount').textContent = totalPods;
+    
+    // Initialize pod status counters
+    let runningPods = 0;
+    let succeededPods = 0;
+    let errorPods = 0;
     
     // Calculate total CPU allocation
     let totalCPU = 0;
@@ -1682,10 +1748,46 @@ function updateDashboardMetrics(pods) {
     // Keep track of pods with GPUs for filtering
     window.podsWithGPUs = [];
     
-    // Loop through all pods to calculate resource usage
+    // Loop through all pods to calculate resource usage and count statuses
     pods.forEach(pod => {
         let podHasGPU = false;
         
+        // Count pods by status
+        if (pod.status && pod.status.phase) {
+            const phase = pod.status.phase.toLowerCase();
+            
+            // Get container statuses to check for more detailed states
+            const containerStatuses = pod.status.containerStatuses || [];
+            const hasErrorCondition = containerStatuses.some(status => 
+                status.state && (
+                    status.state.waiting && ['CrashLoopBackOff', 'Error', 'ErrImagePull', 'ImagePullBackOff', 'CreateContainerError'].includes(status.state.waiting.reason) ||
+                    status.state.terminated && status.state.terminated.exitCode !== 0
+                )
+            );
+            
+            if (hasErrorCondition || phase === 'failed') {
+                errorPods++;
+            } else if (phase === 'running') {
+                if (containerStatuses.every(cs => cs.ready === true)) {
+                    runningPods++;
+                } else {
+                    // Count as error if running but not all containers are ready
+                    errorPods++;
+                }
+            } else if (phase === 'succeeded') {
+                succeededPods++;
+            }
+        }
+        
+        // Calculate resource usage
+        const containers = pod.spec?.containers || [];
+        
+        containers.forEach(container => {
+            const resources = container.resources || {};
+            const requests = resources.requests || {};
+            
+            // Add CPU requests
+            if (requests.cpu) {
         // Check if the pod has containers with resource requests
         if (pod.spec && pod.spec.containers) {
             pod.spec.containers.forEach(container => {
@@ -1730,28 +1832,31 @@ function updateDashboardMetrics(pods) {
         }
     });
     
-    // Set the total CPU capacity (this could be fetched from an API or set as a config value)
-    const totalCPUCapacity = 256; // This should ideally come from your cluster configuration
-    document.getElementById('totalCPUCapacity').textContent = totalCPUCapacity;
+    // Update pod status counts in the UI
+    document.getElementById('runningPodsCount').textContent = runningPods;
+    document.getElementById('succeededPodsCount').textContent = succeededPods;
+    document.getElementById('errorPodsCount').textContent = errorPods;
     
-    // Calculate CPU percentage
-    const cpuPercentage = (totalCPU / totalCPUCapacity) * 100;
-    
-    // Update the dashboard with calculated metrics
+    // Update total CPU and GPU counts
     document.getElementById('totalCPUCount').textContent = totalCPU.toFixed(1);
-    document.getElementById('totalCPUPercentage').textContent = cpuPercentage.toFixed(1) + '%';
-    document.getElementById('totalGPUCount').textContent = totalGPU;
     
-    // Initialize GPU filter functionality
+    // Calculate percentage based on 256 cores capacity
+    const totalCPUCapacity = 256;
+    const cpuPercentage = ((totalCPU / totalCPUCapacity) * 100).toFixed(1);
+    document.getElementById('totalCPUPercentage').textContent = cpuPercentage;
+    
+    document.getElementById('totalGPUCount').textContent = totalGPU;
+
+    // Set up the GPU filter
     initGPUFilter();
     
-    console.log(`Dashboard metrics updated - Pods: ${totalPods}, vCPU: ${totalCPU.toFixed(2)} (${cpuPercentage.toFixed(2)}%), GPUs: ${totalGPU}`);
+    console.log(`Dashboard updated with ${totalPods} pods (${runningPods} running, ${succeededPods} succeeded, ${errorPods} error), ${totalCPU.toFixed(1)} CPUs (${cpuPercentage}%), ${totalGPU} GPUs`);
 }
 
 // GPU Filter Functionality
 function initGPUFilter() {
     const gpuCard = document.getElementById('gpuCard');
-    const gpuFilterStatus = document.getElementById('gpuFilterStatus');
+    const clearGPUFilterBtn = document.getElementById('clearGPUFilter');
     
     if (!gpuCard) return;
     
@@ -1760,29 +1865,56 @@ function initGPUFilter() {
     gpuCard.parentNode.replaceChild(newGpuCard, gpuCard);
     
     // Add event listener to GPU card
-    newGpuCard.addEventListener('click', toggleGPUFilter);
+    newGpuCard.addEventListener('click', function(e) {
+        // Don't trigger if the clear button was clicked
+        if (e.target.id === 'clearGPUFilter' || e.target.closest('#clearGPUFilter')) {
+            e.stopPropagation();
+            return;
+        }
+        toggleGPUFilter();
+    });
+    
+    // Add event listener to clear button
+    const newClearBtn = document.getElementById('clearGPUFilter');
+    if (newClearBtn) {
+        newClearBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent event from bubbling to the card
+            if (document.getElementById('gpuCard').classList.contains('filter-active')) {
+                toggleGPUFilter(); // Turn off the filter
+            }
+        });
+    }
 }
 
 // Toggle GPU filter on/off
 function toggleGPUFilter() {
     const gpuCard = document.getElementById('gpuCard');
     const gpuFilterStatus = document.getElementById('gpuFilterStatus');
+    const clearGPUFilterBtn = document.getElementById('clearGPUFilter');
     const isFilterActive = gpuCard.classList.contains('filter-active');
     
     if (isFilterActive) {
         // Disable filter
         gpuCard.classList.remove('filter-active');
-        gpuFilterStatus.textContent = 'Click to filter by GPU';
+        gpuFilterStatus.textContent = 'Click to filter';
+        clearGPUFilterBtn.style.display = 'none';
         
         // Show all pods
         const podRows = document.querySelectorAll('#podsTable tbody tr');
         podRows.forEach(row => {
             row.style.display = '';
         });
+        
+        // Apply any active search filter
+        const searchInput = document.getElementById('resourceSearchInput');
+        if (searchInput && searchInput.value.trim()) {
+            filterResources(searchInput.value.trim());
+        }
     } else {
         // Enable filter
         gpuCard.classList.add('filter-active');
-        gpuFilterStatus.textContent = 'GPU filter active - Click to clear';
+        gpuFilterStatus.textContent = 'Filtering by GPU';
+        clearGPUFilterBtn.style.display = 'inline-block';
         
         if (!window.podsWithGPUs || window.podsWithGPUs.length === 0) {
             // No pods with GPUs found
