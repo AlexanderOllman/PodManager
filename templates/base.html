@@ -468,38 +468,49 @@
             // Set a custom flag to prevent fetchResourcesForAllTabs from running
             window.isChartsPage = true;
             
-            fetch('/charts')
-                .then(response => response.text())
+            // Set active state for Charts nav item before fetching
+            document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            const chartsLink = document.querySelector('.sidebar .nav-link[onclick*="navigateToCharts"]');
+            if (chartsLink) {
+                chartsLink.classList.add('active');
+            }
+            
+            // Show loading spinner while fetching
+            document.getElementById('main-content').innerHTML = `
+                <div class="d-flex justify-content-center mt-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading charts content...</span>
+                    </div>
+                </div>
+            `;
+            
+            // Load chart content directly from the content endpoint
+            fetch('/charts_content')
+                .then(response => {
+                    console.log("Navigation: Charts content fetched, status:", response.status);
+                    return response.text();
+                })
                 .then(html => {
-                    console.log("Navigation: Charts page content fetched");
-                    // Extract the content from the charts page
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const content = doc.querySelector('#main-content').innerHTML;
+                    console.log("Navigation: Processing charts content...");
                     
-                    // Update the page content and history
-                    document.getElementById('main-content').innerHTML = content;
-                    window.history.pushState({content: content, page: 'charts'}, '', '/charts');
+                    // Update the page content
+                    document.getElementById('main-content').innerHTML = html;
                     
-                    // Set active state for Charts nav item
-                    document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-                        link.classList.remove('active');
-                    });
-                    const chartsLink = document.querySelector('.sidebar .nav-link[onclick*="navigateToCharts"]');
-                    if (chartsLink) {
-                        chartsLink.classList.add('active');
-                    }
+                    // Execute any scripts in the content
+                    executeScripts(html);
                     
-                    console.log("Navigation: Initializing Charts page...");
-                    // Initialize the charts page by triggering the DOMContentLoaded
-                    const event = new Event('DOMContentLoaded');
-                    document.dispatchEvent(event);
+                    // Update history
+                    window.history.pushState({content: html, page: 'charts'}, '', '/charts');
+                    
+                    console.log("Navigation: Charts content loaded and scripts executed");
                 })
                 .catch(error => {
-                    console.error('Navigation: Error loading charts page:', error);
+                    console.error('Navigation: Error loading charts content:', error);
                     document.getElementById('main-content').innerHTML = `
                         <div class="alert alert-danger m-3">
-                            Error loading charts page: ${error.message}
+                            Error loading charts content: ${error.message}
                         </div>
                     `;
                 });
@@ -625,6 +636,80 @@
             checkScreenSize();
             window.addEventListener('resize', checkScreenSize);
         });
+    </script>
+    
+    <!-- Utility for executing scripts in dynamically loaded content -->
+    <script>
+        // Function to execute scripts contained in dynamically added HTML content
+        function executeScripts(htmlContent) {
+            console.log("Executing scripts in dynamically loaded content...");
+            
+            // Create a temporary div to hold the content
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlContent;
+            
+            // Find all script tags
+            const scripts = tempDiv.querySelectorAll('script');
+            if (scripts.length > 0) {
+                console.log(`Found ${scripts.length} scripts to execute`);
+            }
+            
+            // Execute each script
+            scripts.forEach((oldScript, index) => {
+                const newScript = document.createElement('script');
+                
+                // Copy all attributes
+                Array.from(oldScript.attributes).forEach(attr => {
+                    newScript.setAttribute(attr.name, attr.value);
+                });
+                
+                // Copy the content
+                newScript.textContent = oldScript.textContent;
+                
+                // Replace the old script with the new one to execute it
+                console.log(`Executing script ${index + 1}`);
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+            
+            // Return the HTML without the scripts (they've already been executed)
+            return tempDiv.innerHTML;
+        }
+    </script>
+
+    <!-- Add utility function to execute scripts from dynamically loaded content -->
+    <script>
+        // Function to execute scripts from dynamically loaded content
+        function executeScripts(html) {
+            // Create a temporary container for the content
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            
+            // Find all script tags
+            const scripts = temp.querySelectorAll('script');
+            console.log(`Navigation: Found ${scripts.length} scripts to execute`);
+            
+            // Execute each script
+            scripts.forEach((oldScript, index) => {
+                console.log(`Navigation: Executing script ${index + 1}`);
+                const newScript = document.createElement('script');
+                
+                // Copy all attributes
+                Array.from(oldScript.attributes).forEach(attr => {
+                    newScript.setAttribute(attr.name, attr.value);
+                });
+                
+                // Copy the content
+                newScript.textContent = oldScript.textContent;
+                
+                // Replace the old script with the new one (which will execute)
+                if (oldScript.parentNode) {
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                } else {
+                    // If it's not in the DOM yet, append to body
+                    document.body.appendChild(newScript);
+                }
+            });
+        }
     </script>
 </body>
 </html> 
