@@ -271,7 +271,7 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('charts') }}">
+                            <a class="nav-link" href="javascript:void(0);" onclick="navigateToCharts()">
                                 <i class="fas fa-ship"></i> <span class="menu-text">Charts</span>
                             </a>
                         </li>
@@ -458,6 +458,37 @@
                 });
         }
         
+        function navigateToCharts() {
+            fetch('/charts')
+                .then(response => response.text())
+                .then(html => {
+                    // Extract the content from the charts page
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const content = doc.querySelector('#main-content').innerHTML;
+                    
+                    // Store the current page state in history
+                    const currentState = document.getElementById('main-content').innerHTML;
+                    window.history.pushState({content: currentState, page: 'current'}, '', '/');
+                    
+                    // Update the page content and history
+                    document.getElementById('main-content').innerHTML = content;
+                    window.history.pushState({content: content, page: 'charts'}, '', '/charts');
+                    
+                    // Initialize the charts page by triggering the DOMContentLoaded
+                    const event = new Event('DOMContentLoaded');
+                    document.dispatchEvent(event);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('main-content').innerHTML = `
+                        <div class="alert alert-danger m-3">
+                            Error loading charts page: ${error.message}
+                        </div>
+                    `;
+                });
+        }
+        
         window.addEventListener('popstate', function(event) {
             if (event.state) {
                 document.getElementById('main-content').innerHTML = event.state.content;
@@ -465,6 +496,10 @@
                     initializeHomePage();
                 } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
                     initializeExplorePage();
+                } else if (event.state.page === 'charts') {
+                    // Trigger the DOM content loaded event to initialize charts
+                    const event = new Event('DOMContentLoaded');
+                    document.dispatchEvent(event);
                 }
             }
         });
