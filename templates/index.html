@@ -22,6 +22,21 @@
     .avatar-title {
         font-size: 1.2rem;
     }
+    /* GPU card filter styles */
+    .gpu-filter-card {
+        cursor: pointer;
+    }
+    .gpu-filter-card.filter-active {
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.5) !important;
+        border: 1px solid #0d6efd;
+    }
+    .gpu-filter-card.filter-active .bg-info {
+        background-color: #0d6efd !important;
+    }
+    .gpu-filter-card.filter-active:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 0.5rem 1rem rgba(13, 110, 253, 0.25) !important;
+    }
     /* Table styles */
     .table th {
         font-weight: 600;
@@ -118,9 +133,12 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h6 class="text-muted fw-normal mt-0">Total vCPU</h6>
-                                <h3 class="my-2" id="totalCPUCount">-</h3>
-                                <p class="mb-0 text-muted"><span class="text-success me-2"><i class="fas fa-microchip"></i> Allocated</span></p>
+                                <h6 class="text-muted fw-normal mt-0">vCPU Usage</h6>
+                                <h3 class="my-2"><span id="totalCPUPercentage">-%</span></h3>
+                                <p class="mb-0 text-muted">
+                                    <span class="text-success me-2"><i class="fas fa-microchip"></i></span>
+                                    <span id="totalCPUCount">-</span>/<span id="totalCPUCapacity">256</span> Cores
+                                </p>
                             </div>
                             <div class="avatar-sm rounded-circle bg-success align-self-center">
                                 <i class="fas fa-microchip avatar-title text-white"></i>
@@ -132,13 +150,16 @@
 
             <!-- GPU Card -->
             <div class="col-md-3">
-                <div class="card border-0 shadow-sm h-100">
+                <div class="card border-0 shadow-sm h-100 gpu-filter-card" id="gpuCard" role="button">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="text-muted fw-normal mt-0">Total GPUs</h6>
                                 <h3 class="my-2" id="totalGPUCount">-</h3>
-                                <p class="mb-0 text-muted"><span class="text-success me-2"><i class="fas fa-tachometer-alt"></i> Allocated</span></p>
+                                <p class="mb-0 text-muted">
+                                    <span class="text-success me-2"><i class="fas fa-tachometer-alt"></i></span>
+                                    <span id="gpuFilterStatus">Click to filter by GPU</span>
+                                </p>
                             </div>
                             <div class="avatar-sm rounded-circle bg-info align-self-center">
                                 <i class="fas fa-tachometer-alt avatar-title text-white"></i>
@@ -533,6 +554,9 @@ function initializeApp() {
     // Connect socket event listeners
     connectSocketListeners();
     
+    // Set up additional tab click handlers
+    setupTabClickHandlers();
+    
     console.log('Application initialized');
 }
 
@@ -866,29 +890,58 @@ function filterResources(resourceType, searchTerm) {
     const rows = tableBody.querySelectorAll('tr');
     const searchTermLower = searchTerm.toLowerCase();
     
+    // Check if GPU filter is active
+    const isGPUFilterActive = document.getElementById('gpuCard')?.classList.contains('filter-active');
+    const gpuPodNames = window.podsWithGPUs?.map(pod => `${pod.namespace}/${pod.name}`) || [];
+    
     rows.forEach(row => {
+        if (row.classList.contains('no-results-row') || row.classList.contains('no-gpu-pods-row')) {
+            row.style.display = 'none';
+            return;
+        }
+        
         const text = row.textContent.toLowerCase();
-        const shouldShow = searchTerm === '' || text.includes(searchTermLower);
-        row.style.display = shouldShow ? '' : 'none';
+        const matchesSearch = searchTerm === '' || text.includes(searchTermLower);
+        
+        // If GPU filter is active, also check if this pod has GPUs
+        if (isGPUFilterActive && resourceType === 'pods') {
+            const namespace = row.cells[0]?.textContent;
+            const name = row.cells[1]?.textContent;
+            const hasGPU = gpuPodNames.includes(`${namespace}/${name}`);
+            
+            row.style.display = (matchesSearch && hasGPU) ? '' : 'none';
+        } else {
+            row.style.display = matchesSearch ? '' : 'none';
+        }
     });
     
     // Show a message if no results
     let noResultsRow = tableBody.querySelector('.no-results-row');
     
-    if (searchTerm !== '' && ![...rows].some(row => row.style.display !== 'none' && !row.classList.contains('no-results-row'))) {
+    if (searchTerm !== '' && ![...rows].some(row => row.style.display !== 'none' && 
+        !row.classList.contains('no-results-row') && 
+        !row.classList.contains('no-gpu-pods-row'))) {
         // No visible rows and search is active
         if (!noResultsRow) {
             noResultsRow = document.createElement('tr');
             noResultsRow.className = 'no-results-row';
-            noResultsRow.innerHTML = `<td colspan="7" class="text-center">No ${resourceType} matching "${searchTerm}"</td>`;
+            noResultsRow.innerHTML = `<td colspan="7" class="text-center">No ${resourceType} matching "${searchTerm}"${isGPUFilterActive ? ' with GPU resources' : ''}</td>`;
             tableBody.appendChild(noResultsRow);
         } else {
-            noResultsRow.querySelector('td').textContent = `No ${resourceType} matching "${searchTerm}"`;
+            noResultsRow.querySelector('td').textContent = `No ${resourceType} matching "${searchTerm}"${isGPUFilterActive ? ' with GPU resources' : ''}`;
             noResultsRow.style.display = '';
         }
     } else if (noResultsRow) {
         // Hide the no results message if there are visible rows or search is cleared
         noResultsRow.style.display = 'none';
+    }
+    
+    // If GPU filter is active but no pods are found, show GPU filter message
+    if (isGPUFilterActive && resourceType === 'pods' && 
+        ![...rows].some(row => row.style.display !== 'none' && 
+            !row.classList.contains('no-results-row') && 
+            !row.classList.contains('no-gpu-pods-row'))) {
+        showNoGPUPodsMessage();
     }
 }
 
@@ -1439,16 +1492,13 @@ function refreshApplication() {
     
     statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Refreshing application...';
     
-    // Get the repo URL from the input field
-    const repoUrl = document.getElementById('githubRepo').value;
-    
     fetch('/refresh_application', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            repo_url: repoUrl || undefined  // Only send if user provided a value
+            repo_url: document.getElementById('githubRepo').value || undefined  // Only send if user provided a value
         })
     })
     .then(response => {
@@ -1629,8 +1679,13 @@ function updateDashboardMetrics(pods) {
     // Calculate total GPU allocation
     let totalGPU = 0;
     
+    // Keep track of pods with GPUs for filtering
+    window.podsWithGPUs = [];
+    
     // Loop through all pods to calculate resource usage
     pods.forEach(pod => {
+        let podHasGPU = false;
+        
         // Check if the pod has containers with resource requests
         if (pod.spec && pod.spec.containers) {
             pod.spec.containers.forEach(container => {
@@ -1651,23 +1706,170 @@ function updateDashboardMetrics(pods) {
                     // Add GPU resources if available
                     // NVIDIA GPU resources are typically specified as nvidia.com/gpu
                     if (container.resources.requests['nvidia.com/gpu']) {
-                        totalGPU += parseInt(container.resources.requests['nvidia.com/gpu']);
+                        const gpuCount = parseInt(container.resources.requests['nvidia.com/gpu']);
+                        totalGPU += gpuCount;
+                        if (gpuCount > 0) podHasGPU = true;
                     }
                     
                     // Alternative GPU resource naming
                     if (container.resources.requests['gpu']) {
-                        totalGPU += parseInt(container.resources.requests['gpu']);
+                        const gpuCount = parseInt(container.resources.requests['gpu']);
+                        totalGPU += gpuCount;
+                        if (gpuCount > 0) podHasGPU = true;
                     }
                 }
             });
         }
+        
+        // Add pod to the GPU pods list if it has GPUs
+        if (podHasGPU) {
+            window.podsWithGPUs.push({
+                namespace: pod.metadata.namespace,
+                name: pod.metadata.name
+            });
+        }
     });
     
+    // Set the total CPU capacity (this could be fetched from an API or set as a config value)
+    const totalCPUCapacity = 256; // This should ideally come from your cluster configuration
+    document.getElementById('totalCPUCapacity').textContent = totalCPUCapacity;
+    
+    // Calculate CPU percentage
+    const cpuPercentage = (totalCPU / totalCPUCapacity) * 100;
+    
     // Update the dashboard with calculated metrics
-    document.getElementById('totalCPUCount').textContent = totalCPU.toFixed(2);
+    document.getElementById('totalCPUCount').textContent = totalCPU.toFixed(1);
+    document.getElementById('totalCPUPercentage').textContent = cpuPercentage.toFixed(1) + '%';
     document.getElementById('totalGPUCount').textContent = totalGPU;
     
-    console.log(`Dashboard metrics updated - Pods: ${totalPods}, vCPU: ${totalCPU.toFixed(2)}, GPUs: ${totalGPU}`);
+    // Initialize GPU filter functionality
+    initGPUFilter();
+    
+    console.log(`Dashboard metrics updated - Pods: ${totalPods}, vCPU: ${totalCPU.toFixed(2)} (${cpuPercentage.toFixed(2)}%), GPUs: ${totalGPU}`);
+}
+
+// GPU Filter Functionality
+function initGPUFilter() {
+    const gpuCard = document.getElementById('gpuCard');
+    const gpuFilterStatus = document.getElementById('gpuFilterStatus');
+    
+    if (!gpuCard) return;
+    
+    // Remove existing event listeners (to prevent duplication if function is called multiple times)
+    const newGpuCard = gpuCard.cloneNode(true);
+    gpuCard.parentNode.replaceChild(newGpuCard, gpuCard);
+    
+    // Add event listener to GPU card
+    newGpuCard.addEventListener('click', toggleGPUFilter);
+}
+
+// Toggle GPU filter on/off
+function toggleGPUFilter() {
+    const gpuCard = document.getElementById('gpuCard');
+    const gpuFilterStatus = document.getElementById('gpuFilterStatus');
+    const isFilterActive = gpuCard.classList.contains('filter-active');
+    
+    if (isFilterActive) {
+        // Disable filter
+        gpuCard.classList.remove('filter-active');
+        gpuFilterStatus.textContent = 'Click to filter by GPU';
+        
+        // Show all pods
+        const podRows = document.querySelectorAll('#podsTable tbody tr');
+        podRows.forEach(row => {
+            row.style.display = '';
+        });
+    } else {
+        // Enable filter
+        gpuCard.classList.add('filter-active');
+        gpuFilterStatus.textContent = 'GPU filter active - Click to clear';
+        
+        if (!window.podsWithGPUs || window.podsWithGPUs.length === 0) {
+            // No pods with GPUs found
+            showNoGPUPodsMessage();
+        } else {
+            // Filter to show only pods with GPUs
+            filterPodsWithGPUs();
+        }
+    }
+}
+
+// Filter to show only pods with GPUs
+function filterPodsWithGPUs() {
+    if (!window.podsWithGPUs) return;
+    
+    const podRows = document.querySelectorAll('#podsTable tbody tr');
+    const gpuPodNames = window.podsWithGPUs.map(pod => `${pod.namespace}/${pod.name}`);
+    
+    podRows.forEach(row => {
+        const namespace = row.cells[0]?.textContent;
+        const name = row.cells[1]?.textContent;
+        
+        if (gpuPodNames.includes(`${namespace}/${name}`)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // Check if any rows are visible
+    const anyVisible = Array.from(podRows).some(row => row.style.display !== 'none');
+    if (!anyVisible) {
+        showNoGPUPodsMessage();
+    }
+}
+
+// Show a message when no GPU pods are found
+function showNoGPUPodsMessage() {
+    const tableBody = document.querySelector('#podsTable tbody');
+    
+    // First, make all rows invisible
+    const rows = tableBody.querySelectorAll('tr');
+    rows.forEach(row => {
+        row.style.display = 'none';
+    });
+    
+    // Check if the no-gpu-pods message already exists
+    let noGPURow = tableBody.querySelector('.no-gpu-pods-row');
+    
+    if (!noGPURow) {
+        noGPURow = document.createElement('tr');
+        noGPURow.className = 'no-gpu-pods-row';
+        noGPURow.innerHTML = `
+            <td colspan="7" class="text-center">
+                <div class="alert alert-info m-3">
+                    <i class="fas fa-info-circle me-2"></i> No pods with GPU resources found.
+                    <button class="btn btn-sm btn-outline-primary ms-3" onclick="clearGPUFilter()">
+                        Clear Filter
+                    </button>
+                </div>
+            </td>
+        `;
+        tableBody.appendChild(noGPURow);
+    } else {
+        noGPURow.style.display = '';
+    }
+}
+
+// Clear GPU filter directly (for use in the "Clear Filter" button)
+function clearGPUFilter() {
+    const gpuCard = document.getElementById('gpuCard');
+    const gpuFilterStatus = document.getElementById('gpuFilterStatus');
+    
+    gpuCard.classList.remove('filter-active');
+    gpuFilterStatus.textContent = 'Click to filter by GPU';
+    
+    // Show all pod rows
+    const podRows = document.querySelectorAll('#podsTable tbody tr');
+    podRows.forEach(row => {
+        row.style.display = '';
+    });
+    
+    // Hide the no-gpu-pods message if it exists
+    const noGPURow = document.querySelector('.no-gpu-pods-row');
+    if (noGPURow) {
+        noGPURow.style.display = 'none';
+    }
 }
 
 // Navigation function to handle explore pod links
@@ -1686,5 +1888,27 @@ document.addEventListener('click', function(e) {
         window.location.href = url;
     }
 });
+
+// Set up tab click handlers for GPU filter persistence
+function setupTabClickHandlers() {
+    const resourceTabs = document.querySelectorAll('#resourceTabs .nav-link');
+    
+    resourceTabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-bs-target').substring(1); // Remove the # prefix
+            
+            // If we're switching to pods tab and GPU filter was active, reapply filter
+            if (targetId === 'pods') {
+                // Check in a small timeout to allow the tab to become active
+                setTimeout(() => {
+                    const isGPUFilterActive = document.getElementById('gpuCard')?.classList.contains('filter-active');
+                    if (isGPUFilterActive) {
+                        filterPodsWithGPUs();
+                    }
+                }, 100);
+            }
+        });
+    });
+}
 </script>
 {% endblock %}
