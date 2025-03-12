@@ -136,6 +136,20 @@
         font-size: 14px;
         color: #6c757d;
     }
+    /* Resource column styles */
+    .resource-cell {
+        text-align: center;
+        white-space: nowrap;
+    }
+    .cpu-cell {
+        color: #0d6efd;
+    }
+    .gpu-cell {
+        color: #198754;
+    }
+    .memory-cell {
+        color: #fd7e14;
+    }
 </style>
 {% endblock %}
 
@@ -291,6 +305,9 @@
                                 <th class="border-0">Name</th>
                                 <th class="border-0">Ready</th>
                                 <th class="border-0">Status</th>
+                                <th class="border-0">vCPU</th>
+                                <th class="border-0">GPU</th>
+                                <th class="border-0">Memory</th>
                                 <th class="border-0">Restarts</th>
                                 <th class="border-0">Age</th>
                                 <th class="border-0 text-center">Actions</th>
@@ -348,6 +365,9 @@
                                 <th>Name</th>
                                 <th>URL</th>
                                 <th>Ready</th>
+                                <th>vCPU</th>
+                                <th>GPU</th>
+                                <th>Memory</th>
                                 <th>Default Traffic</th>
                                 <th>Canary Traffic</th>
                                 <th>Age</th>
@@ -987,7 +1007,9 @@ function filterResources(resourceType, searchTerm) {
         if (!noResultsRow) {
             noResultsRow = document.createElement('tr');
             noResultsRow.className = 'no-results-row';
-            noResultsRow.innerHTML = `<td colspan="7" class="text-center">No ${resourceType} matching "${searchTerm}"${isGPUFilterActive ? ' with GPU resources' : ''}</td>`;
+            const colspan = resourceType === 'pods' ? 10 : 
+                           (resourceType === 'inferenceservices' ? 11 : 7);
+            noResultsRow.innerHTML = `<td colspan="${colspan}" class="text-center">No ${resourceType} matching "${searchTerm}"${isGPUFilterActive ? ' with GPU resources' : ''}</td>`;
             tableBody.appendChild(noResultsRow);
         } else {
             noResultsRow.querySelector('td').textContent = `No ${resourceType} matching "${searchTerm}"${isGPUFilterActive ? ' with GPU resources' : ''}`;
@@ -1063,14 +1085,14 @@ function fetchResourceData(resourceType) {
         tableBody.innerHTML = ''; // Clear existing rows
         
         if (data.format === 'error') {
-            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="10">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
             hideLoading(resourceType);
             return;
         }
         
         // For empty results, show a message
         if (!data.data.items || data.data.items.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="7" class="text-center">No ${resourceType} found</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="10" class="text-center">No ${resourceType} found</td></tr>`;
             hideLoading(resourceType);
             return;
         }
@@ -1084,11 +1106,15 @@ function fetchResourceData(resourceType) {
             const row = document.createElement('tr');
             switch (resourceType) {
                 case 'pods':
+                    const resources = getResourceUsage(item);
                     row.innerHTML = `
                         <td>${item.metadata.namespace}</td>
                         <td>${item.metadata.name}</td>
                         <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
                         <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
+                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
+                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
                         <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
                         <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
                         <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
@@ -1107,11 +1133,53 @@ function fetchResourceData(resourceType) {
                     `;
                     break;
                 case 'inferenceservices':
+                    // For InferenceServices, get resources from spec.predictor
+                    let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
+                    if (item.spec && item.spec.predictor) {
+                        if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                            item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                            item.spec.predictor.xgboost || item.spec.predictor.custom) {
+                            // Get the appropriate predictor implementation
+                            const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                                                 item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                                                 item.spec.predictor.xgboost || item.spec.predictor.custom;
+                            
+                            if (predictorImpl.resources) {
+                                if (predictorImpl.resources.requests) {
+                                    // CPU
+                                    if (predictorImpl.resources.requests.cpu) {
+                                        const cpuReq = predictorImpl.resources.requests.cpu;
+                                        if (cpuReq.endsWith('m')) {
+                                            infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
+                                        } else {
+                                            infResources.cpu = parseFloat(cpuReq).toFixed(2);
+                                        }
+                                    }
+                                    
+                                    // GPU
+                                    if (predictorImpl.resources.requests['nvidia.com/gpu']) {
+                                        infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
+                                    } else if (predictorImpl.resources.requests.gpu) {
+                                        infResources.gpu = predictorImpl.resources.requests.gpu;
+                                    }
+                                    
+                                    // Memory
+                                    if (predictorImpl.resources.requests.memory) {
+                                        infResources.memory = predictorImpl.resources.requests.memory;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
                     row.innerHTML = `
                         <td>${item.metadata.namespace}</td>
                         <td>${item.metadata.name}</td>
                         <td>${item.status.url || 'N/A'}</td>
                         <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
+                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
+                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
+                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
                         <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
                         <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
                         <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
@@ -1171,7 +1239,7 @@ function fetchResourceData(resourceType) {
         
         const tableBody = document.querySelector(`#${resourceType}Table tbody`);
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
+            tableBody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">
                 <i class="fas fa-exclamation-triangle"></i> Error fetching ${resourceType}: ${error.message}
             </td></tr>`;
         }
@@ -1972,7 +2040,7 @@ function showNoGPUPodsMessage() {
         noGPURow = document.createElement('tr');
         noGPURow.className = 'no-gpu-pods-row';
         noGPURow.innerHTML = `
-            <td colspan="7" class="text-center">
+            <td colspan="10" class="text-center">
                 <div class="alert alert-info m-3">
                     <i class="fas fa-info-circle me-2"></i> No pods with GPU resources found.
                     <button class="btn btn-sm btn-outline-primary ms-3" onclick="clearGPUFilter()">
@@ -2045,6 +2113,110 @@ function setupTabClickHandlers() {
             }
         });
     });
+}
+
+// Helper function to calculate resource usage
+function getResourceUsage(item) {
+    let cpu = 0;
+    let gpu = 0;
+    let memory = '0';
+    
+    // Function to convert memory to standardized format (Mi)
+    function standardizeMemory(memStr) {
+        if (!memStr) return '0Mi';
+        
+        // Remove any whitespace
+        memStr = memStr.trim();
+        
+        // Check if memory is in Ki format
+        if (memStr.endsWith('Ki')) {
+            const valueInKi = parseFloat(memStr.slice(0, -2));
+            return (valueInKi / 1024).toFixed(1) + 'Mi';
+        }
+        
+        // Check if memory is in Mi format
+        if (memStr.endsWith('Mi')) {
+            return memStr;
+        }
+        
+        // Check if memory is in Gi format
+        if (memStr.endsWith('Gi')) {
+            const valueInGi = parseFloat(memStr.slice(0, -2));
+            return (valueInGi * 1024).toFixed(0) + 'Mi';
+        }
+        
+        // Check if memory is in bytes (no unit)
+        if (!isNaN(memStr)) {
+            const valueInBytes = parseFloat(memStr);
+            return (valueInBytes / (1024 * 1024)).toFixed(1) + 'Mi';
+        }
+        
+        // Default case: just return the original string
+        return memStr;
+    }
+    
+    // If this is a pod, extract resource data from containers
+    if (item.spec && item.spec.containers) {
+        item.spec.containers.forEach(container => {
+            if (container.resources && container.resources.requests) {
+                // Add CPU requests if available
+                if (container.resources.requests.cpu) {
+                    const cpuRequest = container.resources.requests.cpu;
+                    if (cpuRequest.endsWith('m')) {
+                        // Convert millicpu to CPU
+                        cpu += parseInt(cpuRequest.slice(0, -1)) / 1000;
+                    } else {
+                        // Direct CPU value
+                        cpu += parseFloat(cpuRequest);
+                    }
+                }
+                
+                // Add GPU resources if available
+                if (container.resources.requests['nvidia.com/gpu']) {
+                    gpu += parseInt(container.resources.requests['nvidia.com/gpu']);
+                } else if (container.resources.requests['gpu']) {
+                    gpu += parseInt(container.resources.requests['gpu']);
+                }
+                
+                // Add memory requests if available
+                if (container.resources.requests.memory) {
+                    const memRequest = standardizeMemory(container.resources.requests.memory);
+                    // Extract numeric value from memory string
+                    const memValue = parseFloat(memRequest);
+                    memory = memValue + 'Mi';
+                }
+            }
+        });
+    }
+    
+    return {
+        cpu: cpu.toFixed(2),
+        gpu: gpu.toString(),
+        memory: memory
+    };
+}
+
+// Helper function to get status icon based on phase
+function getStatusIcon(phase) {
+    if (!phase) return '';
+    
+    phase = phase.toLowerCase();
+    switch (phase) {
+        case 'running':
+        case 'true':
+            return '<i class="fas fa-check-circle text-success me-1"></i>';
+        case 'succeeded':
+            return '<i class="fas fa-check-square text-primary me-1"></i>';
+        case 'pending':
+            return '<i class="fas fa-clock text-warning me-1"></i>';
+        case 'failed':
+        case 'false':
+            return '<i class="fas fa-times-circle text-danger me-1"></i>';
+        case 'unknown':
+            return '<i class="fas fa-question-circle text-muted me-1"></i>';
+        default:
+            return '<i class="fas fa-info-circle text-info me-1"></i>';
+    }
 }
 </script>
 {% endblock %}
