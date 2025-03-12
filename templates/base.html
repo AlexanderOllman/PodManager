@@ -459,28 +459,44 @@
         }
         
         function navigateToCharts() {
+            console.log("Navigation: Navigating to Charts page...");
+            
+            // Store the current page state in history before navigating away
+            const currentState = document.getElementById('main-content').innerHTML;
+            window.history.pushState({content: currentState, page: 'current'}, '', '/');
+            
+            // Set a custom flag to prevent fetchResourcesForAllTabs from running
+            window.isChartsPage = true;
+            
             fetch('/charts')
                 .then(response => response.text())
                 .then(html => {
+                    console.log("Navigation: Charts page content fetched");
                     // Extract the content from the charts page
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
                     const content = doc.querySelector('#main-content').innerHTML;
                     
-                    // Store the current page state in history
-                    const currentState = document.getElementById('main-content').innerHTML;
-                    window.history.pushState({content: currentState, page: 'current'}, '', '/');
-                    
                     // Update the page content and history
                     document.getElementById('main-content').innerHTML = content;
                     window.history.pushState({content: content, page: 'charts'}, '', '/charts');
                     
+                    // Set active state for Charts nav item
+                    document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+                        link.classList.remove('active');
+                    });
+                    const chartsLink = document.querySelector('.sidebar .nav-link[onclick*="navigateToCharts"]');
+                    if (chartsLink) {
+                        chartsLink.classList.add('active');
+                    }
+                    
+                    console.log("Navigation: Initializing Charts page...");
                     // Initialize the charts page by triggering the DOMContentLoaded
                     const event = new Event('DOMContentLoaded');
                     document.dispatchEvent(event);
                 })
                 .catch(error => {
-                    console.error('Error:', error);
+                    console.error('Navigation: Error loading charts page:', error);
                     document.getElementById('main-content').innerHTML = `
                         <div class="alert alert-danger m-3">
                             Error loading charts page: ${error.message}
@@ -493,13 +509,18 @@
             if (event.state) {
                 document.getElementById('main-content').innerHTML = event.state.content;
                 if (event.state.page === 'home' && typeof initializeHomePage === 'function') {
+                    window.isChartsPage = false;
                     initializeHomePage();
                 } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
+                    window.isChartsPage = false;
                     initializeExplorePage();
                 } else if (event.state.page === 'charts') {
+                    window.isChartsPage = true;
                     // Trigger the DOM content loaded event to initialize charts
                     const event = new Event('DOMContentLoaded');
                     document.dispatchEvent(event);
+                } else {
+                    window.isChartsPage = false;
                 }
             }
         });

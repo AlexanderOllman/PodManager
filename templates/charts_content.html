@@ -67,6 +67,7 @@
 <script>
     // Check if ChartMuseum port forwarding is running
     function checkChartMuseumStatus() {
+        console.log("ChartMuseum: Checking connection status...");
         const statusDiv = document.getElementById('chart-service-status');
         const statusMessage = document.getElementById('chart-service-message');
         
@@ -77,7 +78,9 @@
         fetch('/api/charts/status')
             .then(response => response.json())
             .then(data => {
+                console.log("ChartMuseum status response:", data);
                 if (data.status === 'success') {
+                    console.log("ChartMuseum: Connection successful");
                     statusDiv.classList.remove('alert-info', 'alert-danger', 'alert-warning');
                     statusDiv.classList.add('alert-success');
                     statusMessage.textContent = 'ChartMuseum connected successfully!';
@@ -86,11 +89,13 @@
                     }, 3000);
                     fetchCharts();
                 } else if (data.status === 'pending') {
+                    console.log("ChartMuseum: Connection pending, retrying...");
                     statusDiv.classList.remove('alert-info', 'alert-danger', 'alert-success');
                     statusDiv.classList.add('alert-warning');
                     statusMessage.textContent = 'Establishing connection to ChartMuseum...';
                     setTimeout(checkChartMuseumStatus, 2000);
                 } else {
+                    console.error("ChartMuseum: Connection error:", data.message);
                     statusDiv.classList.remove('alert-info', 'alert-success', 'alert-warning');
                     statusDiv.classList.add('alert-danger');
                     statusMessage.textContent = 'Error: ' + data.message;
@@ -98,6 +103,7 @@
                 }
             })
             .catch(error => {
+                console.error("ChartMuseum: Fetch error:", error);
                 statusDiv.classList.remove('alert-info', 'alert-success', 'alert-warning');
                 statusDiv.classList.add('alert-danger');
                 statusMessage.textContent = 'Error: ' + error.message;
@@ -123,23 +129,28 @@
     });
 
     function fetchCharts() {
+        console.log("ChartMuseum: Fetching charts...");
         document.getElementById('loading').classList.remove('d-none');
         document.getElementById('chart-container').classList.add('d-none');
         document.getElementById('empty-state').classList.add('d-none');
 
         fetch('/api/charts')
             .then(response => {
+                console.log("ChartMuseum: Charts fetch response status:", response.status);
                 if (!response.ok) {
                     return response.json().then(data => {
+                        console.error("ChartMuseum: Fetch error:", data);
                         throw new Error(data.error || 'Network response was not ok');
                     });
                 }
                 return response.json();
             })
             .then(data => {
+                console.log("ChartMuseum: Charts data received:", Object.keys(data).length, "charts");
                 document.getElementById('loading').classList.add('d-none');
                 
                 if (Object.keys(data).length === 0) {
+                    console.log("ChartMuseum: No charts found");
                     document.getElementById('empty-state').classList.remove('d-none');
                 } else {
                     document.getElementById('chart-container').classList.remove('d-none');
@@ -147,6 +158,7 @@
                 }
             })
             .catch(error => {
+                console.error("ChartMuseum: Charts fetch error:", error);
                 document.getElementById('loading').classList.add('d-none');
                 showAlert('Error fetching charts: ' + error.message, 'danger');
             });
@@ -269,37 +281,47 @@
     }
 
     function deleteChart(chartName) {
+        console.log("ChartMuseum: Deleting chart:", chartName);
         fetch(`/api/charts/${chartName}`, {
             method: 'DELETE'
         })
         .then(response => response.json())
         .then(data => {
+            console.log("ChartMuseum: Delete chart response:", data);
             if (data.error) {
+                console.error("ChartMuseum: Delete chart error:", data.error);
                 showAlert(`Error: ${data.error}`, 'danger');
             } else {
+                console.log("ChartMuseum: Chart deleted successfully");
                 showAlert(`Chart "${chartName}" deleted successfully`, 'success');
                 fetchCharts();
             }
         })
         .catch(error => {
+            console.error("ChartMuseum: Delete chart error:", error);
             showAlert(`Error deleting chart: ${error.message}`, 'danger');
         });
     }
 
     function deleteChartVersion(chartName, version) {
+        console.log("ChartMuseum: Deleting chart version:", chartName, version);
         fetch(`/api/charts/${chartName}/${version}`, {
             method: 'DELETE'
         })
         .then(response => response.json())
         .then(data => {
+            console.log("ChartMuseum: Delete version response:", data);
             if (data.error) {
+                console.error("ChartMuseum: Delete version error:", data.error);
                 showAlert(`Error: ${data.error}`, 'danger');
             } else {
+                console.log("ChartMuseum: Version deleted successfully");
                 showAlert(`Version "${version}" of chart "${chartName}" deleted successfully`, 'success');
                 fetchCharts();
             }
         })
         .catch(error => {
+            console.error("ChartMuseum: Delete version error:", error);
             showAlert(`Error deleting chart version: ${error.message}`, 'danger');
         });
     }
