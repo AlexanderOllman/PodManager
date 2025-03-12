@@ -505,6 +505,138 @@
         </div>
         <pre id="eventsOutput" class="mt-3"></pre>
     </div>
+    <div class="tab-pane fade" id="namespaces" role="tabpanel" aria-labelledby="namespaces-tab">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h1 class="h2">Kubernetes Namespaces</h1>
+        </div>
+
+        <!-- Filters and Controls -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-text bg-light border-0">
+                        <i class="fas fa-search text-muted"></i>
+                    </span>
+                    <input type="text" class="form-control border-0 bg-light" id="namespaceSearchInput" placeholder="Filter namespaces...">
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <div class="btn-group">
+                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-sort me-1"></i> Sort By
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item sort-option" href="#" data-sort="name">Name (A-Z)</a></li>
+                        <li><a class="dropdown-item sort-option" href="#" data-sort="name-desc">Name (Z-A)</a></li>
+                        <li><a class="dropdown-item sort-option" href="#" data-sort="pods">Pods (High-Low)</a></li>
+                        <li><a class="dropdown-item sort-option" href="#" data-sort="cpu">vCPU Usage (High-Low)</a></li>
+                        <li><a class="dropdown-item sort-option" href="#" data-sort="gpu">GPU Usage (High-Low)</a></li>
+                        <li><a class="dropdown-item sort-option" href="#" data-sort="memory">Memory Usage (High-Low)</a></li>
+                    </ul>
+                </div>
+                <button type="button" class="btn btn-primary ms-2" id="refreshNamespaces">
+                    <i class="fas fa-sync-alt me-1"></i> Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Namespaces Loading -->
+        <div id="namespacesLoading" class="loading-container">
+            <div class="progress-container">
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+                </div>
+                <div class="loading-text">Loading namespaces...</div>
+            </div>
+        </div>
+
+        <!-- Namespaces Table -->
+        <div class="card shadow-sm mb-4" id="namespacesTableCard" style="display: none;">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="namespacesTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th class="text-center">Pods</th>
+                            <th class="text-center">vCPU Usage</th>
+                            <th class="text-center">GPU Usage</th>
+                            <th class="text-center">Memory Usage</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="namespacesTableBody">
+                        <!-- Table will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- No Results Message -->
+        <div id="noNamespacesMessage" class="text-center py-5" style="display: none;">
+            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+            <h5>No namespaces found</h5>
+            <p class="text-muted">Try adjusting your search or filter settings</p>
+        </div>
+    </div>
+
+    <!-- Namespace Edit Modal -->
+    <div class="modal fade" id="namespaceEditModal" tabindex="-1" aria-labelledby="namespaceEditModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="namespaceEditModalLabel">Namespace: <span id="currentNamespaceName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Tabs -->
+                    <ul class="nav nav-tabs" id="namespaceDetailTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="describe-tab" data-bs-toggle="tab" data-bs-target="#describe-tab-content" type="button" role="tab">
+                                Describe
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="edit-tab" data-bs-toggle="tab" data-bs-target="#edit-tab-content" type="button" role="tab">
+                                Edit
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <!-- Tab Content -->
+                    <div class="tab-content py-3" id="namespaceDetailTabContent">
+                        <!-- Describe Tab -->
+                        <div class="tab-pane fade show active" id="describe-tab-content" role="tabpanel">
+                            <div id="namespaceDescribeLoading" class="loading-container">
+                                <div class="spinner"></div>
+                            </div>
+                            <pre id="namespaceDescribeOutput" class="bg-light p-3 rounded" style="display: none;"></pre>
+                        </div>
+                        
+                        <!-- Edit Tab -->
+                        <div class="tab-pane fade" id="edit-tab-content" role="tabpanel">
+                            <div id="namespaceEditLoading" class="loading-container">
+                                <div class="spinner"></div>
+                            </div>
+                            <div id="namespaceEditContent" style="display: none;">
+                                <div class="alert alert-warning mb-3">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    Editing namespace configuration directly. Be careful with your changes.
+                                </div>
+                                <textarea id="namespaceYamlEditor" class="form-control code-editor" rows="20"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveNamespaceChanges" style="display: none;">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Tab Content -->
     <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
             <h2>Settings</h2>
@@ -2270,6 +2402,354 @@ function fetchClusterCapacity() {
         .catch(error => {
             console.warn(`Error fetching cluster capacity: ${error.message}. Using default values.`);
         });
+}
+
+// Namespaces functionality
+$(document).ready(function() {
+    // Initialize namespaces tab
+    $('a[data-bs-toggle="tab"][data-bs-target="#namespaces"]').on('shown.bs.tab', function (e) {
+        loadNamespaces();
+    });
+
+    // Refresh namespaces button
+    $('#refreshNamespaces').on('click', function() {
+        loadNamespaces();
+    });
+
+    // Filter namespaces
+    $('#namespaceSearchInput').on('keyup', function() {
+        filterNamespaces();
+    });
+
+    // Sort namespaces
+    $('.sort-option').on('click', function(e) {
+        e.preventDefault();
+        const sortBy = $(this).data('sort');
+        sortNamespaces(sortBy);
+    });
+
+    // Handle namespace actions
+    $(document).on('click', '.namespace-action', function() {
+        const action = $(this).data('action');
+        const namespace = $(this).data('namespace');
+        
+        if (action === 'edit') {
+            openNamespaceEdit(namespace);
+        }
+    });
+
+    // Save namespace changes
+    $('#saveNamespaceChanges').on('click', function() {
+        saveNamespaceChanges();
+    });
+
+    // Switch tabs in namespace modal
+    $('#namespaceDetailTabs button').on('shown.bs.tab', function (e) {
+        const tabId = $(e.target).attr('id');
+        if (tabId === 'edit-tab') {
+            $('#saveNamespaceChanges').show();
+        } else {
+            $('#saveNamespaceChanges').hide();
+        }
+    });
+});
+
+// Load namespaces data
+function loadNamespaces() {
+    // Show loading indicator
+    $('#namespacesLoading').show();
+    $('#namespacesTableCard').hide();
+    $('#noNamespacesMessage').hide();
+
+    // Fetch namespaces data
+    $.ajax({
+        url: '/get_namespace_details',
+        type: 'GET',
+        success: function(response) {
+            if (response.hasOwnProperty('namespaces')) {
+                // Store the namespaces data for filtering/sorting
+                window.namespacesData = response.namespaces;
+                
+                // Render the namespaces
+                renderNamespaces(window.namespacesData);
+            } else {
+                showNoNamespaces('Error loading namespaces');
+            }
+        },
+        error: function() {
+            showNoNamespaces('Failed to fetch namespaces data');
+        },
+        complete: function() {
+            $('#namespacesLoading').hide();
+        }
+    });
+}
+
+// Render namespaces table
+function renderNamespaces(namespaces) {
+    const tableBody = $('#namespacesTableBody');
+    tableBody.empty();
+
+    if (namespaces.length === 0) {
+        showNoNamespaces();
+        return;
+    }
+
+    namespaces.forEach(function(ns) {
+        const row = $('<tr>');
+        
+        // Name column
+        row.append(`<td>
+            <div class="d-flex align-items-center">
+                <div class="avatar-sm rounded bg-info me-3">
+                    <span class="avatar-title rounded">
+                        <i class="fas fa-project-diagram text-white"></i>
+                    </span>
+                </div>
+                <div>
+                    <h6 class="mb-0">${ns.name}</h6>
+                    <small class="text-muted">${getCreationTime(ns)}</small>
+                </div>
+            </div>
+        </td>`);
+        
+        // Pod count column
+        row.append(`<td class="text-center">
+            <span class="fw-bold">${ns.podCount}</span>
+        </td>`);
+        
+        // vCPU usage column
+        row.append(`<td class="text-center resource-cell cpu-cell">
+            <span class="fw-bold">${ns.resources.cpu}</span> vCPUs
+        </td>`);
+        
+        // GPU usage column
+        row.append(`<td class="text-center resource-cell gpu-cell">
+            <span class="fw-bold">${ns.resources.gpu}</span> GPUs
+        </td>`);
+        
+        // Memory usage column
+        row.append(`<td class="text-center resource-cell memory-cell">
+            <span class="fw-bold">${ns.resources.memory}</span> MB
+        </td>`);
+        
+        // Status column
+        const status = getNamespaceStatus(ns);
+        row.append(`<td class="text-center">
+            <span class="badge bg-${status.color}">${status.text}</span>
+        </td>`);
+        
+        // Actions column
+        row.append(`<td class="text-center">
+            <div class="dropdown action-dropdown">
+                <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item namespace-action" href="#" data-action="edit" data-namespace="${ns.name}">
+                        <i class="fas fa-edit text-primary"></i> Edit
+                    </a></li>
+                </ul>
+            </div>
+        </td>`);
+        
+        tableBody.append(row);
+    });
+
+    $('#namespacesTableCard').show();
+}
+
+// Filter namespaces based on search input
+function filterNamespaces() {
+    const searchTerm = $('#namespaceSearchInput').val().toLowerCase();
+    
+    if (!window.namespacesData) return;
+    
+    const filteredNamespaces = window.namespacesData.filter(function(ns) {
+        return ns.name.toLowerCase().includes(searchTerm);
+    });
+    
+    renderNamespaces(filteredNamespaces);
+}
+
+// Sort namespaces based on selected option
+function sortNamespaces(sortBy) {
+    if (!window.namespacesData) return;
+    
+    const sortedNamespaces = [...window.namespacesData];
+    
+    switch (sortBy) {
+        case 'name':
+            sortedNamespaces.sort((a, b) => a.name.localeCompare(b.name));
+            break;
+        case 'name-desc':
+            sortedNamespaces.sort((a, b) => b.name.localeCompare(a.name));
+            break;
+        case 'pods':
+            sortedNamespaces.sort((a, b) => b.podCount - a.podCount);
+            break;
+        case 'cpu':
+            sortedNamespaces.sort((a, b) => b.resources.cpu - a.resources.cpu);
+            break;
+        case 'gpu':
+            sortedNamespaces.sort((a, b) => b.resources.gpu - a.resources.gpu);
+            break;
+        case 'memory':
+            sortedNamespaces.sort((a, b) => b.resources.memory - a.resources.memory);
+            break;
+        default:
+            break;
+    }
+    
+    renderNamespaces(sortedNamespaces);
+}
+
+// Show message when no namespaces are found
+function showNoNamespaces(message = 'No namespaces found') {
+    $('#namespacesTableCard').hide();
+    $('#noNamespacesMessage').show();
+    $('#noNamespacesMessage h5').text(message);
+}
+
+// Get namespace creation time
+function getCreationTime(namespace) {
+    if (namespace.metadata && namespace.metadata.creationTimestamp) {
+        const date = new Date(namespace.metadata.creationTimestamp);
+        return `Created ${date.toLocaleDateString()}`;
+    }
+    return '';
+}
+
+// Get namespace status
+function getNamespaceStatus(namespace) {
+    if (namespace.metadata && namespace.metadata.status && namespace.metadata.status.phase) {
+        const phase = namespace.metadata.status.phase;
+        switch (phase) {
+            case 'Active':
+                return { text: 'Active', color: 'success' };
+            case 'Terminating':
+                return { text: 'Terminating', color: 'warning' };
+            default:
+                return { text: phase, color: 'secondary' };
+        }
+    }
+    // Default to active if status not found
+    return { text: 'Active', color: 'success' };
+}
+
+// Open namespace edit modal
+function openNamespaceEdit(namespace) {
+    // Set current namespace name
+    $('#currentNamespaceName').text(namespace);
+    
+    // Reset tabs to Describe tab
+    $('#describe-tab').tab('show');
+    
+    // Show loading indicators
+    $('#namespaceDescribeLoading').show();
+    $('#namespaceDescribeOutput').hide();
+    $('#namespaceEditLoading').show();
+    $('#namespaceEditContent').hide();
+    $('#saveNamespaceChanges').hide();
+    
+    // Show the modal
+    $('#namespaceEditModal').modal('show');
+    
+    // Load describe data
+    loadNamespaceDescribe(namespace);
+    
+    // Load edit data
+    loadNamespaceEdit(namespace);
+}
+
+// Load namespace describe data
+function loadNamespaceDescribe(namespace) {
+    $.ajax({
+        url: '/api/namespace/describe',
+        type: 'POST',
+        data: { namespace: namespace },
+        success: function(response) {
+            if (response.hasOwnProperty('output')) {
+                $('#namespaceDescribeOutput').text(response.output);
+                $('#namespaceDescribeOutput').show();
+            } else {
+                $('#namespaceDescribeOutput').text('Error: ' + response.error);
+                $('#namespaceDescribeOutput').show();
+            }
+        },
+        error: function() {
+            $('#namespaceDescribeOutput').text('Failed to fetch namespace description');
+            $('#namespaceDescribeOutput').show();
+        },
+        complete: function() {
+            $('#namespaceDescribeLoading').hide();
+        }
+    });
+}
+
+// Load namespace edit data
+function loadNamespaceEdit(namespace) {
+    $.ajax({
+        url: '/api/namespace/edit',
+        type: 'POST',
+        data: { namespace: namespace },
+        success: function(response) {
+            if (response.hasOwnProperty('yaml')) {
+                $('#namespaceYamlEditor').val(response.yaml);
+                $('#namespaceEditContent').show();
+            } else {
+                $('#namespaceYamlEditor').val('Error: ' + response.error);
+                $('#namespaceEditContent').show();
+            }
+        },
+        error: function() {
+            $('#namespaceYamlEditor').val('Failed to fetch namespace data for editing');
+            $('#namespaceEditContent').show();
+        },
+        complete: function() {
+            $('#namespaceEditLoading').hide();
+        }
+    });
+}
+
+// Save namespace changes
+function saveNamespaceChanges() {
+    const namespace = $('#currentNamespaceName').text();
+    const yaml = $('#namespaceYamlEditor').val();
+    
+    // Show loading
+    $('#namespaceEditContent').hide();
+    $('#namespaceEditLoading').show();
+    
+    $.ajax({
+        url: '/api/namespace/update',
+        type: 'POST',
+        data: { 
+            namespace: namespace,
+            yaml: yaml
+        },
+        success: function(response) {
+            if (response.hasOwnProperty('output')) {
+                // Show success message
+                alert('Namespace updated successfully.');
+                
+                // Refresh the data
+                loadNamespaceEdit(namespace);
+                loadNamespaceDescribe(namespace);
+                loadNamespaces();
+            } else {
+                alert('Error: ' + response.error);
+                $('#namespaceEditContent').show();
+            }
+        },
+        error: function() {
+            alert('Failed to update namespace. Please try again.');
+            $('#namespaceEditContent').show();
+        },
+        complete: function() {
+            $('#namespaceEditLoading').hide();
+        }
+    });
 }
 </script>
 {% endblock %}
