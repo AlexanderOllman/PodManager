@@ -431,9 +431,21 @@
                     document.getElementById('main-content').innerHTML = content;
                     window.history.pushState({content: content, page: 'home'}, '', '/');
                     
-                    // Initialize the home page components
+                    // Reset the loaded resources state to ensure things get reloaded
+                    window.loadedResources = {};
+                    
+                    // Initialize the home page components and load active tab resources
                     if (typeof initializeHomePage === 'function') {
                         initializeHomePage();
+                    }
+                    
+                    // Load the active tab resources
+                    const activeTabId = document.querySelector('.tab-pane.active').id;
+                    if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
+                        fetchResourceData(activeTabId);
+                    } else {
+                        // If no tab is active, load pods as default
+                        fetchResourceData('pods');
                     }
                 })
                 .catch(error => {
