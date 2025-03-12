@@ -1733,6 +1733,7 @@ function clearRefreshLog() {
 function updateDashboardMetrics(pods) {
     // Calculate total pods count
     const totalPods = pods.length;
+    document.getElementById('totalPodsCount').textContent = totalPods;
     
     // Initialize pod status counters
     let runningPods = 0;
@@ -1776,18 +1777,21 @@ function updateDashboardMetrics(pods) {
                 }
             } else if (phase === 'succeeded') {
                 succeededPods++;
+            } else if (phase === 'pending') {
+                // Pending pods with container errors should be counted as error pods
+                if (containerStatuses.some(status => status.state && status.state.waiting && 
+                    ['CrashLoopBackOff', 'Error', 'ErrImagePull', 'ImagePullBackOff', 'CreateContainerError'].includes(status.state.waiting.reason))) {
+                    errorPods++;
+                } else {
+                    // Pending pods without specific errors are counted as running (they're in progress)
+                    runningPods++;
+                }
+            } else {
+                // Unknown or other states count as error
+                errorPods++;
             }
         }
         
-        // Calculate resource usage
-        const containers = pod.spec?.containers || [];
-        
-        containers.forEach(container => {
-            const resources = container.resources || {};
-            const requests = resources.requests || {};
-            
-            // Add CPU requests
-            if (requests.cpu) {
         // Check if the pod has containers with resource requests
         if (pod.spec && pod.spec.containers) {
             pod.spec.containers.forEach(container => {
