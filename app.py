@@ -563,5 +563,22 @@ def get_cluster_capacity():
             "error": str(e)
         }), 500
 
+@app.route('/api/cli/exec', methods=['POST'])
+def api_cli_exec():
+    try:
+        # Get command from request
+        data = request.get_json() if request.is_json else request.form
+        command = data.get('command', '')
+        
+        if not command:
+            return jsonify({"error": "Missing command parameter"}), 400
+            
+        # Run the command directly in the current environment
+        result = run_kubectl_command(command)
+        return jsonify({"output": result})
+    except Exception as e:
+        app.logger.error(f"Error in api_cli_exec: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)

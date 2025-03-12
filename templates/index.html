@@ -867,87 +867,104 @@ function initializeTerminal() {
             let historyIndex = -1;
             
             // Initial prompt
-            if (window.app.socket) {
-                terminal.write('\r\n$ ');
+            terminal.writeln('Welcome to the Kubernetes CLI.');
+            terminal.writeln('Type commands directly in this window and press Enter to execute.');
+            terminal.writeln('');
+            terminal.write('$ ');
+            
+            // Handle user input
+            terminal.onKey(({ key, domEvent }) => {
+                const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.ctrlKey && !domEvent.metaKey;
                 
-                // Listen for terminal output from server
-                window.app.socket.on('output', function(data) {
-                    if (window.app.terminal) {
-                        window.app.terminal.write(data.data);
-                        // Write prompt after server response
-                        window.app.terminal.write('\r\n$ ');
+                // Handle special keys
+                if (domEvent.keyCode === 13) { // Enter key
+                    // Send command to server
+                    if (currentLine.trim()) {
+                        // Add to history
+                        commandHistory.push(currentLine);
+                        historyIndex = commandHistory.length;
+                        
+                        // Execute command via REST API
+                        executeCliCommand(currentLine);
+                        
+                        // Visual feedback
+                        terminal.write('\r\n');
+                        currentLine = '';
+                    } else {
+                        // Empty command, just show new prompt
+                        terminal.write('\r\n$ ');
+                    }
+                } else if (domEvent.keyCode === 8) { // Backspace
+                    if (currentLine.length > 0) {
+                        currentLine = currentLine.slice(0, -1);
+                        terminal.write('\b \b'); // Erase character
+                    }
+                } else if (domEvent.keyCode === 38) { // Up arrow - history
+                    if (historyIndex > 0) {
+                        historyIndex--;
+                        // Clear current line
+                        terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                        // Display command from history
+                        currentLine = commandHistory[historyIndex];
+                        terminal.write(currentLine);
+                    }
+                } else if (domEvent.keyCode === 40) { // Down arrow - history
+                    if (historyIndex < commandHistory.length - 1) {
+                        historyIndex++;
+                        // Clear current line
+                        terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                        // Display next command from history
+                        currentLine = commandHistory[historyIndex];
+                        terminal.write(currentLine);
+                    } else if (historyIndex === commandHistory.length - 1) {
+                        historyIndex = commandHistory.length;
+                        // Clear current line
+                        terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
                         currentLine = '';
                     }
-                });
-                
-                // Handle user input
-                terminal.onKey(({ key, domEvent }) => {
-                    const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.ctrlKey && !domEvent.metaKey;
-                    
-                    // Handle special keys
-                    if (domEvent.keyCode === 13) { // Enter key
-                        // Send command to server
-                        if (currentLine.trim()) {
-                            // Add to history
-                            commandHistory.push(currentLine);
-                            historyIndex = commandHistory.length;
-                            
-                            // Send to server
-                            window.app.socket.emit('run_cli_command', { command: currentLine });
-                            
-                            // Visual feedback but wait for server response for prompt
-                            terminal.write('\r\n');
-                            currentLine = '';
-                        } else {
-                            // Empty command, just show new prompt
-                            terminal.write('\r\n$ ');
-                        }
-                    } else if (domEvent.keyCode === 8) { // Backspace
-                        if (currentLine.length > 0) {
-                            currentLine = currentLine.slice(0, -1);
-                            terminal.write('\b \b'); // Erase character
-                        }
-                    } else if (domEvent.keyCode === 38) { // Up arrow - history
-                        if (historyIndex > 0) {
-                            historyIndex--;
-                            // Clear current line
-                            terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                            // Display command from history
-                            currentLine = commandHistory[historyIndex];
-                            terminal.write(currentLine);
-                        }
-                    } else if (domEvent.keyCode === 40) { // Down arrow - history
-                        if (historyIndex < commandHistory.length - 1) {
-                            historyIndex++;
-                            // Clear current line
-                            terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                            // Display next command from history
-                            currentLine = commandHistory[historyIndex];
-                            terminal.write(currentLine);
-                        } else if (historyIndex === commandHistory.length - 1) {
-                            historyIndex = commandHistory.length;
-                            // Clear current line
-                            terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                            currentLine = '';
-                        }
-                    } else if (printable) {
-                        // Regular printable character
-                        currentLine += key;
-                        terminal.write(key);
-                    }
-                });
-                
-                console.log('Terminal initialized successfully with interactive mode');
-            } else {
-                terminal.write('\r\n\x1b[31mError: Socket connection not available. Terminal functionality is limited.\x1b[0m\r\n');
-                console.warn('Socket not available for terminal output');
-            }
+                } else if (printable) {
+                    // Regular printable character
+                    currentLine += key;
+                    terminal.write(key);
+                }
+            });
+            
+            console.log('Terminal initialized successfully with REST mode');
         } catch (error) {
             console.error('Failed to initialize terminal:', error);
             const terminalElement = document.getElementById('terminal');
             terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
         }
     }
+}
+
+// Function to execute commands via REST API
+function executeCliCommand(command) {
+    if (!command) return;
+    
+    fetch('/api/cli/exec', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            command: command
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.output) {
+            window.app.terminal.writeln(data.output);
+        } else {
+            window.app.terminal.writeln('Command executed with no output.');
+        }
+        window.app.terminal.write('\r\n$ ');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        window.app.terminal.writeln('Error executing command.');
+        window.app.terminal.write('\r\n$ ');
+    });
 }
 
 // Socket event listeners
@@ -1499,22 +1516,14 @@ function createActionButton(resourceType, namespace, name) {
 
 // CLI command execution - no longer needed as we type directly in terminal
 function runCliCommand() {
-    // This function is no longer needed, but we'll keep it for backward compatibility
-    // Commands are now entered directly in the terminal
+    // For backward compatibility with any buttons that might still call this
     const command = document.getElementById('cliCommand');
+    
     if (command && command.value) {
-        if (window.app.terminal) {
-            const cmd = command.value;
-            // Simulate typing the command
-            window.app.terminal.write(cmd);
-            window.app.terminal.write('\r\n');
-            
-            // Send the command
-            if (window.app.socket) {
-                window.app.socket.emit('run_cli_command', { command: cmd });
-            }
-            
-            // Clear the input field
+        const cmd = command.value.trim();
+        if (cmd) {
+            // Use the new function instead of socket
+            executeCliCommand(cmd);
             command.value = '';
         }
     }
