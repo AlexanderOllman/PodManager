@@ -1,78 +1,142 @@
 {% extends "base.html" %}
 
-{% block title %}HPE Private Cloud AI Resource Manager - Dashboard{% endblock %}
+{% block title %}Kubernetes Dashboard{% endblock %}
+
+{% block additional_styles %}
+<style>
+    /* Dashboard card styles */
+    .card {
+        transition: all 0.3s ease;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+    .avatar-sm {
+        width: 3rem;
+        height: 3rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .avatar-title {
+        font-size: 1.2rem;
+    }
+    /* Table styles */
+    .table th {
+        font-weight: 600;
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .table td {
+        vertical-align: middle;
+    }
+    .action-dropdown .dropdown-toggle::after {
+        display: none;
+    }
+    .action-dropdown .dropdown-toggle {
+        border: none;
+        background: none;
+        color: #6c757d;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .action-dropdown .dropdown-toggle:hover {
+        background-color: rgba(108, 117, 125, 0.1);
+    }
+    .action-dropdown .dropdown-item {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+    }
+    .action-dropdown .dropdown-item i {
+        margin-right: 0.5rem;
+        width: 1rem;
+        text-align: center;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="tab-content" id="mainContent">
     <div class="tab-pane fade show active" id="home" role="tabpanel" aria-labelledby="home-tab">
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-            <h1 class="h2">Dashboard</h1>
+            <h1 class="h2">Resources Dashboard</h1>
         </div>
 
-        <!-- Dashboard Stats Cards -->
+        <!-- Metric Cards -->
         <div class="row mb-4">
-            <!-- Total Pods Card -->
+            <!-- Pods Card -->
             <div class="col-md-3">
-                <div class="card border-0 bg-light shadow-sm h-100">
+                <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h6 class="text-muted mb-2">Total Pods</h6>
-                                <h2 class="mb-0" id="totalPodsCount">-</h2>
+                                <h6 class="text-muted fw-normal mt-0">Total Pods</h6>
+                                <h3 class="my-2" id="totalPodsCount">-</h3>
+                                <p class="mb-0 text-muted"><span class="text-success me-2"><i class="fas fa-arrow-up"></i> Active</span></p>
                             </div>
-                            <div class="rounded-circle p-3 bg-primary bg-opacity-10">
-                                <i class="fas fa-cubes text-primary fa-2x"></i>
+                            <div class="avatar-sm rounded-circle bg-primary align-self-center">
+                                <i class="fas fa-server avatar-title text-white"></i>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Total vCPU Card -->
+
+            <!-- vCPU Card -->
             <div class="col-md-3">
-                <div class="card border-0 bg-light shadow-sm h-100">
+                <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h6 class="text-muted mb-2">Allocated vCPU</h6>
-                                <h2 class="mb-0" id="totalCpuCount">-</h2>
+                                <h6 class="text-muted fw-normal mt-0">Total vCPU</h6>
+                                <h3 class="my-2" id="totalCPUCount">-</h3>
+                                <p class="mb-0 text-muted"><span class="text-success me-2"><i class="fas fa-microchip"></i> Allocated</span></p>
                             </div>
-                            <div class="rounded-circle p-3 bg-success bg-opacity-10">
-                                <i class="fas fa-microchip text-success fa-2x"></i>
+                            <div class="avatar-sm rounded-circle bg-success align-self-center">
+                                <i class="fas fa-microchip avatar-title text-white"></i>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Total GPU Card -->
+
+            <!-- GPU Card -->
             <div class="col-md-3">
-                <div class="card border-0 bg-light shadow-sm h-100">
+                <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h6 class="text-muted mb-2">Allocated GPUs</h6>
-                                <h2 class="mb-0" id="totalGpuCount">-</h2>
+                                <h6 class="text-muted fw-normal mt-0">Total GPUs</h6>
+                                <h3 class="my-2" id="totalGPUCount">-</h3>
+                                <p class="mb-0 text-muted"><span class="text-success me-2"><i class="fas fa-tachometer-alt"></i> Allocated</span></p>
                             </div>
-                            <div class="rounded-circle p-3 bg-warning bg-opacity-10">
-                                <i class="fas fa-server text-warning fa-2x"></i>
+                            <div class="avatar-sm rounded-circle bg-info align-self-center">
+                                <i class="fas fa-tachometer-alt avatar-title text-white"></i>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Reserved Blank Card -->
+
+            <!-- Future Metric Card -->
             <div class="col-md-3">
-                <div class="card border-0 bg-light shadow-sm h-100">
+                <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h6 class="text-muted mb-2">Reserved</h6>
-                                <h2 class="mb-0" id="reservedStat">-</h2>
+                                <h6 class="text-muted fw-normal mt-0">Resource Metric</h6>
+                                <h3 class="my-2">-</h3>
+                                <p class="mb-0 text-muted"><span class="text-muted me-2"><i class="fas fa-clock"></i> Coming Soon</span></p>
                             </div>
-                            <div class="rounded-circle p-3 bg-info bg-opacity-10">
-                                <i class="fas fa-chart-line text-info fa-2x"></i>
+                            <div class="avatar-sm rounded-circle bg-warning align-self-center">
+                                <i class="fas fa-chart-line avatar-title text-white"></i>
                             </div>
                         </div>
                     </div>
@@ -103,22 +167,22 @@
         </ul>
 
         <!-- Tab content -->
-        <div class="tab-content mt-3" id="resourceTabsContent">
+        <div class="tab-content" id="resourceTabsContent">
             <div class="tab-pane fade show active" id="pods" role="tabpanel" aria-labelledby="pods-tab">
                 <div class="loading-container" id="podsLoading">
                     <div class="spinner"></div>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-hover shadow-sm" id="podsTable">
-                        <thead class="table-light">
+                    <table class="table table-hover table-striped table-sm border-bottom shadow-sm" id="podsTable">
+                        <thead class="bg-light">
                             <tr>
-                                <th>Namespace</th>
-                                <th>Name</th>
-                                <th>Ready</th>
-                                <th>Status</th>
-                                <th>Restarts</th>
-                                <th>Age</th>
-                                <th>Actions</th>
+                                <th class="border-0">Namespace</th>
+                                <th class="border-0">Name</th>
+                                <th class="border-0">Ready</th>
+                                <th class="border-0">Status</th>
+                                <th class="border-0">Restarts</th>
+                                <th class="border-0">Age</th>
+                                <th class="border-0 text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -334,833 +398,1118 @@
 
 {% block page_scripts %}
 <script>
-    let podResourceData = [];
-
-    // Track selected resource type
-    let currentResourceType = 'pods';
+// Main initialization function that runs when the DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM content loaded, initializing application...');
     
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize tabs
-        const resourceTabs = document.querySelectorAll('button[data-bs-toggle="tab"]');
-        resourceTabs.forEach(tab => {
-            tab.addEventListener('click', function() {
-                const resourceType = this.getAttribute('data-bs-target').substring(1);
-                loadResources(resourceType);
-                currentResourceType = resourceType;
-            });
-        });
-        
-        // Load initial resources
-        loadResources('pods');
-        // Initialize Terminal
-        initializeTerminal();
+    // Since scripts are loaded in head, we can initialize right away
+    initializeApp();
+    
+    // Add page visibility change detection for better navigation handling
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            console.log('Page is now visible, checking resource loading state...');
+            // Check if any tab content is visible but not loaded
+            const activeTabId = document.querySelector('.tab-pane.active').id;
+            if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
+                if (!window.loadedResources || !window.loadedResources[activeTabId]) {
+                    console.log(`Active tab ${activeTabId} not loaded, fetching data...`);
+                    fetchResourceData(activeTabId);
+                }
+            }
+        }
     });
+});
+
+// Main application initialization
+function initializeApp() {
+    console.log('Initializing application...');
     
-    // Function to update dashboard statistics
-    function updateDashboardStats(data) {
-        if (data.format === 'table' && data.data.items) {
-            // Update total pods count
-            document.getElementById('totalPodsCount').textContent = data.data.items.length;
+    // Initialize components that don't require special dependencies
+    fetchResourcesForAllTabs();
+    checkGitAvailability();
+    fetchNamespaces();
+    setupDropZone();
+    
+    // Initialize terminal if available
+    initializeTerminal();
+    
+    // Connect socket event listeners
+    connectSocketListeners();
+    
+    console.log('Application initialized');
+}
+
+// Terminal initialization - already loaded in head
+function initializeTerminal() {
+    if (document.getElementById('terminal')) {
+        try {
+            console.log('Initializing terminal...');
             
-            // Calculate vCPU usage
-            let totalCpu = 0;
-            let totalGpu = 0;
-            
-            data.data.items.forEach(pod => {
-                if (pod.spec && pod.spec.containers) {
-                    pod.spec.containers.forEach(container => {
-                        if (container.resources && container.resources.requests) {
-                            // Count CPU resources
-                            if (container.resources.requests.cpu) {
-                                const cpuValue = container.resources.requests.cpu;
-                                if (cpuValue.endsWith('m')) {
-                                    // Convert millicpu to CPU
-                                    totalCpu += parseFloat(cpuValue) / 1000;
-                                } else {
-                                    totalCpu += parseFloat(cpuValue) || 0;
-                                }
-                            }
-                            
-                            // Count GPU resources
-                            const gpuResourceNames = [
-                                'nvidia.com/gpu',
-                                'amd.com/gpu',
-                                'gpu.intel.com/i915'
-                            ];
-                            
-                            for (const gpuName of gpuResourceNames) {
-                                if (container.resources.requests[gpuName]) {
-                                    totalGpu += parseInt(container.resources.requests[gpuName]) || 0;
-                                }
-                                if (container.resources.limits && container.resources.limits[gpuName]) {
-                                    // In case limits are set but not requests
-                                    if (!container.resources.requests[gpuName]) {
-                                        totalGpu += parseInt(container.resources.limits[gpuName]) || 0;
-                                    }
-                                }
-                            }
-                        }
-                    });
+            // Create terminal with FitAddon for proper sizing
+            const terminal = new Terminal({
+                cursorBlink: true,
+                fontFamily: 'monospace',
+                fontSize: 14,
+                convertEol: true,
+                scrollback: 1000,
+                theme: {
+                    background: '#000000',
+                    foreground: '#ffffff'
                 }
             });
             
-            // Update the dashboard stats
-            document.getElementById('totalCpuCount').textContent = totalCpu.toFixed(2);
-            document.getElementById('totalGpuCount').textContent = totalGpu;
+            // Store terminal in global state
+            window.app.terminal = terminal;
             
-            // Store pod data for potential further use
-            podResourceData = data.data.items;
+            // Open terminal
+            terminal.open(document.getElementById('terminal'));
+            
+            // Setup command input handling
+            let currentLine = '';
+            let commandHistory = [];
+            let historyIndex = -1;
+            
+            // Initial prompt
+            if (window.app.socket) {
+                terminal.write('\r\n$ ');
+                
+                // Listen for terminal output from server
+                window.app.socket.on('output', function(data) {
+                    if (window.app.terminal) {
+                        window.app.terminal.write(data.data);
+                        // Write prompt after server response
+                        window.app.terminal.write('\r\n$ ');
+                        currentLine = '';
+                    }
+                });
+                
+                // Handle user input
+                terminal.onKey(({ key, domEvent }) => {
+                    const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.ctrlKey && !domEvent.metaKey;
+                    
+                    // Handle special keys
+                    if (domEvent.keyCode === 13) { // Enter key
+                        // Send command to server
+                        if (currentLine.trim()) {
+                            // Add to history
+                            commandHistory.push(currentLine);
+                            historyIndex = commandHistory.length;
+                            
+                            // Send to server
+                            window.app.socket.emit('run_cli_command', { command: currentLine });
+                            
+                            // Visual feedback but wait for server response for prompt
+                            terminal.write('\r\n');
+                            currentLine = '';
+                        } else {
+                            // Empty command, just show new prompt
+                            terminal.write('\r\n$ ');
+                        }
+                    } else if (domEvent.keyCode === 8) { // Backspace
+                        if (currentLine.length > 0) {
+                            currentLine = currentLine.slice(0, -1);
+                            terminal.write('\b \b'); // Erase character
+                        }
+                    } else if (domEvent.keyCode === 38) { // Up arrow - history
+                        if (historyIndex > 0) {
+                            historyIndex--;
+                            // Clear current line
+                            terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                            // Display command from history
+                            currentLine = commandHistory[historyIndex];
+                            terminal.write(currentLine);
+                        }
+                    } else if (domEvent.keyCode === 40) { // Down arrow - history
+                        if (historyIndex < commandHistory.length - 1) {
+                            historyIndex++;
+                            // Clear current line
+                            terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                            // Display next command from history
+                            currentLine = commandHistory[historyIndex];
+                            terminal.write(currentLine);
+                        } else if (historyIndex === commandHistory.length - 1) {
+                            historyIndex = commandHistory.length;
+                            // Clear current line
+                            terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                            currentLine = '';
+                        }
+                    } else if (printable) {
+                        // Regular printable character
+                        currentLine += key;
+                        terminal.write(key);
+                    }
+                });
+                
+                console.log('Terminal initialized successfully with interactive mode');
+            } else {
+                terminal.write('\r\n\x1b[31mError: Socket connection not available. Terminal functionality is limited.\x1b[0m\r\n');
+                console.warn('Socket not available for terminal output');
+            }
+        } catch (error) {
+            console.error('Failed to initialize terminal:', error);
+            const terminalElement = document.getElementById('terminal');
+            terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
         }
     }
+}
+
+// Socket event listeners
+function connectSocketListeners() {
+    const socket = window.app.socket;
+    if (!socket) {
+        console.warn('Socket not available for event listeners');
+        return;
+    }
     
-    function loadResources(resourceType) {
-        if (!resourceType) return;
-        
-        showLoading(resourceType);
-        
-        fetch('/get_resources', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `resource_type=${resourceType}`
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-            if (!tableBody) {
-                console.warn(`Table body for ${resourceType} not found`);
-                hideLoading(resourceType);
-                return;
+    // Refresh log listener for the settings page
+    const refreshLog = document.getElementById('refreshLog');
+    if (refreshLog) {
+        socket.on('refresh_log', function(data) {
+            const logMessage = data.message;
+            
+            // Create new log entry with appropriate class based on status
+            const logEntry = document.createElement('div');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            // Set class based on status
+            if (data.status === 'error') {
+                logEntry.className = 'text-danger';
+            } else if (data.status === 'warning') {
+                logEntry.className = 'text-warning';
+            } else if (data.status === 'success') {
+                logEntry.className = 'text-success';
+            } else {
+                logEntry.className = 'text-info';
             }
             
-            tableBody.innerHTML = ''; // Clear existing rows
+            logEntry.innerHTML = `[${timestamp}] ${logMessage}`;
+            refreshLog.appendChild(logEntry);
             
-            if (data.format === 'error') {
-                tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
-                hideLoading(resourceType);
-                return;
-            }
+            // Auto-scroll to the bottom
+            refreshLog.scrollTop = refreshLog.scrollHeight;
             
-            // For empty results, show a message
-            if (!data.data.items || data.data.items.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="7" class="text-center">No ${resourceType} found</td></tr>`;
-                hideLoading(resourceType);
-                return;
-            }
-            
-            // If this is pods data, update dashboard stats
-            if (resourceType === 'pods') {
-                updateDashboardStats(data);
-            }
-            
-            data.data.items.forEach(item => {
-                const row = document.createElement('tr');
-                switch (resourceType) {
-                    case 'pods':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
-                            <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                            <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
-                            <td>${formatAge(item.metadata.creationTimestamp)}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'services':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.spec.type}</td>
-                            <td>${item.spec.clusterIP}</td>
-                            <td>${item.spec.externalIP || 'N/A'}</td>
-                            <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'inferenceservices':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.status.url || 'N/A'}</td>
-                            <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
-                            <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
-                            <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'deployments':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
-                            <td>${item.status.updatedReplicas}</td>
-                            <td>${item.status.availableReplicas}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'configmaps':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${Object.keys(item.data || {}).length}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'secrets':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.type}</td>
-                            <td>${Object.keys(item.data || {}).length}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                }
-                tableBody.appendChild(row);
-            });
-            
-            hideLoading(resourceType);
-            
-            // Mark this resource type as loaded
-            window.loadedResources = window.loadedResources || {};
-            window.loadedResources[resourceType] = true;
-            
-            console.log(`${resourceType} data loaded successfully`);
-        })
-        .catch(error => {
-            console.error(`Error fetching ${resourceType}:`, error);
-            hideLoading(resourceType);
-            
-            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-            if (tableBody) {
-                tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
-                    <i class="fas fa-exclamation-triangle"></i> Error fetching ${resourceType}: ${error.message}
-                </td></tr>`;
+            // If this is a completion message, trigger the restart
+            if (logMessage.includes('Preparing to restart application')) {
+                // Wait a moment to ensure the user sees the restart message
+                setTimeout(() => {
+                    fetch('/restart', {
+                        method: 'POST'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        const statusDiv = document.getElementById('updateStatus');
+                        if (data.status === 'success') {
+                            const logEntry = document.createElement('div');
+                            logEntry.className = 'text-success';
+                            logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] Application restarted successfully. Page will refresh shortly...`;
+                            refreshLog.appendChild(logEntry);
+                            
+                            statusDiv.innerHTML = 'Application restarted successfully. Refreshing page...';
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 3000);
+                        }
+                    });
+                }, 1000);
             }
         });
     }
+}
 
-    // UI helpers
-    function showLoading(resourceType) {
-        const loadingElement = document.getElementById(`${resourceType}Loading`);
-        const tableElement = document.getElementById(`${resourceType}Table`);
+// Fetch all resources for each tab
+function fetchResourcesForAllTabs() {
+    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+    
+    // Track loaded resources to avoid unnecessary reloading
+    window.loadedResources = window.loadedResources || {};
+    
+    // Add controls to each resource tab and set up click handlers 
+    resourceTypes.forEach(resourceType => {
+        // Initialize loading indicators
+        showLoading(resourceType);
         
-        if (loadingElement) loadingElement.style.display = 'flex';
-        if (tableElement) tableElement.style.display = 'none';
-    }
-
-    function hideLoading(resourceType) {
-        const loadingElement = document.getElementById(`${resourceType}Loading`);
-        const tableElement = document.getElementById(`${resourceType}Table`);
+        // Add refresh button and search bar to each resource tab
+        addResourceControls(resourceType);
         
-        if (loadingElement) loadingElement.style.display = 'none';
-        if (tableElement) tableElement.style.display = 'block';
+        // Set up tab click handlers to load data on demand
+        const tabElement = document.querySelector(`#${resourceType}-tab`);
+        if (tabElement) {
+            tabElement.addEventListener('click', () => {
+                // Only fetch data if not already loaded
+                if (!window.loadedResources[resourceType]) {
+                    fetchResourceData(resourceType);
+                }
+            });
+        }
+    });
+    
+    // Only load the active tab initially
+    const activeTabId = document.querySelector('.tab-pane.active').id;
+    if (activeTabId && resourceTypes.includes(activeTabId)) {
+        fetchResourceData(activeTabId);
+    } else {
+        // If no tab is active, load pods as default
+        fetchResourceData('pods');
     }
+    
+    // Set up a failsafe to check if the resources loaded correctly
+    setTimeout(() => {
+        const activeTabId = document.querySelector('.tab-pane.active').id;
+        if (activeTabId && resourceTypes.includes(activeTabId)) {
+            const tableBody = document.querySelector(`#${activeTabId}Table tbody`);
+            if (tableBody && (tableBody.children.length === 0 || !window.loadedResources[activeTabId])) {
+                console.log(`No data found in ${activeTabId} after initial load, retrying...`);
+                fetchResourceData(activeTabId);
+            }
+        }
+    }, 5000);
+}
 
-    function createActionButton(resourceType, namespace, name) {
-        // Use dropdown menu for all resource types
+// Add refresh button and search bar to each resource tab
+function addResourceControls(resourceType) {
+    const tabPane = document.getElementById(resourceType);
+    if (!tabPane) return;
+    
+    // Find where to insert controls (before the table)
+    let tableContainer = tabPane.querySelector('.table-responsive');
+    if (!tableContainer) return;
+    
+    // Create controls container
+    const controlsContainer = document.createElement('div');
+    controlsContainer.className = 'mb-3 d-flex justify-content-between align-items-center';
+    
+    // Create search input
+    const searchContainer = document.createElement('div');
+    searchContainer.className = 'input-group w-50';
+    searchContainer.innerHTML = `
+        <input type="text" class="form-control" placeholder="Filter ${resourceType}..." id="${resourceType}Search">
+        <button class="btn btn-outline-secondary" type="button" onclick="clearSearch('${resourceType}')">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    
+    // Create refresh button
+    const refreshButton = document.createElement('button');
+    refreshButton.className = 'btn btn-primary';
+    refreshButton.innerHTML = `<i class="fas fa-sync-alt"></i> Refresh ${capitalizeFirstLetter(resourceType)}`;
+    refreshButton.onclick = function() { 
+        // Force refresh by clearing the cached data
+        if (window.loadedResources) {
+            delete window.loadedResources[resourceType];
+        }
+        fetchResourceData(resourceType); 
+    };
+    
+    // Add components to the container
+    controlsContainer.appendChild(searchContainer);
+    controlsContainer.appendChild(refreshButton);
+    
+    // Insert controls before the table
+    tabPane.insertBefore(controlsContainer, tableContainer);
+    
+    // Add event listener for search input
+    const searchInput = document.getElementById(`${resourceType}Search`);
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            filterResources(resourceType, this.value);
+        });
+    }
+}
+
+// Capitalize first letter helper (for button labels)
+function capitalizeFirstLetter(string) {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+// Clear search field and reset table
+function clearSearch(resourceType) {
+    const searchInput = document.getElementById(`${resourceType}Search`);
+    if (searchInput) {
+        searchInput.value = '';
+        filterResources(resourceType, '');
+    }
+}
+
+// Filter resources based on search term
+function filterResources(resourceType, searchTerm) {
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (!tableBody) return;
+    
+    const rows = tableBody.querySelectorAll('tr');
+    const searchTermLower = searchTerm.toLowerCase();
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        const shouldShow = searchTerm === '' || text.includes(searchTermLower);
+        row.style.display = shouldShow ? '' : 'none';
+    });
+    
+    // Show a message if no results
+    let noResultsRow = tableBody.querySelector('.no-results-row');
+    
+    if (searchTerm !== '' && ![...rows].some(row => row.style.display !== 'none' && !row.classList.contains('no-results-row'))) {
+        // No visible rows and search is active
+        if (!noResultsRow) {
+            noResultsRow = document.createElement('tr');
+            noResultsRow.className = 'no-results-row';
+            noResultsRow.innerHTML = `<td colspan="7" class="text-center">No ${resourceType} matching "${searchTerm}"</td>`;
+            tableBody.appendChild(noResultsRow);
+        } else {
+            noResultsRow.querySelector('td').textContent = `No ${resourceType} matching "${searchTerm}"`;
+            noResultsRow.style.display = '';
+        }
+    } else if (noResultsRow) {
+        // Hide the no results message if there are visible rows or search is cleared
+        noResultsRow.style.display = 'none';
+    }
+}
+
+// Resource data fetching (for individual tab clicks or refresh button)
+function fetchResourceData(resourceType) {
+    console.log(`Fetching ${resourceType} data...`);
+    
+    // Save the current search term before refreshing
+    const searchInput = document.getElementById(`${resourceType}Search`);
+    const searchTerm = searchInput ? searchInput.value : '';
+    
+    showLoading(resourceType);
+    
+    fetch('/get_resources', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `resource_type=${resourceType}`
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+        if (!tableBody) {
+            console.warn(`Table body for ${resourceType} not found`);
+            hideLoading(resourceType);
+            return;
+        }
+        
+        tableBody.innerHTML = ''; // Clear existing rows
+        
+        if (data.format === 'error') {
+            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
+            hideLoading(resourceType);
+            return;
+        }
+        
+        // For empty results, show a message
+        if (!data.data.items || data.data.items.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center">No ${resourceType} found</td></tr>`;
+            hideLoading(resourceType);
+            return;
+        }
+        
+        // If this is the pods data, calculate dashboard metrics
+        if (resourceType === 'pods') {
+            updateDashboardMetrics(data.data.items);
+        }
+        
+        data.data.items.forEach(item => {
+            const row = document.createElement('tr');
+            switch (resourceType) {
+                case 'pods':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
+                        <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                        <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'services':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.spec.type}</td>
+                        <td>${item.spec.clusterIP}</td>
+                        <td>${item.spec.externalIP || 'N/A'}</td>
+                        <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'inferenceservices':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.url || 'N/A'}</td>
+                        <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
+                        <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
+                        <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'deployments':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
+                        <td>${item.status.updatedReplicas}</td>
+                        <td>${item.status.availableReplicas}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'configmaps':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${Object.keys(item.data || {}).length}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'secrets':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.type}</td>
+                        <td>${Object.keys(item.data || {}).length}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+            }
+            tableBody.appendChild(row);
+        });
+        
+        hideLoading(resourceType);
+        
+        // Mark this resource type as loaded
+        window.loadedResources = window.loadedResources || {};
+        window.loadedResources[resourceType] = true;
+        
+        // Reapply search filter after loading new data
+        if (searchTerm) {
+            filterResources(resourceType, searchTerm);
+        }
+        
+        console.log(`${resourceType} data loaded successfully`);
+    })
+    .catch(error => {
+        console.error(`Error fetching ${resourceType}:`, error);
+        hideLoading(resourceType);
+        
+        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+        if (tableBody) {
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
+                <i class="fas fa-exclamation-triangle"></i> Error fetching ${resourceType}: ${error.message}
+            </td></tr>`;
+        }
+    });
+}
+
+// UI helpers
+function showLoading(resourceType) {
+    const loadingElement = document.getElementById(`${resourceType}Loading`);
+    const tableElement = document.getElementById(`${resourceType}Table`);
+    
+    if (loadingElement) loadingElement.style.display = 'flex';
+    if (tableElement) tableElement.style.display = 'none';
+}
+
+function hideLoading(resourceType) {
+    const loadingElement = document.getElementById(`${resourceType}Loading`);
+    const tableElement = document.getElementById(`${resourceType}Table`);
+    
+    if (loadingElement) loadingElement.style.display = 'none';
+    if (tableElement) tableElement.style.display = 'block';
+}
+
+function createActionButton(resourceType, namespace, name) {
+    if (resourceType === 'pods') {
         return `
-            <div class="dropdown">
-                <button class="btn btn-sm text-secondary" type="button" id="action-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
+            <div class="action-dropdown dropdown text-center">
+                <button class="dropdown-toggle" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="action-${namespace}-${name}">
-                    ${resourceType === 'pods' ? `<li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')"><i class="fas fa-file-alt me-2 text-primary"></i>View Logs</a></li>` : ''}
-                    ${resourceType === 'pods' ? `<li><a class="dropdown-item" href="/explore/${namespace}/${name}"><i class="fas fa-terminal me-2 text-success"></i>Explore Pod</a></li>` : ''}
-                    <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')"><i class="fas fa-info-circle me-2 text-info"></i>Describe</a></li>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
+                    <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">
+                        <i class="fas fa-info-circle text-info"></i> Describe
+                    </a></li>
+                    <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">
+                        <i class="fas fa-file-alt text-primary"></i> View Logs
+                    </a></li>
+                    <li><a class="dropdown-item explore-pod-link" href="/explore/${namespace}/${name}" data-namespace="${namespace}" data-pod-name="${name}">
+                        <i class="fas fa-terminal text-success"></i> Explore Pod
+                    </a></li>
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')"><i class="fas fa-trash-alt me-2 text-danger"></i>Delete</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
+                        <i class="fas fa-trash-alt text-danger"></i> Delete
+                    </a></li>
+                </ul>
+            </div>
+        `;
+    } else {
+        return `
+            <div class="action-dropdown dropdown text-center">
+                <button class="dropdown-toggle" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
+                    <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">
+                        <i class="fas fa-info-circle text-info"></i> Describe
+                    </a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
+                        <i class="fas fa-trash-alt text-danger"></i> Delete
+                    </a></li>
                 </ul>
             </div>
         `;
     }
+}
 
-    // Terminal initialization - already loaded in head
-    function initializeTerminal() {
-        if (document.getElementById('terminal')) {
-            try {
-                console.log('Initializing terminal...');
-                
-                // Create terminal with FitAddon for proper sizing
-                const terminal = new Terminal({
-                    cursorBlink: true,
-                    fontFamily: 'monospace',
-                    fontSize: 14,
-                    convertEol: true,
-                    scrollback: 1000,
-                    theme: {
-                        background: '#000000',
-                        foreground: '#ffffff'
-                    }
-                });
-                
-                // Store terminal in global state
-                window.app.terminal = terminal;
-                
-                // Open terminal
-                terminal.open(document.getElementById('terminal'));
-                
-                // Setup command input handling
-                let currentLine = '';
-                let commandHistory = [];
-                let historyIndex = -1;
-                
-                // Initial prompt
-                if (window.app.socket) {
-                    terminal.write('\r\n$ ');
-                    
-                    // Listen for terminal output from server
-                    window.app.socket.on('output', function(data) {
-                        if (window.app.terminal) {
-                            window.app.terminal.write(data.data);
-                            // Write prompt after server response
-                            window.app.terminal.write('\r\n$ ');
-                            currentLine = '';
-                        }
-                    });
-                    
-                    // Handle user input
-                    terminal.onKey(({ key, domEvent }) => {
-                        const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.ctrlKey && !domEvent.metaKey;
-                        
-                        // Handle special keys
-                        if (domEvent.keyCode === 13) { // Enter key
-                            // Send command to server
-                            if (currentLine.trim()) {
-                                // Add to history
-                                commandHistory.push(currentLine);
-                                historyIndex = commandHistory.length;
-                                
-                                // Send to server
-                                window.app.socket.emit('run_cli_command', { command: currentLine });
-                                
-                                // Visual feedback but wait for server response for prompt
-                                terminal.write('\r\n');
-                                currentLine = '';
-                            } else {
-                                // Empty command, just show new prompt
-                                terminal.write('\r\n$ ');
-                            }
-                        } else if (domEvent.keyCode === 8) { // Backspace
-                            if (currentLine.length > 0) {
-                                currentLine = currentLine.slice(0, -1);
-                                terminal.write('\b \b'); // Erase character
-                            }
-                        } else if (domEvent.keyCode === 38) { // Up arrow - history
-                            if (historyIndex > 0) {
-                                historyIndex--;
-                                // Clear current line
-                                terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                                // Display command from history
-                                currentLine = commandHistory[historyIndex];
-                                terminal.write(currentLine);
-                            }
-                        } else if (domEvent.keyCode === 40) { // Down arrow - history
-                            if (historyIndex < commandHistory.length - 1) {
-                                historyIndex++;
-                                // Clear current line
-                                terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                                // Display next command from history
-                                currentLine = commandHistory[historyIndex];
-                                terminal.write(currentLine);
-                            } else if (historyIndex === commandHistory.length - 1) {
-                                historyIndex = commandHistory.length;
-                                // Clear current line
-                                terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                                currentLine = '';
-                            }
-                        } else if (printable) {
-                            // Regular printable character
-                            currentLine += key;
-                            terminal.write(key);
-                        }
-                    });
-                    
-                    console.log('Terminal initialized successfully with interactive mode');
-                } else {
-                    terminal.write('\r\n\x1b[31mError: Socket connection not available. Terminal functionality is limited.\x1b[0m\r\n');
-                    console.warn('Socket not available for terminal output');
-                }
-            } catch (error) {
-                console.error('Failed to initialize terminal:', error);
-                const terminalElement = document.getElementById('terminal');
-                terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
+// CLI command execution - no longer needed as we type directly in terminal
+function runCliCommand() {
+    // This function is no longer needed, but we'll keep it for backward compatibility
+    // Commands are now entered directly in the terminal
+    const command = document.getElementById('cliCommand');
+    if (command && command.value) {
+        if (window.app.terminal) {
+            const cmd = command.value;
+            // Simulate typing the command
+            window.app.terminal.write(cmd);
+            window.app.terminal.write('\r\n');
+            
+            // Send the command
+            if (window.app.socket) {
+                window.app.socket.emit('run_cli_command', { command: cmd });
             }
+            
+            // Clear the input field
+            command.value = '';
         }
     }
+}
 
-    // YAML deployment
-    function deployYaml() {
-        const fileInput = document.querySelector('.drop-zone__input');
-        const file = fileInput.files[0];
-        if (file) {
-            const formData = new FormData();
-            formData.append('file', file);
+// YAML deployment
+function deployYaml() {
+    const fileInput = document.querySelector('.drop-zone__input');
+    const file = fileInput.files[0];
+    if (file) {
+        const formData = new FormData();
+        formData.append('file', file);
 
-            fetch('/upload_yaml', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('yamlOutput').textContent = data.output || data.error;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
-            });
-        }
+        fetch('/upload_yaml', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('yamlOutput').textContent = data.output || data.error;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
+        });
     }
+}
 
-    // Drop zone setup
-    function setupDropZone() {
-        document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
-            const dropZoneElement = inputElement.closest(".drop-zone");
-            if (!dropZoneElement) return;
+// Drop zone setup
+function setupDropZone() {
+    document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
+        const dropZoneElement = inputElement.closest(".drop-zone");
+        if (!dropZoneElement) return;
 
-            dropZoneElement.addEventListener("click", (e) => {
-                inputElement.click();
-            });
+        dropZoneElement.addEventListener("click", (e) => {
+            inputElement.click();
+        });
 
-            inputElement.addEventListener("change", (e) => {
-                if (inputElement.files.length) {
-                    updateThumbnail(dropZoneElement, inputElement.files[0]);
-                    const deployButton = document.getElementById('deployButton');
-                    if (deployButton) {
-                        deployButton.style.display = 'inline-block';
-                    }
+        inputElement.addEventListener("change", (e) => {
+            if (inputElement.files.length) {
+                updateThumbnail(dropZoneElement, inputElement.files[0]);
+                const deployButton = document.getElementById('deployButton');
+                if (deployButton) {
+                    deployButton.style.display = 'inline-block';
                 }
-            });
+            }
+        });
 
-            dropZoneElement.addEventListener("dragover", (e) => {
-                e.preventDefault();
-                dropZoneElement.classList.add("drop-zone--over");
-            });
+        dropZoneElement.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropZoneElement.classList.add("drop-zone--over");
+        });
 
-            ["dragleave", "dragend"].forEach((type) => {
-                dropZoneElement.addEventListener(type, (e) => {
-                    dropZoneElement.classList.remove("drop-zone--over");
-                });
-            });
-
-            dropZoneElement.addEventListener("drop", (e) => {
-                e.preventDefault();
-
-                if (e.dataTransfer.files.length) {
-                    inputElement.files = e.dataTransfer.files;
-                    updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
-                    const deployButton = document.getElementById('deployButton');
-                    if (deployButton) {
-                        deployButton.style.display = 'inline-block';
-                    }
-                }
-
+        ["dragleave", "dragend"].forEach((type) => {
+            dropZoneElement.addEventListener(type, (e) => {
                 dropZoneElement.classList.remove("drop-zone--over");
             });
         });
-    }
 
-    function updateThumbnail(dropZoneElement, file) {
-        let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
+        dropZoneElement.addEventListener("drop", (e) => {
+            e.preventDefault();
 
-        if (dropZoneElement.querySelector(".drop-zone__prompt")) {
-            dropZoneElement.querySelector(".drop-zone__prompt").remove();
-        }
-
-        if (!thumbnailElement) {
-            thumbnailElement = document.createElement("div");
-            thumbnailElement.classList.add("drop-zone__thumb");
-            dropZoneElement.appendChild(thumbnailElement);
-        }
-
-        thumbnailElement.dataset.label = file.name;
-
-        if (file.type.startsWith("image/")) {
-            const reader = new FileReader();
-
-            reader.readAsDataURL(file);
-            reader.onload = () => {
-                thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
-            };
-        } else {
-            thumbnailElement.style.backgroundImage = null;
-        }
-    }
-
-    // Check git availability
-    function checkGitAvailability() {
-        fetch('/git_status')
-        .then(response => response.json())
-        .then(data => {
-            const githubSettings = document.getElementById('githubSettings');
-            if (githubSettings) {
-            if (!data.available) {
-                githubSettings.innerHTML = `
-                    <div class="alert alert-warning">
-                        <strong>Git functionality is not available.</strong> 
-                        <p>The "Update from GitHub" feature requires git to be installed on the server. 
-                        Please install git or contact your administrator if you need this feature.</p>
-                    </div>
-                `;
+            if (e.dataTransfer.files.length) {
+                inputElement.files = e.dataTransfer.files;
+                updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
+                const deployButton = document.getElementById('deployButton');
+                if (deployButton) {
+                    deployButton.style.display = 'inline-block';
                 }
             }
-        })
-        .catch(error => {
-            console.error('Error checking git status:', error);
+
+            dropZoneElement.classList.remove("drop-zone--over");
         });
+    });
+}
+
+function updateThumbnail(dropZoneElement, file) {
+    let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
+
+    if (dropZoneElement.querySelector(".drop-zone__prompt")) {
+        dropZoneElement.querySelector(".drop-zone__prompt").remove();
     }
 
-    // Fetch namespaces for events tab
-    function fetchNamespaces() {
-        fetch('/get_namespaces')
-            .then(response => response.json())
-            .then(data => {
-                const namespaceSelect = document.getElementById('namespaceSelect');
-                if (!namespaceSelect) return;
-                
-                namespaceSelect.innerHTML = '<option value="">Select a namespace</option>';
-                
-                if (data.namespaces) {
-                    data.namespaces.forEach(namespace => {
-                        const option = document.createElement('option');
-                        option.value = namespace;
-                        option.textContent = namespace;
-                        namespaceSelect.appendChild(option);
-                    });
-                } else if (data.error) {
-                    console.error('Error fetching namespaces:', data.error);
-                }
-                
-                // Set up event listener for namespace selection
-                namespaceSelect.addEventListener('change', function() {
-                    if (this.value) {
-                        fetchEvents(this.value);
-                    }
-                });
-            })
-            .catch(error => {
-                console.error('Error fetching namespaces:', error);
-            });
+    if (!thumbnailElement) {
+        thumbnailElement = document.createElement("div");
+        thumbnailElement.classList.add("drop-zone__thumb");
+        dropZoneElement.appendChild(thumbnailElement);
     }
 
-    // Fetch events for selected namespace
-    function fetchEvents(namespace) {
-        const eventsOutput = document.getElementById('eventsOutput');
-        if (!eventsOutput) return;
-        
-        eventsOutput.textContent = 'Loading events...';
-        
-        fetch('/get_events', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `namespace=${namespace}`
-        })
-        .then(response => response.json())
-        .then(data => {
-            eventsOutput.textContent = data.output;
-        })
-        .catch(error => {
-            console.error('Error fetching events:', error);
-            eventsOutput.textContent = 'An error occurred while fetching events.';
-        });
-    }
+    thumbnailElement.dataset.label = file.name;
 
-    // GitHub update function
-    function updateFromGithub() {
-        const repoUrl = document.getElementById('githubRepo').value;
-        const statusDiv = document.getElementById('updateStatus');
-        
-        if (!statusDiv) return;
-        
-        statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
-        
-        // First update from GitHub
-        fetch('/update_from_github', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                repo_url: repoUrl
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                statusDiv.innerHTML = 'Update successful. Initiating application restart...';
-                
-                // Then restart the application
-                fetch('/restart', {
-                    method: 'POST'
-                })
-                .then(response => {
-                    if (response.ok) {
-                        return response.json();
-                    } else {
-                        // If the server is already restarting, we might get an error response
-                        // This is normal, so handle it gracefully
-                        statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
-                        waitForApplicationRestart(statusDiv);
-                        throw new Error('restart_in_progress');
-                    }
-                })
-                .then(data => {
-                    if (data.status === 'success') {
-                        statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
-                        waitForApplicationRestart(statusDiv);
-                    }
-                })
-                .catch(error => {
-                    if (error.message !== 'restart_in_progress') {
-                        console.error('Error during restart:', error);
-                        statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
-                        waitForApplicationRestart(statusDiv);
-                    }
-                });
-            } else {
-                statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
-                throw new Error(data.message);
-            }
-        })
-        .catch(error => {
-            if (error.message !== 'restart_in_progress') {
-                console.error('Error:', error);
-                if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
-                    statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-                }
-            }
-        });
-    }
+    if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
 
-    // Application refresh function (for the refresh button)
-    function refreshApplication() {
-        const refreshLog = document.getElementById('refreshLog');
-        const statusDiv = document.getElementById('updateStatus');
-        
-        if (!refreshLog || !statusDiv) {
-            console.error('Required elements not found');
-            return;
-        }
-        
-        // Clear the log
-        refreshLog.innerHTML = '';
-        
-        // Add initial message
-        const logEntry = document.createElement('div');
-        logEntry.className = 'text-info';
-        logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] Starting refresh process...`;
-        refreshLog.appendChild(logEntry);
-        
-        statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Refreshing application...';
-        
-        // Get the repo URL from the input field
-        const repoUrl = document.getElementById('githubRepo').value;
-        
-        fetch('/refresh_application', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                repo_url: repoUrl || undefined  // Only send if user provided a value
-            })
-        })
-        .then(response => {
-            if (response.ok) {
-                return response.json();
-            } else {
-                // If the request fails, it might be because the app is already restarting
-                logMessage(refreshLog, 'Application restart initiated. Waiting for server to come back online...', 'info');
-                statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
-                waitForApplicationRestart(statusDiv, refreshLog);
-                throw new Error('restart_in_progress');
-            }
-        })
-        .then(data => {
-            if (data && data.status === 'success') {
-                logMessage(refreshLog, 'Refresh operation successful, application restart initiated.', 'success');
-                statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
-                waitForApplicationRestart(statusDiv, refreshLog);
-            } else if (data && data.error) {
-                logMessage(refreshLog, `Error: ${data.error}`, 'error');
-                statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
-            }
-        })
-        .catch(error => {
-            if (error.message !== 'restart_in_progress') {
-                console.error('Error:', error);
-                logMessage(refreshLog, `Error: ${error.message}`, 'error');
-                statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-            }
-        });
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
+        };
+    } else {
+        thumbnailElement.style.backgroundImage = null;
     }
+}
 
-    // Helper to add log messages to the refresh log
-    function logMessage(refreshLog, message, status) {
-        if (!refreshLog) return;
-        
-        const logEntry = document.createElement('div');
-        const timestamp = new Date().toLocaleTimeString();
-        
-        // Set class based on status
-        if (status === 'error') {
-            logEntry.className = 'text-danger';
-        } else if (status === 'warning') {
-            logEntry.className = 'text-warning';
-        } else if (status === 'success') {
-            logEntry.className = 'text-success';
-        } else {
-            logEntry.className = 'text-info';
-        }
-        
-        logEntry.innerHTML = `[${timestamp}] ${message}`;
-        refreshLog.appendChild(logEntry);
-        
-        // Auto-scroll to the bottom
-        refreshLog.scrollTop = refreshLog.scrollHeight;
-    }
-
-    // Function to poll and wait for application to restart
-    function waitForApplicationRestart(statusDiv, refreshLog = null) {
-        const MAX_ATTEMPTS = 30; // Try for up to 30 seconds
-        let attempts = 0;
-        
-        // Update UI to show we're waiting
-        if (statusDiv) {
-            statusDiv.innerHTML = `
-                <div class="alert alert-info">
-                    <div class="d-flex align-items-center">
-                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                        Waiting for application to restart...
-                    </div>
-                    <div class="progress mt-2" style="height: 5px;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                             role="progressbar" style="width: 0%"></div>
-                    </div>
+// Check git availability
+function checkGitAvailability() {
+    fetch('/git_status')
+    .then(response => response.json())
+    .then(data => {
+        const githubSettings = document.getElementById('githubSettings');
+        if (githubSettings) {
+        if (!data.available) {
+            githubSettings.innerHTML = `
+                <div class="alert alert-warning">
+                    <strong>Git functionality is not available.</strong> 
+                    <p>The "Update from GitHub" feature requires git to be installed on the server. 
+                    Please install git or contact your administrator if you need this feature.</p>
                 </div>
             `;
+            }
         }
-        
-        if (refreshLog) {
-            logMessage(refreshLog, "Application is restarting. Waiting for it to come back online...", "info");
-        }
-        
-        // Set up polling
-        const checkServer = function() {
-            attempts++;
+    })
+    .catch(error => {
+        console.error('Error checking git status:', error);
+    });
+}
+
+// Fetch namespaces for events tab
+function fetchNamespaces() {
+    fetch('/get_namespaces')
+        .then(response => response.json())
+        .then(data => {
+            const namespaceSelect = document.getElementById('namespaceSelect');
+            if (!namespaceSelect) return;
             
-            // Update progress bar
-            if (statusDiv) {
-                const progressBar = statusDiv.querySelector('.progress-bar');
-                if (progressBar) {
-                    progressBar.style.width = `${Math.min((attempts / MAX_ATTEMPTS) * 100, 100)}%`;
-                }
+            namespaceSelect.innerHTML = '<option value="">Select a namespace</option>';
+            
+            if (data.namespaces) {
+                data.namespaces.forEach(namespace => {
+                    const option = document.createElement('option');
+                    option.value = namespace;
+                    option.textContent = namespace;
+                    namespaceSelect.appendChild(option);
+                });
+            } else if (data.error) {
+                console.error('Error fetching namespaces:', data.error);
             }
             
-            // Try a lightweight request to check if server is back
-            fetch('/health_check', { 
-                method: 'GET',
-                // Add cache-busting to prevent cached responses
-                headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+            // Set up event listener for namespace selection
+            namespaceSelect.addEventListener('change', function() {
+                if (this.value) {
+                    fetchEvents(this.value);
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching namespaces:', error);
+        });
+}
+
+// Fetch events for selected namespace
+function fetchEvents(namespace) {
+    const eventsOutput = document.getElementById('eventsOutput');
+    if (!eventsOutput) return;
+    
+    eventsOutput.textContent = 'Loading events...';
+    
+    fetch('/get_events', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `namespace=${namespace}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        eventsOutput.textContent = data.output;
+    })
+    .catch(error => {
+        console.error('Error fetching events:', error);
+        eventsOutput.textContent = 'An error occurred while fetching events.';
+    });
+}
+
+// GitHub update function
+function updateFromGithub() {
+    const repoUrl = document.getElementById('githubRepo').value;
+    const statusDiv = document.getElementById('updateStatus');
+    
+    if (!statusDiv) return;
+    
+    statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
+    
+    // First update from GitHub
+    fetch('/update_from_github', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            repo_url: repoUrl
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            statusDiv.innerHTML = 'Update successful. Initiating application restart...';
+            
+            // Then restart the application
+            fetch('/restart', {
+                method: 'POST'
             })
             .then(response => {
                 if (response.ok) {
-                    // Server is back online!
-                    if (statusDiv) {
-                        statusDiv.innerHTML = `
-                            <div class="alert alert-success">
-                                <i class="fas fa-check-circle"></i> Application restarted successfully!
-                            </div>
-                        `;
-                    }
-                    
-                    if (refreshLog) {
-                        logMessage(refreshLog, "Application is back online! Refreshing page in 3 seconds...", "success");
-                    }
-                    
-                    // Refresh the page after a short delay to let the user see the success message
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 3000);
+                    return response.json();
                 } else {
-                    // Server responded but with an error
-                    if (attempts < MAX_ATTEMPTS) {
-                        setTimeout(checkServer, 1000);
-                    } else {
-                        handleTimeout();
-                    }
+                    // If the server is already restarting, we might get an error response
+                    // This is normal, so handle it gracefully
+                    statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
+                    waitForApplicationRestart(statusDiv);
+                    throw new Error('restart_in_progress');
+                }
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
+                    waitForApplicationRestart(statusDiv);
                 }
             })
             .catch(error => {
-                // Server is still down, or network error
+                if (error.message !== 'restart_in_progress') {
+                    console.error('Error during restart:', error);
+                    statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
+                    waitForApplicationRestart(statusDiv);
+                }
+            });
+        } else {
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
+            throw new Error(data.message);
+        }
+    })
+    .catch(error => {
+        if (error.message !== 'restart_in_progress') {
+            console.error('Error:', error);
+            if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
+                statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            }
+        }
+    });
+}
+
+// Application refresh function (for the refresh button)
+function refreshApplication() {
+    const refreshLog = document.getElementById('refreshLog');
+    const statusDiv = document.getElementById('updateStatus');
+    
+    if (!refreshLog || !statusDiv) {
+        console.error('Required elements not found');
+        return;
+    }
+    
+    // Clear the log
+    refreshLog.innerHTML = '';
+    
+    // Add initial message
+    const logEntry = document.createElement('div');
+    logEntry.className = 'text-info';
+    logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] Starting refresh process...`;
+    refreshLog.appendChild(logEntry);
+    
+    statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Refreshing application...';
+    
+    // Get the repo URL from the input field
+    const repoUrl = document.getElementById('githubRepo').value;
+    
+    fetch('/refresh_application', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            repo_url: repoUrl || undefined  // Only send if user provided a value
+        })
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        } else {
+            // If the request fails, it might be because the app is already restarting
+            logMessage(refreshLog, 'Application restart initiated. Waiting for server to come back online...', 'info');
+            statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
+            waitForApplicationRestart(statusDiv, refreshLog);
+            throw new Error('restart_in_progress');
+        }
+    })
+    .then(data => {
+        if (data && data.status === 'success') {
+            logMessage(refreshLog, 'Refresh operation successful, application restart initiated.', 'success');
+            statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
+            waitForApplicationRestart(statusDiv, refreshLog);
+        } else if (data && data.error) {
+            logMessage(refreshLog, `Error: ${data.error}`, 'error');
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+        }
+    })
+    .catch(error => {
+        if (error.message !== 'restart_in_progress') {
+            console.error('Error:', error);
+            logMessage(refreshLog, `Error: ${error.message}`, 'error');
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+        }
+    });
+}
+
+// Helper to add log messages to the refresh log
+function logMessage(refreshLog, message, status) {
+    if (!refreshLog) return;
+    
+    const logEntry = document.createElement('div');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    // Set class based on status
+    if (status === 'error') {
+        logEntry.className = 'text-danger';
+    } else if (status === 'warning') {
+        logEntry.className = 'text-warning';
+    } else if (status === 'success') {
+        logEntry.className = 'text-success';
+    } else {
+        logEntry.className = 'text-info';
+    }
+    
+    logEntry.innerHTML = `[${timestamp}] ${message}`;
+    refreshLog.appendChild(logEntry);
+    
+    // Auto-scroll to the bottom
+    refreshLog.scrollTop = refreshLog.scrollHeight;
+}
+
+// Function to poll and wait for application to restart
+function waitForApplicationRestart(statusDiv, refreshLog = null) {
+    const MAX_ATTEMPTS = 30; // Try for up to 30 seconds
+    let attempts = 0;
+    
+    // Update UI to show we're waiting
+    if (statusDiv) {
+        statusDiv.innerHTML = `
+            <div class="alert alert-info">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Waiting for application to restart...
+                </div>
+                <div class="progress mt-2" style="height: 5px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" style="width: 0%"></div>
+                </div>
+            </div>
+        `;
+    }
+    
+    if (refreshLog) {
+        logMessage(refreshLog, "Application is restarting. Waiting for it to come back online...", "info");
+    }
+    
+    // Set up polling
+    const checkServer = function() {
+        attempts++;
+        
+        // Update progress bar
+        if (statusDiv) {
+            const progressBar = statusDiv.querySelector('.progress-bar');
+            if (progressBar) {
+                progressBar.style.width = `${Math.min((attempts / MAX_ATTEMPTS) * 100, 100)}%`;
+            }
+        }
+        
+        // Try a lightweight request to check if server is back
+        fetch('/health_check', { 
+            method: 'GET',
+            // Add cache-busting to prevent cached responses
+            headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        })
+        .then(response => {
+            if (response.ok) {
+                // Server is back online!
+                if (statusDiv) {
+                    statusDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i> Application restarted successfully!
+                        </div>
+                    `;
+                }
+                
+                if (refreshLog) {
+                    logMessage(refreshLog, "Application is back online! Refreshing page in 3 seconds...", "success");
+                }
+                
+                // Refresh the page after a short delay to let the user see the success message
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
+            } else {
+                // Server responded but with an error
                 if (attempts < MAX_ATTEMPTS) {
                     setTimeout(checkServer, 1000);
                 } else {
                     handleTimeout();
                 }
-            });
-        };
-        
-        // Function to handle timeout case
-        const handleTimeout = function() {
-            if (statusDiv) {
-                statusDiv.innerHTML = `
-                    <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-triangle"></i> The application is taking longer than expected to restart.
-                        <button class="btn btn-sm btn-primary mt-2" onclick="window.location.reload()">
-                            Refresh Now
-                        </button>
-                    </div>
-                `;
             }
-            
-            if (refreshLog) {
-                logMessage(refreshLog, "Application is taking longer than expected to restart. You may need to refresh manually.", "warning");
+        })
+        .catch(error => {
+            // Server is still down, or network error
+            if (attempts < MAX_ATTEMPTS) {
+                setTimeout(checkServer, 1000);
+            } else {
+                handleTimeout();
             }
-        };
+        });
+    };
+    
+    // Function to handle timeout case
+    const handleTimeout = function() {
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i> The application is taking longer than expected to restart.
+                    <button class="btn btn-sm btn-primary mt-2" onclick="window.location.reload()">
+                        Refresh Now
+                    </button>
+                </div>
+            `;
+        }
         
-        // Start polling after a short delay to allow the server to begin restarting
-        setTimeout(checkServer, 2000);
-    }
-
-    // Clear refresh log
-    function clearRefreshLog() {
-        const refreshLog = document.getElementById('refreshLog');
         if (refreshLog) {
-            refreshLog.innerHTML = '<div class="text-muted">-- Log will appear here during refresh operations --</div>';
+            logMessage(refreshLog, "Application is taking longer than expected to restart. You may need to refresh manually.", "warning");
         }
-    }
+    };
+    
+    // Start polling after a short delay to allow the server to begin restarting
+    setTimeout(checkServer, 2000);
+}
 
-    // Helper to format age as time since creation
-    function formatAge(timestamp) {
-        const created = new Date(timestamp);
-        const now = new Date();
-        const diffMs = now - created;
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        const diffHrs = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-        
-        if (diffDays > 0) {
-            return `${diffDays}d ${diffHrs}h`;
-        } else if (diffHrs > 0) {
-            return `${diffHrs}h ${diffMins}m`;
-        } else {
-            return `${diffMins}m`;
-        }
+// Clear refresh log
+function clearRefreshLog() {
+    const refreshLog = document.getElementById('refreshLog');
+    if (refreshLog) {
+        refreshLog.innerHTML = '<div class="text-muted">-- Log will appear here during refresh operations --</div>';
     }
+}
+
+// Dashboard Metrics Functions
+function updateDashboardMetrics(pods) {
+    // Calculate total pods count
+    const totalPods = pods.length;
+    document.getElementById('totalPodsCount').textContent = totalPods;
+    
+    // Calculate total CPU allocation
+    let totalCPU = 0;
+    
+    // Calculate total GPU allocation
+    let totalGPU = 0;
+    
+    // Loop through all pods to calculate resource usage
+    pods.forEach(pod => {
+        // Check if the pod has containers with resource requests
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests) {
+                    // Add CPU resources if available
+                    if (container.resources.requests.cpu) {
+                        // Convert CPU request to a number (could be in m format like "500m")
+                        const cpuRequest = container.resources.requests.cpu;
+                        if (cpuRequest.endsWith('m')) {
+                            // Convert millicpu to CPU
+                            totalCPU += parseInt(cpuRequest.slice(0, -1)) / 1000;
+                        } else {
+                            // Direct CPU value
+                            totalCPU += parseFloat(cpuRequest);
+                        }
+                    }
+                    
+                    // Add GPU resources if available
+                    // NVIDIA GPU resources are typically specified as nvidia.com/gpu
+                    if (container.resources.requests['nvidia.com/gpu']) {
+                        totalGPU += parseInt(container.resources.requests['nvidia.com/gpu']);
+                    }
+                    
+                    // Alternative GPU resource naming
+                    if (container.resources.requests['gpu']) {
+                        totalGPU += parseInt(container.resources.requests['gpu']);
+                    }
+                }
+            });
+        }
+    });
+    
+    // Update the dashboard with calculated metrics
+    document.getElementById('totalCPUCount').textContent = totalCPU.toFixed(2);
+    document.getElementById('totalGPUCount').textContent = totalGPU;
+    
+    console.log(`Dashboard metrics updated - Pods: ${totalPods}, vCPU: ${totalCPU.toFixed(2)}, GPUs: ${totalGPU}`);
+}
+
+// Navigation function to handle explore pod links
+document.addEventListener('click', function(e) {
+    // Use delegation to handle clicks on explore pod links
+    const exploreLink = e.target.closest('.explore-pod-link');
+    if (exploreLink) {
+        e.preventDefault();
+        const namespace = exploreLink.dataset.namespace;
+        const podName = exploreLink.dataset.podName;
+        const url = `/explore/${namespace}/${podName}`;
+        
+        console.log(`Navigating to pod explorer: ${url}`);
+        
+        // Navigate to the explore page using full page navigation
+        window.location.href = url;
+    }
+});
 </script>
 {% endblock %}
