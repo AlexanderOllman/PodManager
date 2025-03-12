@@ -626,6 +626,7 @@ function initializeApp() {
     
     // Initialize components that don't require special dependencies
     fetchResourcesForAllTabs();
+    fetchClusterCapacity(); // Add this line to fetch cluster capacity on initialization
     checkGitAvailability();
     fetchNamespaces();
     setupDropZone();
@@ -1097,8 +1098,9 @@ function fetchResourceData(resourceType) {
             return;
         }
         
-        // If this is the pods data, calculate dashboard metrics
+        // Store pods data for later use
         if (resourceType === 'pods') {
+            window.podsData = data.data.items;
             updateDashboardMetrics(data.data.items);
         }
         
@@ -1912,17 +1914,18 @@ function updateDashboardMetrics(pods) {
     // Update total CPU and GPU counts
     document.getElementById('totalCPUCount').textContent = totalCPU.toFixed(1);
     
-    // Calculate percentage based on 256 cores capacity
-    const totalCPUCapacity = 256;
+    // Calculate percentage based on dynamic CPU capacity
+    const totalCPUCapacity = window.clusterCapacity ? window.clusterCapacity.cpu : 256;
     const cpuPercentage = ((totalCPU / totalCPUCapacity) * 100).toFixed(1);
     document.getElementById('totalCPUPercentage').textContent = cpuPercentage;
+    document.getElementById('totalCPUCapacity').textContent = totalCPUCapacity;
     
     document.getElementById('totalGPUCount').textContent = totalGPU;
 
     // Set up the GPU filter
     initGPUFilter();
     
-    console.log(`Dashboard updated with ${totalPods} pods (${runningPods} running, ${succeededPods} succeeded, ${errorPods} error), ${totalCPU.toFixed(1)} CPUs (${cpuPercentage}%), ${totalGPU} GPUs`);
+    console.log(`Dashboard updated with ${totalPods} pods (${runningPods} running, ${succeededPods} succeeded, ${errorPods} error), ${totalCPU.toFixed(1)} CPUs (${cpuPercentage}% of ${totalCPUCapacity}), ${totalGPU} GPUs`);
 }
 
 // GPU Filter Functionality
@@ -2217,6 +2220,56 @@ function getStatusIcon(phase) {
         default:
             return '<i class="fas fa-info-circle text-info me-1"></i>';
     }
+}
+
+// Add this new function to fetch cluster capacity
+function fetchClusterCapacity() {
+    console.log('Fetching cluster capacity metrics...');
+    
+    // Store default values in case API call fails
+    window.clusterCapacity = {
+        cpu: 256, // Default fallback value
+        memory: 1024, // in Gi
+        gpu: 0
+    };
+    
+    fetch('/get_cluster_capacity')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to fetch cluster capacity: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.cpu) {
+                window.clusterCapacity.cpu = data.cpu;
+            }
+            if (data.memory) {
+                window.clusterCapacity.memory = data.memory;
+            }
+            if (data.gpu !== undefined) {
+                window.clusterCapacity.gpu = data.gpu;
+            }
+            
+            console.log(`Cluster capacity loaded: ${window.clusterCapacity.cpu} CPU cores, ${window.clusterCapacity.memory} Gi memory, ${window.clusterCapacity.gpu} GPUs`);
+            
+            // Update capacity display in the UI
+            document.getElementById('totalCPUCapacity').textContent = window.clusterCapacity.cpu;
+            
+            // If we already have pod data, recalculate the metrics with the new capacity
+            if (window.loadedResources && window.loadedResources.pods) {
+                const tableBody = document.querySelector('#podsTable tbody');
+                if (tableBody) {
+                    const pods = window.podsData || [];
+                    if (pods.length > 0) {
+                        updateDashboardMetrics(pods);
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.warn(`Error fetching cluster capacity: ${error.message}. Using default values.`);
+        });
 }
 </script>
 {% endblock %}

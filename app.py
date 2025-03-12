@@ -316,5 +316,69 @@ def health_check():
         'message': 'Application is running'
     })
 
+@app.route('/get_cluster_capacity', methods=['GET'])
+def get_cluster_capacity():
+    """
+    Get the total capacity of the Kubernetes cluster
+    Returns CPU cores, memory in Gi, and GPU count
+    """
+    try:
+        # Get nodes information
+        command = "kubectl get nodes -o json"
+        output = run_kubectl_command(command)
+        nodes_data = json.loads(output)
+        
+        total_cpu = 0
+        total_memory_ki = 0
+        total_gpu = 0
+        
+        # Sum up allocatable resources from all nodes
+        for node in nodes_data.get("items", []):
+            allocatable = node.get("status", {}).get("allocatable", {})
+            
+            # CPU - convert from Kubernetes format (can be in cores or millicores)
+            cpu_str = allocatable.get("cpu", "0")
+            if cpu_str.endswith('m'):
+                # Convert millicores to cores
+                total_cpu += int(cpu_str[:-1]) / 1000
+            else:
+                total_cpu += int(cpu_str)
+            
+            # Memory - convert from Kubernetes format (usually in Ki)
+            memory_str = allocatable.get("memory", "0")
+            if memory_str.endswith('Ki'):
+                total_memory_ki += int(memory_str[:-2])
+            elif memory_str.endswith('Mi'):
+                total_memory_ki += int(memory_str[:-2]) * 1024
+            elif memory_str.endswith('Gi'):
+                total_memory_ki += int(memory_str[:-2]) * 1024 * 1024
+            
+            # GPU - look for NVIDIA GPUs or any custom GPU resource
+            gpu_count = allocatable.get("nvidia.com/gpu", 0)
+            if gpu_count:
+                total_gpu += int(gpu_count)
+            
+            # Also check for generic 'gpu' resource
+            generic_gpu = allocatable.get("gpu", 0)
+            if generic_gpu:
+                total_gpu += int(generic_gpu)
+        
+        # Convert memory to Gi for easier display
+        total_memory_gi = round(total_memory_ki / (1024 * 1024), 1)
+        
+        return jsonify({
+            "cpu": round(total_cpu, 1),
+            "memory": total_memory_gi,
+            "gpu": total_gpu
+        })
+    except Exception as e:
+        app.logger.error(f"Error getting cluster capacity: {str(e)}")
+        return jsonify({
+            "cpu": 256,  # Default fallback
+            "memory": 1024,
+            "gpu": 0,
+            "error": str(e)
+        }), 500
+
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
