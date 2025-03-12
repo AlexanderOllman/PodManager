@@ -266,6 +266,36 @@ def api_namespace_update():
     except Exception as e:
         return jsonify(error=f"Error updating namespace: {str(e)}")
 
+@app.route('/api/namespace/events', methods=['POST'])
+def api_namespace_events():
+    """Get events for a specific namespace."""
+    namespace = request.form.get('namespace')
+    if not namespace:
+        return jsonify(error="Namespace not specified")
+    
+    command = f"kubectl get events -n {namespace} --sort-by='.lastTimestamp'"
+    output = run_kubectl_command(command)
+    
+    return jsonify(output=output)
+
+@app.route('/api/namespace/delete', methods=['POST'])
+def api_namespace_delete():
+    """Delete a namespace and all resources within it."""
+    namespace = request.form.get('namespace')
+    if not namespace:
+        return jsonify(error="Namespace not specified")
+    
+    # Prevent deletion of critical namespaces
+    critical_namespaces = ['default', 'kube-system', 'kube-public', 'kube-node-lease']
+    if namespace in critical_namespaces:
+        return jsonify(error=f"Cannot delete critical namespace: {namespace}")
+    
+    # Execute the delete command
+    command = f"kubectl delete namespace {namespace}"
+    output = run_kubectl_command(command)
+    
+    return jsonify(output=output)
+
 @app.route('/get_events', methods=['POST'])
 def get_events():
     namespace = request.form['namespace']
