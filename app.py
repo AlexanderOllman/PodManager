@@ -113,6 +113,159 @@ def get_namespaces():
     except json.JSONDecodeError:
         return jsonify(error="Unable to fetch namespaces")
 
+@app.route('/get_namespace_details', methods=['GET'])
+def get_namespace_details():
+    """Get detailed information about all namespaces including resource usage."""
+    # Get all namespaces
+    ns_command = "kubectl get namespaces -o json"
+    ns_output = run_kubectl_command(ns_command)
+    
+    try:
+        namespaces_data = json.loads(ns_output)
+        namespaces = []
+        
+        # For each namespace, get pod count and resource usage
+        for ns in namespaces_data['items']:
+            namespace_name = ns['metadata']['name']
+            
+            # Get pod count
+            pod_command = f"kubectl get pods -n {namespace_name} -o json"
+            pod_output = run_kubectl_command(pod_command)
+            
+            try:
+                pods_data = json.loads(pod_output)
+                pod_count = len(pods_data['items'])
+                
+                # Calculate resource usage
+                cpu_usage = 0
+                gpu_usage = 0
+                memory_usage = 0
+                
+                for pod in pods_data['items']:
+                    if 'containers' in pod.get('spec', {}):
+                        for container in pod['spec']['containers']:
+                            if 'resources' in container and 'requests' in container['resources']:
+                                requests = container['resources']['requests']
+                                
+                                # CPU usage
+                                if 'cpu' in requests:
+                                    cpu_req = requests['cpu']
+                                    # Convert to numeric value
+                                    if cpu_req.endswith('m'):
+                                        cpu_usage += float(cpu_req[:-1]) / 1000
+                                    else:
+                                        try:
+                                            cpu_usage += float(cpu_req)
+                                        except ValueError:
+                                            pass
+                                
+                                # Memory usage
+                                if 'memory' in requests:
+                                    mem_req = requests['memory']
+                                    # Convert to MB for display
+                                    if mem_req.endswith('Mi'):
+                                        memory_usage += float(mem_req[:-2])
+                                    elif mem_req.endswith('Gi'):
+                                        memory_usage += float(mem_req[:-2]) * 1024
+                                    elif mem_req.endswith('Ki'):
+                                        memory_usage += float(mem_req[:-2]) / 1024
+                                    else:
+                                        try:
+                                            # Assume bytes if no unit
+                                            memory_usage += float(mem_req) / (1024 * 1024)
+                                        except ValueError:
+                                            pass
+                                
+                                # GPU usage
+                                if 'nvidia.com/gpu' in requests:
+                                    try:
+                                        gpu_usage += float(requests['nvidia.com/gpu'])
+                                    except ValueError:
+                                        pass
+                
+                # Format the resource usage for display
+                namespace_info = {
+                    'name': namespace_name,
+                    'podCount': pod_count,
+                    'resources': {
+                        'cpu': round(cpu_usage, 2),
+                        'gpu': round(gpu_usage, 2),
+                        'memory': round(memory_usage, 2)  # Memory in MB
+                    },
+                    'metadata': ns.get('metadata', {})
+                }
+                
+                namespaces.append(namespace_info)
+                
+            except json.JSONDecodeError:
+                # If we can't get pod data, still include the namespace with zero counts
+                namespaces.append({
+                    'name': namespace_name,
+                    'podCount': 0,
+                    'resources': {'cpu': 0, 'gpu': 0, 'memory': 0},
+                    'metadata': ns.get('metadata', {})
+                })
+                
+        return jsonify(namespaces=namespaces)
+    
+    except json.JSONDecodeError:
+        return jsonify(error="Unable to fetch namespace details")
+
+@app.route('/api/namespace/describe', methods=['POST'])
+def api_namespace_describe():
+    """Describe a namespace using kubectl describe."""
+    namespace = request.form.get('namespace')
+    if not namespace:
+        return jsonify(error="Namespace not specified")
+    
+    command = f"kubectl describe namespace {namespace}"
+    output = run_kubectl_command(command)
+    
+    return jsonify(output=output)
+
+@app.route('/api/namespace/edit', methods=['POST'])
+def api_namespace_edit():
+    """Get editable fields for a namespace."""
+    namespace = request.form.get('namespace')
+    if not namespace:
+        return jsonify(error="Namespace not specified")
+    
+    # Get namespace yaml for editing
+    command = f"kubectl get namespace {namespace} -o yaml"
+    output = run_kubectl_command(command)
+    
+    try:
+        # Return the raw YAML for now, as the front end will handle displaying it
+        return jsonify(yaml=output)
+    except Exception as e:
+        return jsonify(error=f"Error retrieving namespace data: {str(e)}")
+
+@app.route('/api/namespace/update', methods=['POST'])
+def api_namespace_update():
+    """Update a namespace with the provided YAML."""
+    namespace = request.form.get('namespace')
+    yaml_content = request.form.get('yaml')
+    
+    if not namespace or not yaml_content:
+        return jsonify(error="Namespace or YAML content not specified")
+    
+    # Create a temporary file to store the YAML
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.yaml', delete=False) as temp:
+            temp_path = temp.name
+            temp.write(yaml_content.encode('utf-8'))
+        
+        # Apply the YAML file
+        command = f"kubectl apply -f {temp_path}"
+        output = run_kubectl_command(command)
+        
+        # Clean up the temporary file
+        os.unlink(temp_path)
+        
+        return jsonify(output=output)
+    except Exception as e:
+        return jsonify(error=f"Error updating namespace: {str(e)}")
+
 @app.route('/get_events', methods=['POST'])
 def get_events():
     namespace = request.form['namespace']
