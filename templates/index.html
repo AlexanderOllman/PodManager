@@ -654,6 +654,11 @@ function initializeHomePage() {
     // Initialize GPU filter card
     initializeGPUFilter();
     
+    // Initialize namespace functionality
+    if (typeof initializeNamespaceFunctionality === 'function') {
+        initializeNamespaceFunctionality();
+    }
+    
     // Add controls to each resource tab
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
     resourceTypes.forEach(resourceType => {
@@ -2195,8 +2200,6 @@ $(document).ready(function() {
 
 // Load namespaces data
 function loadNamespaces() {
-    console.log('Loading namespaces data...');
-    
     // Show loading indicator
     $('#namespacesLoading').show();
     $('#namespacesTableCard').hide();
@@ -2207,7 +2210,6 @@ function loadNamespaces() {
         url: '/get_namespace_details',
         type: 'GET',
         success: function(response) {
-            console.log('Namespaces data loaded successfully:', response);
             if (response.hasOwnProperty('namespaces')) {
                 // Store the namespaces data for filtering/sorting
                 window.namespacesData = response.namespaces;
@@ -2215,16 +2217,13 @@ function loadNamespaces() {
                 // Render the namespaces
                 renderNamespaces(window.namespacesData);
             } else {
-                console.error('Error loading namespaces: Invalid response format', response);
                 showNoNamespaces('Error loading namespaces');
             }
         },
-        error: function(xhr, status, error) {
-            console.error('Failed to fetch namespaces data:', status, error);
+        error: function() {
             showNoNamespaces('Failed to fetch namespaces data');
         },
         complete: function() {
-            console.log('Namespaces loading complete, hiding loading indicator');
             $('#namespacesLoading').hide();
         }
     });
@@ -2234,96 +2233,78 @@ function loadNamespaces() {
 function renderNamespaces(namespaces) {
     const tableBody = $('#namespacesTableBody');
     tableBody.empty();
-
-    if (namespaces.length === 0) {
+    
+    if (namespaces && namespaces.length > 0) {
+        namespaces.forEach(namespace => {
+            const cpuUsage = namespace.resources.cpu.toFixed(2);
+            const memoryUsage = (namespace.resources.memory / (1024 * 1024 * 1024)).toFixed(2);
+            const gpuUsage = namespace.resources.gpu.toFixed(2);
+            
+            const status = getNamespaceStatus(namespace);
+            
+            const row = `
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="ms-2">
+                                <h6 class="mb-0">${namespace.name}</h6>
+                                <small class="text-muted">${getCreationTime(namespace)}</small>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-center">${namespace.podCount}</td>
+                    <td class="text-center">${cpuUsage} cores</td>
+                    <td class="text-center">${gpuUsage}</td>
+                    <td class="text-center">${memoryUsage} GB</td>
+                    <td class="text-center">
+                        <span class="badge bg-${status.color}">${status.text}</span>
+                    </td>
+                    <td class="text-center">
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-icon" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item namespace-action" href="#" data-action="events" data-namespace="${namespace.name}"><i class="fas fa-list-ul me-2"></i>Events</a></li>
+                                <li><a class="dropdown-item namespace-action" href="#" data-action="describe" data-namespace="${namespace.name}"><i class="fas fa-info-circle me-2"></i>Describe</a></li>
+                                <li><a class="dropdown-item namespace-action" href="#" data-action="edit" data-namespace="${namespace.name}"><i class="fas fa-edit me-2"></i>Edit</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item namespace-action text-danger" href="#" data-action="delete" data-namespace="${namespace.name}"><i class="fas fa-trash-alt me-2"></i>Delete</a></li>
+                            </ul>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            tableBody.append(row);
+        });
+        
+        // Show the table and hide the no results message
+        $('#namespacesTableCard').show();
+        $('#noNamespacesMessage').hide();
+    } else {
+        // No namespaces found
         showNoNamespaces();
-        return;
     }
-
-    namespaces.forEach(function(ns) {
-        const row = $('<tr>');
-        
-        // Name column
-        row.append(`<td>
-            <div class="d-flex align-items-center">
-                <div class="avatar-sm rounded bg-info me-3">
-                    <span class="avatar-title rounded">
-                        <i class="fas fa-project-diagram text-white"></i>
-                    </span>
-                </div>
-                <div>
-                    <h6 class="mb-0">${ns.name}</h6>
-                    <small class="text-muted">${getCreationTime(ns)}</small>
-                </div>
-            </div>
-        </td>`);
-        
-        // Pod count column
-        row.append(`<td class="text-center">
-            <span class="fw-bold">${ns.podCount}</span>
-        </td>`);
-        
-        // vCPU usage column
-        row.append(`<td class="text-center resource-cell cpu-cell">
-            <span class="fw-bold">${ns.resources.cpu}</span> vCPUs
-        </td>`);
-        
-        // GPU usage column
-        row.append(`<td class="text-center resource-cell gpu-cell">
-            <span class="fw-bold">${ns.resources.gpu}</span> GPUs
-        </td>`);
-        
-        // Memory usage column
-        row.append(`<td class="text-center resource-cell memory-cell">
-            <span class="fw-bold">${ns.resources.memory}</span> MB
-        </td>`);
-        
-        // Status column
-        const status = getNamespaceStatus(ns);
-        row.append(`<td class="text-center">
-            <span class="badge bg-${status.color}">${status.text}</span>
-        </td>`);
-        
-        // Actions column
-        row.append(`<td class="text-center">
-            <div class="dropdown action-dropdown">
-                <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                    <i class="fas fa-ellipsis-v"></i>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item namespace-action" href="#" data-action="events" data-namespace="${ns.name}">
-                        <i class="fas fa-clock text-info"></i> Events
-                    </a></li>
-                    <li><a class="dropdown-item namespace-action" href="#" data-action="describe" data-namespace="${ns.name}">
-                        <i class="fas fa-info-circle text-primary"></i> Describe
-                    </a></li>
-                    <li><a class="dropdown-item namespace-action" href="#" data-action="edit" data-namespace="${ns.name}">
-                        <i class="fas fa-edit text-warning"></i> Edit
-                    </a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item namespace-action" href="#" data-action="delete" data-namespace="${ns.name}">
-                        <i class="fas fa-trash-alt text-danger"></i> Delete
-                    </a></li>
-                </ul>
-            </div>
-        </td>`);
-        
-        tableBody.append(row);
-    });
-
-    $('#namespacesTableCard').show();
 }
 
 // Filter namespaces based on search input
 function filterNamespaces() {
-    const searchTerm = $('#namespaceSearchInput').val().toLowerCase();
+    const searchValue = $('#namespaceSearchInput').val().toLowerCase();
     
     if (!window.namespacesData) return;
     
-    const filteredNamespaces = window.namespacesData.filter(function(ns) {
-        return ns.name.toLowerCase().includes(searchTerm);
-    });
+    if (searchValue === '') {
+        // If search is empty, show all namespaces
+        renderNamespaces(window.namespacesData);
+        return;
+    }
     
+    // Filter the namespaces based on search
+    const filteredNamespaces = window.namespacesData.filter(namespace => 
+        namespace.name.toLowerCase().includes(searchValue)
+    );
+    
+    // Render the filtered results
     renderNamespaces(filteredNamespaces);
 }
 
@@ -2776,36 +2757,89 @@ function clearGPUFilter() {
 function initializeNamespaceFunctionality() {
     console.log('Initializing namespace functionality');
     
-    // Initialize namespaces tab
+    // Make sure necessary functions are available globally
+    if (typeof window.loadNamespaces !== 'function' && typeof loadNamespaces === 'function') {
+        window.loadNamespaces = loadNamespaces;
+    }
+    
+    if (typeof window.renderNamespaces !== 'function' && typeof renderNamespaces === 'function') {
+        window.renderNamespaces = renderNamespaces;
+    }
+    
+    if (typeof window.showNoNamespaces !== 'function' && typeof showNoNamespaces === 'function') {
+        window.showNoNamespaces = showNoNamespaces;
+    }
+    
+    if (typeof window.filterNamespaces !== 'function' && typeof filterNamespaces === 'function') {
+        window.filterNamespaces = filterNamespaces;
+    }
+    
+    if (typeof window.sortNamespaces !== 'function' && typeof sortNamespaces === 'function') {
+        window.sortNamespaces = sortNamespaces;
+    }
+    
+    // Initialize namespaces tab handlers
     $(document).ready(function() {
-        // Initialize namespaces tab - listen for both bootstrap event and our custom method
+        console.log('Setting up namespaces tab event handlers');
+        
+        // Initialize namespaces tab click handler
         $('a[data-bs-toggle="tab"][data-bs-target="#namespaces"]').on('shown.bs.tab', function (e) {
-            console.log('Namespaces tab shown (Bootstrap event)');
-            loadNamespaces();
+            console.log('Namespace tab shown event triggered');
+            if (typeof window.loadNamespaces === 'function') {
+                window.loadNamespaces();
+            } else if (typeof loadNamespaces === 'function') {
+                loadNamespaces();
+            } else {
+                console.error('loadNamespaces function not available when tab shown');
+            }
         });
 
         // Refresh namespaces button
         $('#refreshNamespaces').on('click', function() {
             console.log('Refresh namespaces button clicked');
-            loadNamespaces();
+            if (typeof window.loadNamespaces === 'function') {
+                window.loadNamespaces();
+            } else if (typeof loadNamespaces === 'function') {
+                loadNamespaces();
+            } else {
+                console.error('loadNamespaces function not available when refresh clicked');
+            }
         });
 
         // Filter namespaces
         $('#namespaceSearchInput').on('keyup', function() {
-            filterNamespaces();
+            console.log('Namespace search input changed');
+            if (typeof window.filterNamespaces === 'function') {
+                window.filterNamespaces();
+            } else if (typeof filterNamespaces === 'function') {
+                filterNamespaces();
+            } else {
+                console.error('filterNamespaces function not available');
+            }
         });
 
         // Sort namespaces
         $('.sort-option').on('click', function(e) {
             e.preventDefault();
             const sortOption = $(this).data('sort');
-            sortNamespaces(sortOption);
+            console.log('Sort option clicked:', sortOption);
+            if (typeof window.sortNamespaces === 'function') {
+                window.sortNamespaces(sortOption);
+            } else if (typeof sortNamespaces === 'function') {
+                sortNamespaces(sortOption);
+            } else {
+                console.error('sortNamespaces function not available');
+            }
         });
         
-        // If we're already on the namespaces tab, load the data
+        // If the current active tab is namespaces, load them now
         if ($('#namespaces').hasClass('active')) {
-            console.log('Namespaces tab is already active, loading data');
-            loadNamespaces();
+            console.log('Namespaces tab is active, loading data immediately');
+            if (typeof window.loadNamespaces === 'function') {
+                window.loadNamespaces();
+            } else if (typeof loadNamespaces === 'function') {
+                loadNamespaces();
+            }
         }
     });
 }
