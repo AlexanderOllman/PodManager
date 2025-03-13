@@ -358,6 +358,10 @@ def restart_application():
 def explore_pod(namespace, pod_name):
     return render_template('explore.html', namespace=namespace, pod_name=pod_name)
 
+@app.route('/namespaces')
+def namespaces_page():
+    return render_template('namespaces.html')
+
 @app.route('/api/pod/describe', methods=['POST'])
 def api_pod_describe():
     try:
