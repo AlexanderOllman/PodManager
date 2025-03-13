@@ -428,6 +428,90 @@ def api_pod_exec():
         app.logger.error(f"Error in api_pod_exec: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/pod/details', methods=['POST'])
+def api_pod_details():
+    try:
+        # Handle both JSON and form data
+        if request.is_json:
+            data = request.get_json()
+            namespace = data.get('namespace')
+            pod_name = data.get('pod_name')
+        else:
+            namespace = request.form['namespace']
+            pod_name = request.form['pod_name']
+            
+        if not namespace or not pod_name:
+            return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
+        
+        # Fetch the pod details using kubectl
+        command = f"kubectl get pod {pod_name} -n {namespace} -o json"
+        output = run_kubectl_command(command)
+        
+        try:
+            pod_data = json.loads(output)
+            
+            # Extract the relevant fields
+            pod_details = {
+                'name': pod_data.get('metadata', {}).get('name', ''),
+                'namespace': pod_data.get('metadata', {}).get('namespace', ''),
+                'creation_timestamp': pod_data.get('metadata', {}).get('creationTimestamp', ''),
+                'pod_ip': pod_data.get('status', {}).get('podIP', ''),
+                'node': pod_data.get('spec', {}).get('nodeName', ''),
+                'status': pod_data.get('status', {}).get('phase', ''),
+                'labels': pod_data.get('metadata', {}).get('labels', {}),
+                'annotations': pod_data.get('metadata', {}).get('annotations', {})
+            }
+            
+            # Calculate ready containers count
+            containers = pod_data.get('spec', {}).get('containers', [])
+            total_containers = len(containers)
+            
+            # Check container statuses
+            container_statuses = pod_data.get('status', {}).get('containerStatuses', [])
+            ready_containers = sum(1 for status in container_statuses if status.get('ready', False))
+            pod_details['ready'] = f"{ready_containers}/{total_containers}"
+            
+            # Calculate restarts
+            restart_count = sum(status.get('restartCount', 0) for status in container_statuses)
+            pod_details['restarts'] = str(restart_count)
+            
+            # Calculate age
+            if pod_details['creation_timestamp']:
+                from datetime import datetime, timezone
+                created_time = datetime.fromisoformat(pod_details['creation_timestamp'].replace('Z', '+00:00'))
+                current_time = datetime.now(timezone.utc)
+                delta = current_time - created_time
+                
+                if delta.days > 0:
+                    age = f"{delta.days}d"
+                elif delta.seconds >= 3600:
+                    age = f"{delta.seconds // 3600}h"
+                elif delta.seconds >= 60:
+                    age = f"{delta.seconds // 60}m"
+                else:
+                    age = f"{delta.seconds}s"
+                    
+                pod_details['age'] = age
+            
+            # Extract container information including resource requests and limits
+            pod_details['containers'] = []
+            for container in containers:
+                container_info = {
+                    'name': container.get('name', ''),
+                    'image': container.get('image', ''),
+                    'resources': container.get('resources', {})
+                }
+                pod_details['containers'].append(container_info)
+            
+            return jsonify(pod_details)
+            
+        except json.JSONDecodeError:
+            return jsonify({"error": "Unable to parse pod details"}), 500
+            
+    except Exception as e:
+        app.logger.error(f"Error in api_pod_details: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/git_status', methods=['GET'])
 def git_status():
     return jsonify(available=git_available)

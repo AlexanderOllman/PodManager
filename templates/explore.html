@@ -18,7 +18,12 @@
 <div class="container">
     <ul class="nav nav-tabs" id="podTabs" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="describe-tab" data-bs-toggle="tab" data-bs-target="#describe" type="button" role="tab" aria-controls="describe" aria-selected="true">
+            <button class="nav-link active" id="details-tab" data-bs-toggle="tab" data-bs-target="#details" type="button" role="tab" aria-controls="details" aria-selected="true">
+                <i class="fas fa-info"></i> Details
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="describe-tab" data-bs-toggle="tab" data-bs-target="#describe" type="button" role="tab" aria-controls="describe" aria-selected="false">
                 <i class="fas fa-info-circle"></i> Describe
             </button>
         </li>
@@ -35,7 +40,161 @@
     </ul>
 
     <div class="tab-content" id="podTabsContent">
-        <div class="tab-pane fade show active" id="describe" role="tabpanel" aria-labelledby="describe-tab">
+        <div class="tab-pane fade show active" id="details" role="tabpanel" aria-labelledby="details-tab">
+            <div id="detailsLoading" class="loading">
+                <div class="spinner"></div>
+            </div>
+            <div id="detailsContent" style="display: none;">
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-cube"></i> Pod Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <table class="table table-borderless">
+                                    <tbody>
+                                        <tr>
+                                            <th scope="row">Name:</th>
+                                            <td id="podDetailName"></td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Namespace:</th>
+                                            <td id="podDetailNamespace"></td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Status:</th>
+                                            <td id="podDetailStatus"></td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Ready:</th>
+                                            <td id="podDetailReady"></td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Restarts:</th>
+                                            <td id="podDetailRestarts"></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-borderless">
+                                    <tbody>
+                                        <tr>
+                                            <th scope="row">Age:</th>
+                                            <td id="podDetailAge"></td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">IP:</th>
+                                            <td id="podDetailIP"></td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Node:</th>
+                                            <td id="podDetailNode"></td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Created:</th>
+                                            <td id="podDetailCreated"></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-microchip"></i> Resource Allocation</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>CPU</h6>
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Container</th>
+                                            <th>Requests</th>
+                                            <th>Limits</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="podDetailCPU">
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Memory</h6>
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Container</th>
+                                            <th>Requests</th>
+                                            <th>Limits</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="podDetailMemory">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <h6>GPU</h6>
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Container</th>
+                                            <th>Type</th>
+                                            <th>Count</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="podDetailGPU">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-tags"></i> Labels & Annotations</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Labels</h6>
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Key</th>
+                                            <th>Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="podDetailLabels">
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Annotations</h6>
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Key</th>
+                                            <th>Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="podDetailAnnotations">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="describe" role="tabpanel" aria-labelledby="describe-tab">
             <div id="describeLoading" class="loading">
                 <div class="spinner"></div>
             </div>
@@ -81,10 +240,11 @@ const podName = "{{ pod_name }}";
 function initializeExplorePage() {
     console.log(`Initializing explore page for pod: ${podName} in namespace: ${namespace}`);
     
-    // Load the pod description immediately
-    loadPodDescription();
+    // Load the pod details immediately (new default tab)
+    loadPodDetails();
     
     // Set up tab handlers
+    document.getElementById('describe-tab').addEventListener('click', loadPodDescription);
     document.getElementById('logs-tab').addEventListener('click', loadPodLogs);
     document.getElementById('access-tab').addEventListener('click', setupTerminal);
     
@@ -116,6 +276,145 @@ function handleTabFromHash() {
             // Trigger a click on the tab to activate it
             tabElement.click();
         }
+    }
+}
+
+function loadPodDetails() {
+    console.log('Loading pod details...');
+    document.getElementById('detailsLoading').style.display = 'flex';
+    document.getElementById('detailsContent').style.display = 'none';
+    
+    // Use JSON content type for better error handling
+    fetch('/api/pod/details', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            namespace: namespace,
+            pod_name: podName
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Pod details loaded successfully', data);
+        populatePodDetails(data);
+        document.getElementById('detailsLoading').style.display = 'none';
+        document.getElementById('detailsContent').style.display = 'block';
+    })
+    .catch(error => {
+        console.error('Error loading pod details:', error);
+        document.getElementById('detailsContent').innerHTML = `
+            <div class="alert alert-danger mt-3">
+                <h5><i class="fas fa-exclamation-triangle"></i> Error</h5>
+                <p>Error loading pod details: ${error.message}</p>
+            </div>
+        `;
+        document.getElementById('detailsLoading').style.display = 'none';
+        document.getElementById('detailsContent').style.display = 'block';
+    });
+}
+
+function populatePodDetails(data) {
+    // Basic Details
+    document.getElementById('podDetailName').textContent = data.name || '-';
+    document.getElementById('podDetailNamespace').textContent = data.namespace || '-';
+    document.getElementById('podDetailStatus').textContent = data.status || '-';
+    
+    // Add ready status with colored status indicator
+    const readyEl = document.getElementById('podDetailReady');
+    if (data.ready) {
+        const [ready, total] = data.ready.split('/');
+        const isAllReady = ready === total;
+        readyEl.innerHTML = `${data.ready} <span class="badge ${isAllReady ? 'bg-success' : 'bg-warning'}">${isAllReady ? 'All Ready' : 'Partially Ready'}</span>`;
+    } else {
+        readyEl.textContent = '-';
+    }
+    
+    document.getElementById('podDetailRestarts').textContent = data.restarts || '0';
+    document.getElementById('podDetailAge').textContent = data.age || '-';
+    document.getElementById('podDetailIP').textContent = data.pod_ip || '-';
+    document.getElementById('podDetailNode').textContent = data.node || '-';
+    document.getElementById('podDetailCreated').textContent = data.creation_timestamp || '-';
+    
+    // Resources
+    const cpuTableBody = document.getElementById('podDetailCPU');
+    const memoryTableBody = document.getElementById('podDetailMemory');
+    const gpuTableBody = document.getElementById('podDetailGPU');
+    
+    cpuTableBody.innerHTML = '';
+    memoryTableBody.innerHTML = '';
+    gpuTableBody.innerHTML = '';
+    
+    if (data.containers && data.containers.length > 0) {
+        data.containers.forEach(container => {
+            // CPU
+            const cpuRow = document.createElement('tr');
+            cpuRow.innerHTML = `
+                <td>${container.name}</td>
+                <td>${container.resources?.requests?.cpu || '-'}</td>
+                <td>${container.resources?.limits?.cpu || '-'}</td>
+            `;
+            cpuTableBody.appendChild(cpuRow);
+            
+            // Memory
+            const memoryRow = document.createElement('tr');
+            memoryRow.innerHTML = `
+                <td>${container.name}</td>
+                <td>${container.resources?.requests?.memory || '-'}</td>
+                <td>${container.resources?.limits?.memory || '-'}</td>
+            `;
+            memoryTableBody.appendChild(memoryRow);
+            
+            // GPU
+            if (container.resources?.limits?.['nvidia.com/gpu'] || 
+                container.resources?.requests?.['nvidia.com/gpu']) {
+                const gpuRow = document.createElement('tr');
+                gpuRow.innerHTML = `
+                    <td>${container.name}</td>
+                    <td>NVIDIA</td>
+                    <td>${container.resources?.limits?.['nvidia.com/gpu'] || 
+                          container.resources?.requests?.['nvidia.com/gpu'] || '-'}</td>
+                `;
+                gpuTableBody.appendChild(gpuRow);
+            }
+        });
+    } else {
+        cpuTableBody.innerHTML = '<tr><td colspan="3" class="text-muted">No container resources found</td></tr>';
+        memoryTableBody.innerHTML = '<tr><td colspan="3" class="text-muted">No container resources found</td></tr>';
+        gpuTableBody.innerHTML = '<tr><td colspan="3" class="text-muted">No GPU resources found</td></tr>';
+    }
+    
+    // Labels & Annotations
+    const labelsTableBody = document.getElementById('podDetailLabels');
+    const annotationsTableBody = document.getElementById('podDetailAnnotations');
+    
+    labelsTableBody.innerHTML = '';
+    annotationsTableBody.innerHTML = '';
+    
+    if (data.labels && Object.keys(data.labels).length > 0) {
+        Object.entries(data.labels).forEach(([key, value]) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${key}</td><td>${value}</td>`;
+            labelsTableBody.appendChild(row);
+        });
+    } else {
+        labelsTableBody.innerHTML = '<tr><td colspan="2" class="text-muted">No labels found</td></tr>';
+    }
+    
+    if (data.annotations && Object.keys(data.annotations).length > 0) {
+        Object.entries(data.annotations).forEach(([key, value]) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${key}</td><td>${value}</td>`;
+            annotationsTableBody.appendChild(row);
+        });
+    } else {
+        annotationsTableBody.innerHTML = '<tr><td colspan="2" class="text-muted">No annotations found</td></tr>';
     }
 }
 

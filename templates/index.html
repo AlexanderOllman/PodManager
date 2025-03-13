@@ -129,13 +129,10 @@
                             <tr>
                                 <th class="border-0">Namespace</th>
                                 <th class="border-0">Name</th>
-                                <th class="border-0">Ready</th>
                                 <th class="border-0">Status</th>
                                 <th class="border-0">vCPU</th>
                                 <th class="border-0">GPU</th>
                                 <th class="border-0">Memory</th>
-                                <th class="border-0">Restarts</th>
-                                <th class="border-0">Age</th>
                                 <th class="border-0 text-center">Actions</th>
                             </tr>
                         </thead>
@@ -1074,7 +1071,7 @@ function filterResources(resourceType, searchTerm) {
         if (!noResultsRow) {
             noResultsRow = document.createElement('tr');
             noResultsRow.className = 'no-results-row';
-            const colspan = resourceType === 'pods' ? 10 : 
+            const colspan = resourceType === 'pods' ? 7 : 
                            (resourceType === 'inferenceservices' ? 11 : 7);
             noResultsRow.innerHTML = `<td colspan="${colspan}" class="text-center">No ${resourceType} matching "${searchTerm}"${isGPUFilterActive ? ' with GPU resources' : ''}</td>`;
             tableBody.appendChild(noResultsRow);
@@ -1152,14 +1149,14 @@ function fetchResourceData(resourceType) {
         tableBody.innerHTML = ''; // Clear existing rows
         
         if (data.format === 'error') {
-            tableBody.innerHTML = `<tr><td colspan="10">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
             hideLoading(resourceType);
             return;
         }
         
         // For empty results, show a message
         if (!data.data.items || data.data.items.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="10" class="text-center">No ${resourceType} found</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center">No ${resourceType} found</td></tr>`;
             hideLoading(resourceType);
             return;
         }
@@ -1178,13 +1175,10 @@ function fetchResourceData(resourceType) {
                     row.innerHTML = `
                         <td>${item.metadata.namespace}</td>
                         <td>${item.metadata.name}</td>
-                        <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
                         <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
                         <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
                         <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
                         <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
-                        <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
                         <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                     `;
                     break;
@@ -1307,7 +1301,7 @@ function fetchResourceData(resourceType) {
         
         const tableBody = document.querySelector(`#${resourceType}Table tbody`);
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
                 <i class="fas fa-exclamation-triangle"></i> Error fetching ${resourceType}: ${error.message}
             </td></tr>`;
         }
@@ -1897,7 +1891,7 @@ function showNoGPUPodsMessage() {
         noGPURow = document.createElement('tr');
         noGPURow.className = 'no-gpu-pods-row';
         noGPURow.innerHTML = `
-            <td colspan="10" class="text-center">
+            <td colspan="7" class="text-center">
                 <div class="alert alert-info m-3">
                     <i class="fas fa-info-circle me-2"></i> No pods with GPU resources found.
                     <button class="btn btn-sm btn-outline-primary ms-3" onclick="clearGPUFilter()">
