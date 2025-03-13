@@ -1010,7 +1010,9 @@ function filterResources(resourceType, searchTerm) {
     
     // Check if GPU filter is active
     const isGPUFilterActive = document.getElementById('gpuCard')?.classList.contains('filter-active');
-    const gpuPodNames = window.podsWithGPUs?.map(pod => `${pod.namespace}/${pod.name}`) || [];
+    // Use gpuPodNames from the window object, falling back to podsWithGPUs if needed
+    const gpuPodNames = window.gpuPodNames || 
+                         (window.podsWithGPUs?.map(pod => `${pod.namespace}/${pod.name}`)) || [];
     
     rows.forEach(row => {
         if (row.classList.contains('no-results-row') || row.classList.contains('no-gpu-pods-row')) {
@@ -1833,10 +1835,21 @@ function updateDashboardMetrics(pods) {
     // Count all pods
     const totalPods = pods.length;
     
-    // Count pods by status
-    const runningPods = pods.filter(pod => pod.status.toLowerCase() === 'running').length;
-    const succeededPods = pods.filter(pod => pod.status.toLowerCase() === 'succeeded').length;
-    const errorPods = pods.filter(pod => ['failed', 'error', 'crashloopbackoff'].includes(pod.status.toLowerCase())).length;
+    // Count pods by status (correctly accessing the status phase)
+    const runningPods = pods.filter(pod => pod.status && pod.status.phase && pod.status.phase.toLowerCase() === 'running').length;
+    const succeededPods = pods.filter(pod => pod.status && pod.status.phase && pod.status.phase.toLowerCase() === 'succeeded').length;
+    const errorPods = pods.filter(pod => {
+        if (!pod.status || !pod.status.phase) return false;
+        const phase = pod.status.phase.toLowerCase();
+        return phase === 'failed' || phase === 'error' || phase === 'unknown' || 
+            // Check for container statuses with specific error conditions
+            (pod.status.containerStatuses && pod.status.containerStatuses.some(status => 
+                status.state && (
+                    (status.state.waiting && ['crashloopbackoff', 'error', 'errimagepull', 'imagepullbackoff', 'createcontainererror'].includes(status.state.waiting.reason?.toLowerCase())) ||
+                    (status.state.terminated && status.state.terminated.exitCode !== 0)
+                )
+            ));
+    }).length;
     
     // Update the UI
     document.getElementById('totalPodsCount').textContent = totalPods;
@@ -1846,7 +1859,7 @@ function updateDashboardMetrics(pods) {
     
     // Calculate and display CPU usage
     const totalCPURequest = pods.reduce((total, pod) => total + (parseFloat(pod.cpu) || 0), 0);
-    const cpuPercentage = window.clusterCapacity.cpu ? Math.round((totalCPURequest / window.clusterCapacity.cpu) * 100) : 0;
+    const cpuPercentage = window.clusterCapacity && window.clusterCapacity.cpu ? Math.round((totalCPURequest / window.clusterCapacity.cpu) * 100) : 0;
     
     document.getElementById('totalCPUCount').textContent = totalCPURequest.toFixed(1);
     document.getElementById('totalCPUPercentage').textContent = cpuPercentage;
@@ -1940,6 +1953,17 @@ function applyGPUFilter() {
     const activeTab = document.querySelector('#resourceTabs .nav-link.active');
     if (activeTab && activeTab.id === 'pods-tab') {
         filterResourceTable('pods');
+    }
+}
+
+// Add filterResourceTable function
+function filterResourceTable(resourceType) {
+    // This acts as a bridge between the old and new filtering systems
+    // It reuses the more comprehensive filterResources function
+    if (resourceType === 'pods') {
+        const searchInput = document.getElementById(`${resourceType}Search`);
+        const searchTerm = searchInput ? searchInput.value : '';
+        filterResources(resourceType, searchTerm);
     }
 }
 
@@ -2307,7 +2331,9 @@ function filterResources(resourceType, searchTerm) {
     
     // Check if GPU filter is active
     const isGPUFilterActive = document.getElementById('gpuCard')?.classList.contains('filter-active');
-    const gpuPodNames = window.podsWithGPUs?.map(pod => `${pod.namespace}/${pod.name}`) || [];
+    // Use gpuPodNames from the window object, falling back to podsWithGPUs if needed
+    const gpuPodNames = window.gpuPodNames || 
+                         (window.podsWithGPUs?.map(pod => `${pod.namespace}/${pod.name}`)) || [];
     
     rows.forEach(row => {
         if (row.classList.contains('no-results-row') || row.classList.contains('no-gpu-pods-row')) {
@@ -3120,65 +3146,6 @@ function clearRefreshLog() {
     const refreshLog = document.getElementById('refreshLog');
     if (refreshLog) {
         refreshLog.innerHTML = '<div class="text-muted">-- Log will appear here during refresh operations --</div>';
-    }
-}
-
-// Dashboard Metrics Functions
-function updateDashboardMetrics(pods) {
-    console.log('Updating dashboard metrics with data from', pods.length, 'pods');
-    
-    // Count all pods
-    const totalPods = pods.length;
-    
-    // Count pods by status
-    const runningPods = pods.filter(pod => pod.status.toLowerCase() === 'running').length;
-    const succeededPods = pods.filter(pod => pod.status.toLowerCase() === 'succeeded').length;
-    const errorPods = pods.filter(pod => ['failed', 'error', 'crashloopbackoff'].includes(pod.status.toLowerCase())).length;
-    
-    // Update the UI
-    document.getElementById('totalPodsCount').textContent = totalPods;
-    document.getElementById('runningPodsCount').textContent = runningPods;
-    document.getElementById('succeededPodsCount').textContent = succeededPods;
-    document.getElementById('errorPodsCount').textContent = errorPods;
-    
-    // Calculate and display CPU usage
-    const totalCPURequest = pods.reduce((total, pod) => total + (parseFloat(pod.cpu) || 0), 0);
-    const cpuPercentage = window.clusterCapacity.cpu ? Math.round((totalCPURequest / window.clusterCapacity.cpu) * 100) : 0;
-    
-    document.getElementById('totalCPUCount').textContent = totalCPURequest.toFixed(1);
-    document.getElementById('totalCPUPercentage').textContent = cpuPercentage;
-    
-    // Update CPU progress bar
-    const cpuProgressBar = document.getElementById('cpuProgressBar');
-    if (cpuProgressBar) {
-        cpuProgressBar.style.width = `${cpuPercentage}%`;
-        
-        // Change color based on usage
-        if (cpuPercentage > 90) {
-            cpuProgressBar.className = 'progress-bar bg-danger';
-        } else if (cpuPercentage > 75) {
-            cpuProgressBar.className = 'progress-bar bg-warning';
-        } else {
-            cpuProgressBar.className = 'progress-bar';
-        }
-    }
-    
-    // Count GPU resources
-    const gpuPods = pods.filter(pod => parseFloat(pod.gpu) > 0);
-    const totalGPURequest = gpuPods.reduce((total, pod) => total + (parseFloat(pod.gpu) || 0), 0);
-    
-    document.getElementById('totalGPUCount').textContent = totalGPURequest.toFixed(0);
-    
-    // Store pods with GPU for filtering
-    window.gpuPodNames = gpuPods.map(pod => `${pod.namespace}/${pod.name}`);
-    
-    // Reset GPU filter text based on state
-    if (window.gpuFilterActive) {
-        document.getElementById('gpuFilterStatus').innerHTML = `<span class="badge bg-success"><i class="fas fa-filter"></i> Filtered</span>`;
-        document.getElementById('clearGPUFilter').style.display = 'inline-block';
-    } else {
-        document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
-        document.getElementById('clearGPUFilter').style.display = 'none';
     }
 }
 
