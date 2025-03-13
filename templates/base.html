@@ -397,10 +397,18 @@
                     fetchResourceData(tabId);
                 }
             } else if (tabId === 'namespaces') {
-                // Load namespaces
+                // Load namespaces - using both direct function call and jQuery event
                 if (typeof loadNamespaces === 'function') {
                     loadNamespaces();
                 }
+                
+                // Also trigger the jQuery event for backward compatibility
+                setTimeout(() => {
+                    // jQuery tab shown event - this is what the original namespaces code listens for
+                    $(document).ready(function() {
+                        $('a[data-bs-toggle="tab"][data-bs-target="#namespaces"]').trigger('shown.bs.tab');
+                    });
+                }, 100);
             }
         }
         
