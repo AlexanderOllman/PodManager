@@ -2195,6 +2195,8 @@ $(document).ready(function() {
 
 // Load namespaces data
 function loadNamespaces() {
+    console.log('Loading namespaces data...');
+    
     // Show loading indicator
     $('#namespacesLoading').show();
     $('#namespacesTableCard').hide();
@@ -2205,6 +2207,7 @@ function loadNamespaces() {
         url: '/get_namespace_details',
         type: 'GET',
         success: function(response) {
+            console.log('Namespaces data loaded successfully:', response);
             if (response.hasOwnProperty('namespaces')) {
                 // Store the namespaces data for filtering/sorting
                 window.namespacesData = response.namespaces;
@@ -2212,13 +2215,16 @@ function loadNamespaces() {
                 // Render the namespaces
                 renderNamespaces(window.namespacesData);
             } else {
+                console.error('Error loading namespaces: Invalid response format', response);
                 showNoNamespaces('Error loading namespaces');
             }
         },
-        error: function() {
+        error: function(xhr, status, error) {
+            console.error('Failed to fetch namespaces data:', status, error);
             showNoNamespaces('Failed to fetch namespaces data');
         },
         complete: function() {
+            console.log('Namespaces loading complete, hiding loading indicator');
             $('#namespacesLoading').hide();
         }
     });
@@ -2769,15 +2775,18 @@ function clearGPUFilter() {
 // Initialize namespace functionality separately to ensure it works regardless of jQuery load order
 function initializeNamespaceFunctionality() {
     console.log('Initializing namespace functionality');
+    
     // Initialize namespaces tab
     $(document).ready(function() {
-        // Initialize namespaces tab
+        // Initialize namespaces tab - listen for both bootstrap event and our custom method
         $('a[data-bs-toggle="tab"][data-bs-target="#namespaces"]').on('shown.bs.tab', function (e) {
+            console.log('Namespaces tab shown (Bootstrap event)');
             loadNamespaces();
         });
 
         // Refresh namespaces button
         $('#refreshNamespaces').on('click', function() {
+            console.log('Refresh namespaces button clicked');
             loadNamespaces();
         });
 
@@ -2792,6 +2801,12 @@ function initializeNamespaceFunctionality() {
             const sortOption = $(this).data('sort');
             sortNamespaces(sortOption);
         });
+        
+        // If we're already on the namespaces tab, load the data
+        if ($('#namespaces').hasClass('active')) {
+            console.log('Namespaces tab is already active, loading data');
+            loadNamespaces();
+        }
     });
 }
 

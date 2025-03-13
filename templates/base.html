@@ -60,7 +60,7 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="/namespaces">
+                            <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#namespaces" onclick="event.preventDefault(); navigateToTab('namespaces'); return false;">
                                 <i class="fas fa-project-diagram"></i> <span class="menu-text">Namespaces</span>
                             </a>
                         </li>
@@ -369,25 +369,28 @@
         }
         
         function activateTab(tabId) {
-            // Remove active class from all tabs and panes
-            document.querySelectorAll('.nav-link[data-bs-toggle="tab"]').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            document.querySelectorAll('.tab-pane').forEach(pane => {
-                pane.classList.remove('show', 'active');
-            });
-            
-            // Add active class to selected tab and pane
+            // Find the tab element
             const tabElement = document.querySelector(`.nav-link[data-bs-target="#${tabId}"]`) || 
                               document.querySelector(`.nav-link[href="#${tabId}"]`);
             const paneElement = document.getElementById(tabId);
             
-            if (tabElement) {
-                tabElement.classList.add('active');
+            if (!tabElement || !paneElement) {
+                console.error(`Tab element not found for id: ${tabId}`);
+                return;
             }
             
-            if (paneElement) {
-                paneElement.classList.add('show', 'active');
+            // Use Bootstrap's Tab API to properly show the tab and trigger events
+            const bsTab = new bootstrap.Tab(tabElement);
+            bsTab.show();
+            
+            // Special case for namespaces - directly call loadNamespaces if needed
+            if (tabId === 'namespaces') {
+                if (typeof loadNamespaces === 'function') {
+                    console.log('Directly calling loadNamespaces function');
+                    loadNamespaces();
+                } else {
+                    console.error('loadNamespaces function not found');
+                }
             }
             
             // Load resources if needed
@@ -395,11 +398,6 @@
                 // Load the specific resource
                 if (typeof fetchResourceData === 'function') {
                     fetchResourceData(tabId);
-                }
-            } else if (tabId === 'namespaces') {
-                // Load namespaces
-                if (typeof loadNamespaces === 'function') {
-                    loadNamespaces();
                 }
             }
         }
