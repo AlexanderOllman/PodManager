@@ -1885,14 +1885,9 @@ function filterPodsWithGPUs() {
 // Show a message when no GPU pods are found
 function showNoGPUPodsMessage() {
     const tableBody = document.querySelector('#podsTable tbody');
+    if (!tableBody) return;
     
-    // First, make all rows invisible
-    const rows = tableBody.querySelectorAll('tr');
-    rows.forEach(row => {
-        row.style.display = 'none';
-    });
-    
-    // Check if the no-gpu-pods message already exists
+    // Check if message already exists
     let noGPURow = tableBody.querySelector('.no-gpu-pods-row');
     
     if (!noGPURow) {
@@ -2687,6 +2682,8 @@ function updateDashboardMetrics(pods) {
     
     // Store pods with GPU for filtering
     window.gpuPodNames = gpuPods.map(pod => `${pod.metadata.namespace}/${pod.metadata.name}`);
+    // Also store the full pod objects for use in the filter function
+    window.podsWithGPUs = gpuPods;
     
     // Reset GPU filter text based on state
     if (window.gpuFilterActive) {
@@ -2697,5 +2694,117 @@ function updateDashboardMetrics(pods) {
         document.getElementById('clearGPUFilter').style.display = 'none';
     }
 }
+
+// GPU Filter Functionality
+function initializeGPUFilter() {
+    console.log('Initializing GPU filter');
+    window.gpuFilterActive = false;
+    
+    // Add event listener to GPU card for filtering
+    const gpuCard = document.getElementById('gpuCard');
+    const clearFilter = document.getElementById('clearGPUFilter');
+    
+    if (gpuCard) {
+        gpuCard.addEventListener('click', function(e) {
+            // Don't trigger if clicking on the clear button
+            if (e.target.closest('#clearGPUFilter')) {
+                return;
+            }
+            
+            window.gpuFilterActive = !window.gpuFilterActive;
+            
+            // Apply the filter
+            applyGPUFilter();
+            
+            // Update UI to show filter state
+            gpuCard.classList.toggle('filter-active', window.gpuFilterActive);
+            
+            if (window.gpuFilterActive) {
+                document.getElementById('gpuFilterStatus').innerHTML = `<span class="badge bg-success"><i class="fas fa-filter"></i> Filtered</span>`;
+                clearFilter.style.display = 'inline-block';
+            } else {
+                document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+                clearFilter.style.display = 'none';
+            }
+        });
+    }
+    
+    if (clearFilter) {
+        clearFilter.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent triggering the card click
+            
+            window.gpuFilterActive = false;
+            
+            // Clear the filter
+            applyGPUFilter();
+            
+            // Update UI
+            gpuCard.classList.remove('filter-active');
+            document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+            clearFilter.style.display = 'none';
+        });
+    }
+}
+
+function applyGPUFilter() {
+    const activeTab = document.querySelector('#resourceTabs .nav-link.active');
+    if (activeTab && activeTab.id === 'pods-tab') {
+        filterResourceTable('pods');
+    }
+}
+
+// Show a message when no GPU pods are found with active filter
+}
+
+// Clear GPU filter directly (for use in the "Clear Filter" button)
+function clearGPUFilter() {
+    const gpuCard = document.getElementById('gpuCard');
+    if (gpuCard) {
+        window.gpuFilterActive = false;
+        gpuCard.classList.remove('filter-active');
+        
+        // Update UI
+        document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+        document.getElementById('clearGPUFilter').style.display = 'none';
+        
+        // Clear filter in the table
+        applyGPUFilter();
+    }
+}
+
+// Initialize namespace functionality separately to ensure it works regardless of jQuery load order
+function initializeNamespaceFunctionality() {
+    console.log('Initializing namespace functionality');
+    // Initialize namespaces tab
+    $(document).ready(function() {
+        // Initialize namespaces tab
+        $('a[data-bs-toggle="tab"][data-bs-target="#namespaces"]').on('shown.bs.tab', function (e) {
+            loadNamespaces();
+        });
+
+        // Refresh namespaces button
+        $('#refreshNamespaces').on('click', function() {
+            loadNamespaces();
+        });
+
+        // Filter namespaces
+        $('#namespaceSearchInput').on('keyup', function() {
+            filterNamespaces();
+        });
+
+        // Sort namespaces
+        $('.sort-option').on('click', function(e) {
+            e.preventDefault();
+            const sortOption = $(this).data('sort');
+            sortNamespaces(sortOption);
+        });
+    });
+}
+
+// Add call to initialize namespace functionality in the main initialization
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait a short moment to ensure jQuery is fully loaded
+    setTimeout(initializeNamespaceFunctionality, 500);
+});
 </script>
 {% endblock %}
