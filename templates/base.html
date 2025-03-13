@@ -709,6 +709,26 @@
                     document.body.appendChild(newScript);
                 }
             });
+            
+            // Special handling for charts content - manually initialize if we're on the charts page
+            if (window.location.pathname.includes('/charts')) {
+                console.log("Navigation: Manually initializing chart functionality");
+                // Call the chart initialization function directly
+                if (typeof checkChartMuseumStatus === 'function') {
+                    checkChartMuseumStatus();
+                } else {
+                    console.log("Navigation: checkChartMuseumStatus function not found, waiting and trying again");
+                    // Try again after a short delay
+                    setTimeout(() => {
+                        if (typeof checkChartMuseumStatus === 'function') {
+                            console.log("Navigation: Calling checkChartMuseumStatus on retry");
+                            checkChartMuseumStatus();
+                        } else {
+                            console.log("Navigation: checkChartMuseumStatus function still not available");
+                        }
+                    }, 500);
+                }
+            }
         }
     </script>
 </body>

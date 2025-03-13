@@ -65,8 +65,8 @@
 </div>
 
 <script>
-    // Check if ChartMuseum port forwarding is running
-    function checkChartMuseumStatus() {
+    // Make functions globally accessible
+    window.checkChartMuseumStatus = function() {
         console.log("ChartMuseum: Checking connection status...");
         const statusDiv = document.getElementById('chart-service-status');
         const statusMessage = document.getElementById('chart-service-message');
@@ -109,26 +109,10 @@
                 statusMessage.textContent = 'Error: ' + error.message;
                 document.getElementById('loading').classList.add('d-none');
             });
-    }
+    };
 
-    document.addEventListener('DOMContentLoaded', function() {
-        // Start checking ChartMuseum status
-        checkChartMuseumStatus();
-
-        // Close all dropdowns when clicking outside
-        document.addEventListener('click', function(event) {
-            if (!event.target.matches('.dropdown-toggle')) {
-                const dropdowns = document.getElementsByClassName('dropdown-menu');
-                for (let i = 0; i < dropdowns.length; i++) {
-                    if (dropdowns[i].classList.contains('show')) {
-                        dropdowns[i].classList.remove('show');
-                    }
-                }
-            }
-        });
-    });
-
-    function fetchCharts() {
+    // Make fetchCharts globally accessible as well
+    window.fetchCharts = function() {
         console.log("ChartMuseum: Fetching charts...");
         document.getElementById('loading').classList.remove('d-none');
         document.getElementById('chart-container').classList.add('d-none');
@@ -162,9 +146,27 @@
                 document.getElementById('loading').classList.add('d-none');
                 showAlert('Error fetching charts: ' + error.message, 'danger');
             });
-    }
+    };
 
-    function populateChartList(charts) {
+    document.addEventListener('DOMContentLoaded', function() {
+        // Start checking ChartMuseum status
+        checkChartMuseumStatus();
+
+        // Close all dropdowns when clicking outside
+        document.addEventListener('click', function(event) {
+            if (!event.target.matches('.dropdown-toggle')) {
+                const dropdowns = document.getElementsByClassName('dropdown-menu');
+                for (let i = 0; i < dropdowns.length; i++) {
+                    if (dropdowns[i].classList.contains('show')) {
+                        dropdowns[i].classList.remove('show');
+                    }
+                }
+            }
+        });
+    });
+
+    // Rest of the functions should remain accessible
+    window.populateChartList = function(charts) {
         const chartList = document.getElementById('chart-list');
         chartList.innerHTML = '';
 
@@ -236,24 +238,24 @@
             versionsRow.appendChild(versionsCell);
             chartList.appendChild(versionsRow);
         });
-    }
+    };
 
-    function toggleVersionsAccordion(chartName) {
+    window.toggleVersionsAccordion = function(chartName) {
         const versionsRow = document.getElementById(`versions-${chartName}`);
         if (versionsRow.style.display === 'table-row') {
             versionsRow.style.display = 'none';
         } else {
             versionsRow.style.display = 'table-row';
         }
-    }
+    };
 
-    function toggleDropdown(event) {
+    window.toggleDropdown = function(event) {
         event.stopPropagation();
         const dropdown = event.currentTarget.nextElementSibling;
         dropdown.classList.toggle('show');
-    }
+    };
 
-    function showDeleteConfirmation(chartName) {
+    window.showDeleteConfirmation = function(chartName) {
         const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
         document.getElementById('deleteModalBody').textContent = `Are you sure you want to delete chart "${chartName}" and all its versions?`;
         
@@ -264,9 +266,9 @@
         };
         
         modal.show();
-    }
+    };
 
-    function showDeleteVersionConfirmation(chartName, version) {
+    window.showDeleteVersionConfirmation = function(chartName, version) {
         event.stopPropagation();
         const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
         document.getElementById('deleteModalBody').textContent = `Are you sure you want to delete version "${version}" of chart "${chartName}"?`;
@@ -278,9 +280,9 @@
         };
         
         modal.show();
-    }
+    };
 
-    function deleteChart(chartName) {
+    window.deleteChart = function(chartName) {
         console.log("ChartMuseum: Deleting chart:", chartName);
         fetch(`/api/charts/${chartName}`, {
             method: 'DELETE'
@@ -301,9 +303,9 @@
             console.error("ChartMuseum: Delete chart error:", error);
             showAlert(`Error deleting chart: ${error.message}`, 'danger');
         });
-    }
+    };
 
-    function deleteChartVersion(chartName, version) {
+    window.deleteChartVersion = function(chartName, version) {
         console.log("ChartMuseum: Deleting chart version:", chartName, version);
         fetch(`/api/charts/${chartName}/${version}`, {
             method: 'DELETE'
@@ -324,9 +326,9 @@
             console.error("ChartMuseum: Delete version error:", error);
             showAlert(`Error deleting chart version: ${error.message}`, 'danger');
         });
-    }
+    };
 
-    function showAlert(message, type) {
+    window.showAlert = function(message, type) {
         const alertContainer = document.getElementById('alert-container');
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
@@ -344,5 +346,5 @@
                 alertContainer.removeChild(alertDiv);
             }, 150);
         }, 5000);
-    }
+    };
 </script> 
