@@ -900,7 +900,6 @@ function fetchResourcesForAllTabs() {
     // Initialize loadedResources tracking object if not already created
     window.loadedResources = window.loadedResources || {};
     
-    
     // Setup for each resource type
     resourceTypes.forEach(resourceType => {
         showLoading(resourceType);
@@ -940,6 +939,9 @@ function fetchResourcesForAllTabs() {
             }
         }
     }, 5000);
+    
+    // Mark as initialized
+    window.resourcesTabsInitialized = true;
 }
 
 // Add refresh button and search bar to each resource tab
@@ -2575,6 +2577,125 @@ function saveNamespaceChanges() {
             $('#namespaceEditLoading').hide();
         }
     });
+}
+
+// Dashboard Metrics Functions
+function updateDashboardMetrics(pods) {
+    console.log('Updating dashboard metrics with data from', pods.length, 'pods');
+    
+    // Count all pods
+    const totalPods = pods.length;
+    
+    // Count pods by status (correctly accessing the status phase)
+    const runningPods = pods.filter(pod => pod.status && pod.status.phase && pod.status.phase.toLowerCase() === 'running').length;
+    const succeededPods = pods.filter(pod => pod.status && pod.status.phase && pod.status.phase.toLowerCase() === 'succeeded').length;
+    const errorPods = pods.filter(pod => {
+        if (!pod.status || !pod.status.phase) return false;
+        const phase = pod.status.phase.toLowerCase();
+        return phase === 'failed' || phase === 'error' || phase === 'unknown' || 
+            // Check for container statuses with specific error conditions
+            (pod.status.containerStatuses && pod.status.containerStatuses.some(status => 
+                status.state && (
+                    (status.state.waiting && ['crashloopbackoff', 'error', 'errimagepull', 'imagepullbackoff', 'createcontainererror'].includes(status.state.waiting.reason?.toLowerCase())) ||
+                    (status.state.terminated && status.state.terminated.exitCode !== 0)
+                )
+            ));
+    }).length;
+    
+    // Update the UI
+    document.getElementById('totalPodsCount').textContent = totalPods;
+    document.getElementById('runningPodsCount').textContent = runningPods;
+    document.getElementById('succeededPodsCount').textContent = succeededPods;
+    document.getElementById('errorPodsCount').textContent = errorPods;
+    
+    // Calculate and display CPU usage
+    const totalCPURequest = pods.reduce((total, pod) => {
+        // Get CPU from each container in the pod
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests && container.resources.requests.cpu) {
+                    const cpuRequest = container.resources.requests.cpu;
+                    if (cpuRequest.endsWith('m')) {
+                        // Convert millicpu to CPU
+                        total += parseInt(cpuRequest.slice(0, -1)) / 1000;
+                    } else {
+                        // Direct CPU value
+                        total += parseFloat(cpuRequest);
+                    }
+                }
+            });
+        }
+        return total;
+    }, 0);
+    
+    // For debugging
+    console.log(`Total CPU request: ${totalCPURequest.toFixed(1)} cores`);
+    console.log(`Cluster capacity: ${window.clusterCapacity ? window.clusterCapacity.cpu : 'unknown'} cores`);
+    
+    const cpuPercentage = window.clusterCapacity && window.clusterCapacity.cpu ? 
+        Math.round((totalCPURequest / window.clusterCapacity.cpu) * 100) : 0;
+    
+    document.getElementById('totalCPUCount').textContent = totalCPURequest.toFixed(1);
+    document.getElementById('totalCPUPercentage').textContent = cpuPercentage;
+    
+    // Update CPU progress bar
+    const cpuProgressBar = document.getElementById('cpuProgressBar');
+    if (cpuProgressBar) {
+        cpuProgressBar.style.width = `${cpuPercentage}%`;
+        
+        // Change color based on usage
+        if (cpuPercentage > 90) {
+            cpuProgressBar.className = 'progress-bar bg-danger';
+        } else if (cpuPercentage > 75) {
+            cpuProgressBar.className = 'progress-bar bg-warning';
+        } else {
+            cpuProgressBar.className = 'progress-bar';
+        }
+    }
+    
+    // Count GPU resources
+    const gpuPods = pods.filter(pod => {
+        let hasGPU = false;
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests) {
+                    if (container.resources.requests['nvidia.com/gpu'] || container.resources.requests.gpu) {
+                        hasGPU = true;
+                    }
+                }
+            });
+        }
+        return hasGPU;
+    });
+    
+    const totalGPURequest = gpuPods.reduce((total, pod) => {
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests) {
+                    if (container.resources.requests['nvidia.com/gpu']) {
+                        total += parseInt(container.resources.requests['nvidia.com/gpu']);
+                    } else if (container.resources.requests.gpu) {
+                        total += parseInt(container.resources.requests.gpu);
+                    }
+                }
+            });
+        }
+        return total;
+    }, 0);
+    
+    document.getElementById('totalGPUCount').textContent = totalGPURequest.toFixed(0);
+    
+    // Store pods with GPU for filtering
+    window.gpuPodNames = gpuPods.map(pod => `${pod.metadata.namespace}/${pod.metadata.name}`);
+    
+    // Reset GPU filter text based on state
+    if (window.gpuFilterActive) {
+        document.getElementById('gpuFilterStatus').innerHTML = `<span class="badge bg-success"><i class="fas fa-filter"></i> Filtered</span>`;
+        document.getElementById('clearGPUFilter').style.display = 'inline-block';
+    } else {
+        document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+        document.getElementById('clearGPUFilter').style.display = 'none';
+    }
 }
 </script>
 {% endblock %}
