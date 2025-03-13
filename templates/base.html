@@ -45,22 +45,22 @@
                 <div class="position-sticky pt-3">
                     <ul class="nav flex-column">
                         <li class="nav-item">
-                            <a class="nav-link active" href="#home" data-bs-toggle="tab" data-bs-target="#home" id="homeLink">
+                            <a class="nav-link active" href="/" data-bs-toggle="tab" data-bs-target="#home" id="homeLink">
                                 <i class="fas fa-home"></i> <span class="menu-text">Home</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="#cli" data-bs-toggle="tab" data-bs-target="#cli">
+                            <a class="nav-link" href="/#cli" data-bs-toggle="tab" data-bs-target="#cli">
                                 <i class="fas fa-terminal"></i> <span class="menu-text">CLI</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="#yaml" data-bs-toggle="tab" data-bs-target="#yaml">
+                            <a class="nav-link" href="/#yaml" data-bs-toggle="tab" data-bs-target="#yaml">
                                 <i class="fas fa-file-upload"></i> <span class="menu-text">Upload YAML</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="#namespaces" data-bs-toggle="tab" data-bs-target="#namespaces">
+                            <a class="nav-link" href="/#namespaces" data-bs-toggle="tab" data-bs-target="#namespaces">
                                 <i class="fas fa-project-diagram"></i> <span class="menu-text">Namespaces</span>
                             </a>
                         </li>
@@ -70,7 +70,7 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="#settings" data-bs-toggle="tab" data-bs-target="#settings">
+                            <a class="nav-link" href="/#settings" data-bs-toggle="tab" data-bs-target="#settings">
                                 <i class="fas fa-cog"></i> <span class="menu-text">Settings</span>
                             </a>
                         </li>
@@ -180,6 +180,22 @@
                 }
             });
             
+            // Handle sidebar navigation links
+            document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+                if (link.href.includes('/#')) {
+                    link.addEventListener('click', function(e) {
+                        // If we're not on the home page, navigate there first
+                        if (!window.location.pathname.match(/^\/($|\?)/)) {
+                            e.preventDefault();
+                            // Extract the hash part from the href
+                            const hash = link.getAttribute('href').split('#')[1];
+                            // Navigate to home first, then activate the tab
+                            navigateToHome(hash);
+                        }
+                    });
+                }
+            });
+            
             // Handle back navigation from the explore page
             const homeLink = document.getElementById('homeLink');
             if (homeLink) {
@@ -217,7 +233,7 @@
                 });
         }
         
-        function navigateToHome() {
+        function navigateToHome(tabId) {
             fetch('/')
                 .then(response => response.text())
                 .then(html => {
@@ -228,23 +244,43 @@
                     
                     // Update the page content and history
                     document.getElementById('main-content').innerHTML = content;
-                    window.history.pushState({content: content, page: 'home'}, '', '/');
+                    
+                    // Update URL with hash if provided
+                    const url = tabId ? `/#${tabId}` : '/';
+                    window.history.pushState({content: content, page: 'home'}, '', url);
                     
                     // Reset the loaded resources state to ensure things get reloaded
                     window.loadedResources = {};
                     
-                    // Initialize the home page components and load active tab resources
+                    // Initialize the home page components
                     if (typeof initializeHomePage === 'function') {
                         initializeHomePage();
                     }
                     
-                    // Load the active tab resources
-                    const activeTabId = document.querySelector('.tab-pane.active').id;
-                    if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
-                        fetchResourceData(activeTabId);
+                    // Activate the specified tab if provided
+                    if (tabId) {
+                        const tabToActivate = document.querySelector(`[data-bs-target="#${tabId}"]`);
+                        if (tabToActivate) {
+                            // Create a new Bootstrap tab instance and show it
+                            const tab = new bootstrap.Tab(tabToActivate);
+                            tab.show();
+                        }
+                        
+                        // Also fetch resources for the tab if needed
+                        if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
+                            fetchResourceData(tabId);
+                        } else if (tabId === 'namespaces') {
+                            loadNamespaces();
+                        }
                     } else {
-                        // If no tab is active, load pods as default
-                        fetchResourceData('pods');
+                        // If no tab is specified, load the active tab resources
+                        const activeTabId = document.querySelector('.tab-pane.active').id;
+                        if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
+                            fetchResourceData(activeTabId);
+                        } else {
+                            // If no tab is active, load pods as default
+                            fetchResourceData('pods');
+                        }
                     }
                 })
                 .catch(error => {
@@ -257,7 +293,8 @@
             
             // Store the current page state in history before navigating away
             const currentState = document.getElementById('main-content').innerHTML;
-            window.history.pushState({content: currentState, page: 'current'}, '', '/');
+            const currentPath = window.location.pathname;
+            window.history.pushState({content: currentState, page: 'current'}, '', currentPath);
             
             // Set a custom flag to prevent fetchResourcesForAllTabs from running
             window.isChartsPage = true;
@@ -295,7 +332,7 @@
                     // Execute any scripts in the content
                     executeScripts(html);
                     
-                    // Update history
+                    // Always use absolute path
                     window.history.pushState({content: html, page: 'charts'}, '', '/charts');
                     
                     console.log("Navigation: Charts content loaded and scripts executed");
@@ -313,9 +350,61 @@
         window.addEventListener('popstate', function(event) {
             if (event.state) {
                 document.getElementById('main-content').innerHTML = event.state.content;
+                
+                // Update the sidebar active state based on the current URL
+                const pathname = window.location.pathname;
+                const hash = window.location.hash.substring(1);  // Remove the # character
+                
+                // Clear all active states first
+                document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+                    link.classList.remove('active');
+                });
+                
+                // Set active state based on current page
+                if (pathname === '/' || pathname === '') {
+                    // For home page, activate home link or the specific tab link
+                    if (hash) {
+                        const tabLink = document.querySelector(`.sidebar .nav-link[href="/#${hash}"]`);
+                        if (tabLink) {
+                            tabLink.classList.add('active');
+                        } else {
+                            // Default to home if tab link not found
+                            document.getElementById('homeLink').classList.add('active');
+                        }
+                    } else {
+                        document.getElementById('homeLink').classList.add('active');
+                    }
+                } else if (pathname.startsWith('/explore/')) {
+                    // Keep home as active for explore pages
+                    document.getElementById('homeLink').classList.add('active');
+                } else if (pathname === '/charts') {
+                    // For charts page
+                    const chartsLink = document.querySelector('.sidebar .nav-link[onclick*="navigateToCharts"]');
+                    if (chartsLink) {
+                        chartsLink.classList.add('active');
+                    }
+                }
+                
+                // Initialize page functionality based on the page type
                 if (event.state.page === 'home' && typeof initializeHomePage === 'function') {
                     window.isChartsPage = false;
                     initializeHomePage();
+                    
+                    // If there's a hash, activate that tab
+                    if (hash && document.getElementById(hash)) {
+                        const tabToActivate = document.querySelector(`[data-bs-target="#${hash}"]`);
+                        if (tabToActivate) {
+                            const tab = new bootstrap.Tab(tabToActivate);
+                            tab.show();
+                            
+                            // Load resources for the tab if needed
+                            if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(hash)) {
+                                fetchResourceData(hash);
+                            } else if (hash === 'namespaces') {
+                                loadNamespaces();
+                            }
+                        }
+                    }
                 } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
                     window.isChartsPage = false;
                     initializeExplorePage();
