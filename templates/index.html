@@ -1,155 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Kubernetes Dashboard{% endblock %}
+{% block title %}HPE Private Cloud AI Resource Manager{% endblock %}
 
 {% block additional_styles %}
 <style>
-    /* Dashboard card styles */
-    .card {
-        transition: all 0.3s ease;
-        border-radius: 10px;
-        overflow: hidden;
-        border: 1px solid rgba(0,0,0,0.1);
-    }
-    .card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
-    }
-    .card-body {
-        padding: 1.25rem;
-    }
-    .avatar-sm {
-        width: 3rem;
-        height: 3rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 8px;
-    }
-    .avatar-title {
-        font-size: 1.2rem;
-    }
-    .card-title {
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-    }
-    /* Pod status indicators */
-    .pod-status {
-        transition: all 0.3s ease;
-        border-radius: 6px;
-        padding: 5px 0;
-    }
-    .pod-status:hover {
-        background-color: rgba(0, 0, 0, 0.05);
-    }
-    .pod-status i {
-        font-size: 1.2rem;
-        margin-bottom: 5px;
-    }
-    .pod-status .fw-bold {
-        font-size: 1.2rem;
-        line-height: 1;
-    }
-    /* GPU card filter styles */
-    .gpu-filter-card {
-        cursor: pointer;
-    }
-    .gpu-filter-card.filter-active {
-        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.5) !important;
-        border: 1px solid #0d6efd;
-    }
-    .gpu-filter-card.filter-active .bg-info {
-        background-color: #0d6efd !important;
-    }
-    .gpu-filter-card.filter-active:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 0.5rem 1rem rgba(13, 110, 253, 0.25) !important;
-    }
-    /* Table styles */
-    .table th {
-        font-weight: 600;
-        font-size: 0.82rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .table td {
-        vertical-align: middle;
-    }
-    .action-dropdown .dropdown-toggle::after {
-        display: none;
-    }
-    .action-dropdown .dropdown-toggle {
-        border: none;
-        background: none;
-        color: #6c757d;
-        width: 30px;
-        height: 30px;
-        padding: 0;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .action-dropdown .dropdown-toggle:hover {
-        background-color: rgba(108, 117, 125, 0.1);
-    }
-    .action-dropdown .dropdown-item {
-        padding: 0.5rem 1rem;
-        font-size: 0.875rem;
-    }
-    .action-dropdown .dropdown-item i {
-        margin-right: 0.5rem;
-        width: 1rem;
-        text-align: center;
-    }
-    /* Progress bar styles */
-    .loading-container {
-        width: 100%;
-        padding: 30px 0;
-    }
-    .progress-container {
-        max-width: 500px;
-        margin: 0 auto;
-    }
-    .progress {
-        height: 6px;
-        border-radius: 3px;
-        background-color: rgba(108, 117, 125, 0.1);
-    }
-    .progress-bar {
-        background: linear-gradient(to right, #01a982, #0e5c8b);
-    }
-    .loading-text {
-        font-size: 0.85rem;
-        color: #6c757d;
-        text-align: center;
-        margin-top: 10px;
-    }
-    /* Metric counters */
-    .counter-value {
-        font-size: 28px;
-        font-weight: 700;
-        color: #495057;
-        margin-bottom: 0.2rem;
-    }
-    .counter-info {
-        font-size: 14px;
-        color: #6c757d;
-    }
-    /* Resource column styles */
-    .resource-cell {
-        text-align: center;
-        white-space: nowrap;
-    }
-    .cpu-cell {
-        color: #0d6efd;
-    }
-    .gpu-cell {
-        color: #198754;
-    }
-    .memory-cell {
-        color: #fd7e14;
-    }
+    /* Any page-specific styles that aren't included in main.css */
 </style>
 {% endblock %}
 
@@ -164,34 +19,26 @@
         <div class="row mb-4">
             <!-- Pods Card -->
             <div class="col-md-3">
-                <div class="card border-0 shadow-sm h-100">
+                <div class="dashboard-metric-card pods-card">
                     <div class="card-body">
-                        <div class="d-flex">
-                            <div class="avatar-sm rounded bg-info me-3">
-                                <span class="avatar-title rounded">
-                                    <i class="fas fa-cubes text-white"></i>
-                                </span>
+                        <i class="fas fa-cubes card-icon"></i>
+                        <h5 class="card-title">Total Pods</h5>
+                        <h3 class="counter-value" id="totalPodsCount">-</h3>
+                        <div class="metric-details">
+                            <div class="metric-item">
+                                <i class="fas fa-check-circle running"></i>
+                                <div class="value" id="runningPodsCount">-</div>
+                                <div class="label">Running</div>
                             </div>
-                            <div class="w-100">
-                                <h5 class="card-title">Total Pods</h5>
-                                <h3 class="counter-value" id="totalPodsCount">-</h3>
-                                <div class="mt-3 d-flex justify-content-between">
-                                    <div class="pod-status text-center px-1" style="flex: 1;">
-                                        <div class="text-success"><i class="fas fa-check-circle"></i></div>
-                                        <div class="fw-bold" id="runningPodsCount">-</div>
-                                        <div class="small text-muted">Running</div>
-                                    </div>
-                                    <div class="pod-status text-center px-1" style="flex: 1;">
-                                        <div class="text-primary"><i class="fas fa-flag-checkered"></i></div>
-                                        <div class="fw-bold" id="succeededPodsCount">-</div>
-                                        <div class="small text-muted">Succeeded</div>
-                                    </div>
-                                    <div class="pod-status text-center px-1" style="flex: 1;">
-                                        <div class="text-danger"><i class="fas fa-exclamation-circle"></i></div>
-                                        <div class="fw-bold" id="errorPodsCount">-</div>
-                                        <div class="small text-muted">Error</div>
-                                    </div>
-                                </div>
+                            <div class="metric-item">
+                                <i class="fas fa-flag-checkered succeeded"></i>
+                                <div class="value" id="succeededPodsCount">-</div>
+                                <div class="label">Succeeded</div>
+                            </div>
+                            <div class="metric-item">
+                                <i class="fas fa-exclamation-circle error"></i>
+                                <div class="value" id="errorPodsCount">-</div>
+                                <div class="label">Error</div>
                             </div>
                         </div>
                     </div>
@@ -200,19 +47,14 @@
 
             <!-- vCPU Card -->
             <div class="col-md-3">
-                <div class="card border-0 shadow-sm h-100">
+                <div class="dashboard-metric-card cpu-card">
                     <div class="card-body">
-                        <div class="d-flex">
-                            <div class="avatar-sm rounded bg-primary me-3">
-                                <span class="avatar-title rounded">
-                                    <i class="fas fa-microchip text-white"></i>
-                                </span>
-                            </div>
-                            <div class="w-100">
-                                <h5 class="card-title">vCPU Usage</h5>
-                                <h3 class="counter-value" id="totalCPUCount">-</h3>
-                                <p class="counter-info"><span id="totalCPUPercentage">-</span>% of <span id="totalCPUCapacity">256</span> Cores</p>
-                            </div>
+                        <i class="fas fa-microchip card-icon"></i>
+                        <h5 class="card-title">vCPU Usage</h5>
+                        <h3 class="counter-value" id="totalCPUCount">-</h3>
+                        <span class="counter-info"><span id="totalCPUPercentage">-</span>% of <span id="totalCPUCapacity">256</span> Cores</span>
+                        <div class="progress mt-2">
+                            <div class="progress-bar" id="cpuProgressBar" role="progressbar" style="width: 0%"></div>
                         </div>
                     </div>
                 </div>
@@ -220,45 +62,29 @@
 
             <!-- GPU Card -->
             <div class="col-md-3">
-                <div class="card border-0 shadow-sm h-100 gpu-filter-card" id="gpuCard" role="button">
+                <div class="dashboard-metric-card gpu-card" id="gpuCard" role="button">
                     <div class="card-body">
-                        <div class="d-flex">
-                            <div class="avatar-sm rounded bg-success me-3">
-                                <span class="avatar-title rounded">
-                                    <i class="fas fa-tachometer-alt text-white"></i>
-                                </span>
-                            </div>
-                            <div class="w-100">
-                                <h5 class="card-title">GPU Resources</h5>
-                                <h3 class="counter-value" id="totalGPUCount">-</h3>
-                                <p class="d-flex align-items-center counter-info">
-                                    <span id="gpuFilterStatus">Click to filter</span>
-                                    <button id="clearGPUFilter" class="btn btn-sm btn-outline-secondary ms-2" style="display: none;">Clear</button>
-                                </p>
-                            </div>
-                        </div>
+                        <i class="fas fa-tachometer-alt card-icon"></i>
+                        <h5 class="card-title">GPU Resources</h5>
+                        <h3 class="counter-value" id="totalGPUCount">-</h3>
+                        <span class="counter-info d-flex align-items-center">
+                            <span id="gpuFilterStatus">Click to filter</span>
+                            <button id="clearGPUFilter" class="btn btn-sm btn-outline-secondary ms-2" style="display: none;">Clear</button>
+                        </span>
                     </div>
                 </div>
             </div>
 
             <!-- Future Metric Card -->
             <div class="col-md-3">
-                <div class="card border-0 shadow-sm h-100">
+                <div class="dashboard-metric-card metric-card">
                     <div class="card-body">
-                        <div class="d-flex">
-                            <div class="avatar-sm rounded bg-warning me-3">
-                                <span class="avatar-title rounded">
-                                    <i class="fas fa-chart-line text-white"></i>
-                                </span>
-                            </div>
-                            <div class="w-100">
-                                <h5 class="card-title">Resource Metric</h5>
-                                <h3 class="counter-value">-</h3>
-                                <p class="counter-info">
-                                    <i class="fas fa-clock me-1"></i> Coming Soon
-                                </p>
-                            </div>
-                        </div>
+                        <i class="fas fa-chart-line card-icon"></i>
+                        <h5 class="card-title">Resource Metric</h5>
+                        <h3 class="counter-value">-</h3>
+                        <span class="counter-info">
+                            <i class="fas fa-clock me-1"></i> Coming Soon
+                        </span>
                     </div>
                 </div>
             </div>
@@ -303,13 +129,10 @@
                             <tr>
                                 <th class="border-0">Namespace</th>
                                 <th class="border-0">Name</th>
-                                <th class="border-0">Ready</th>
                                 <th class="border-0">Status</th>
                                 <th class="border-0">vCPU</th>
                                 <th class="border-0">GPU</th>
                                 <th class="border-0">Memory</th>
-                                <th class="border-0">Restarts</th>
-                                <th class="border-0">Age</th>
                                 <th class="border-0 text-center">Actions</th>
                             </tr>
                         </thead>
@@ -493,18 +316,6 @@
             <pre id="yamlOutput"></pre>
         </div>
     </div>
-    <div class="tab-pane fade" id="events" role="tabpanel" aria-labelledby="events-tab">
-        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-            <h2>Events</h2>
-        </div>
-        <div class="mb-3">
-            <label for="namespaceSelect" class="form-label">Select Namespace:</label>
-            <select id="namespaceSelect" class="form-select">
-                <option value="">Select a namespace</option>
-            </select>
-        </div>
-        <pre id="eventsOutput" class="mt-3"></pre>
-    </div>
     <div class="tab-pane fade" id="namespaces" role="tabpanel" aria-labelledby="namespaces-tab">
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
             <h1 class="h2">Kubernetes Namespaces</h1>
@@ -592,7 +403,12 @@
                     <!-- Tabs -->
                     <ul class="nav nav-tabs" id="namespaceDetailTabs" role="tablist">
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="describe-tab" data-bs-toggle="tab" data-bs-target="#describe-tab-content" type="button" role="tab">
+                            <button class="nav-link active" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-tab-content" type="button" role="tab">
+                                Events
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="describe-tab" data-bs-toggle="tab" data-bs-target="#describe-tab-content" type="button" role="tab">
                                 Describe
                             </button>
                         </li>
@@ -601,12 +417,25 @@
                                 Edit
                             </button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="delete-tab" data-bs-toggle="tab" data-bs-target="#delete-tab-content" type="button" role="tab">
+                                Delete
+                            </button>
+                        </li>
                     </ul>
                     
                     <!-- Tab Content -->
                     <div class="tab-content py-3" id="namespaceDetailTabContent">
+                        <!-- Events Tab -->
+                        <div class="tab-pane fade show active" id="events-tab-content" role="tabpanel">
+                            <div id="namespaceEventsLoading" class="loading-container">
+                                <div class="spinner"></div>
+                            </div>
+                            <pre id="namespaceEventsOutput" class="bg-light p-3 rounded" style="display: none;"></pre>
+                        </div>
+                        
                         <!-- Describe Tab -->
-                        <div class="tab-pane fade show active" id="describe-tab-content" role="tabpanel">
+                        <div class="tab-pane fade" id="describe-tab-content" role="tabpanel">
                             <div id="namespaceDescribeLoading" class="loading-container">
                                 <div class="spinner"></div>
                             </div>
@@ -625,6 +454,30 @@
                                 </div>
                                 <textarea id="namespaceYamlEditor" class="form-control code-editor" rows="20"></textarea>
                             </div>
+                        </div>
+
+                        <!-- Delete Tab -->
+                        <div class="tab-pane fade" id="delete-tab-content" role="tabpanel">
+                            <div class="alert alert-danger mb-4">
+                                <h4 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i> Warning: Dangerous Action</h4>
+                                <p class="mb-0">Deleting a namespace will permanently remove <strong>ALL resources</strong> within it including:</p>
+                                <ul class="mt-2">
+                                    <li>All running pods and their data</li>
+                                    <li>All services, deployments, and statefulsets</li>
+                                    <li>All persistent volume claims and their data</li>
+                                    <li>All configmaps and secrets</li>
+                                </ul>
+                                <p class="mt-2 mb-0"><strong>This action cannot be undone!</strong> Please ensure you fully understand the consequences before proceeding.</p>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label for="namespaceDeleteConfirm" class="form-label">To confirm deletion, type the namespace name "<span id="deleteNamespaceConfirmName"></span>":</label>
+                                <input type="text" class="form-control" id="namespaceDeleteConfirm" placeholder="Type namespace name to confirm">
+                            </div>
+                            
+                            <button type="button" class="btn btn-danger" id="confirmNamespaceDelete" disabled>
+                                <i class="fas fa-trash-alt me-2"></i> Permanently Delete Namespace
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -690,20 +543,33 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM content loaded, initializing application...');
     
+    // Check if we're on the Charts page based on URL
+    if (window.location.pathname.includes('/charts')) {
+        console.log('Charts page URL detected, setting isChartsPage flag');
+        window.isChartsPage = true;
+        return; // Skip further initialization
+    } else {
+        window.isChartsPage = false;
+    }
+    
     // Since scripts are loaded in head, we can initialize right away
     initializeApp();
     
     // Add page visibility change detection for better navigation handling
     document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible') {
+        if (document.visibilityState === 'visible' && !window.isChartsPage) {
             console.log('Page is now visible, checking resource loading state...');
             // Check if any tab content is visible but not loaded
-            const activeTabId = document.querySelector('.tab-pane.active').id;
-            if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
-                if (!window.loadedResources || !window.loadedResources[activeTabId]) {
-                    console.log(`Active tab ${activeTabId} not loaded, fetching data...`);
-                    fetchResourceData(activeTabId);
+            try {
+                const activeTabId = document.querySelector('.tab-pane.active')?.id;
+                if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
+                    if (!window.loadedResources || !window.loadedResources[activeTabId]) {
+                        console.log(`Active tab ${activeTabId} not loaded, fetching data...`);
+                        fetchResourceData(activeTabId);
+                    }
                 }
+            } catch (e) {
+                console.error('Error checking visible tab state:', e);
             }
         }
     });
@@ -756,6 +622,12 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeApp() {
     console.log('Initializing application...');
     
+    // Check if we're on the Charts page
+    if (window.isChartsPage === true) {
+        console.log('Charts page detected, skipping home page initialization');
+        return;
+    }
+    
     // Initialize components that don't require special dependencies
     fetchResourcesForAllTabs();
     fetchClusterCapacity(); // Add this line to fetch cluster capacity on initialization
@@ -778,6 +650,9 @@ function initializeApp() {
 // Home page specific initialization
 function initializeHomePage() {
     console.log('Initializing home page components...');
+    
+    // Initialize GPU filter card
+    initializeGPUFilter();
     
     // Add controls to each resource tab
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
@@ -837,87 +712,104 @@ function initializeTerminal() {
             let historyIndex = -1;
             
             // Initial prompt
-            if (window.app.socket) {
-                terminal.write('\r\n$ ');
+            terminal.writeln('Welcome to the Kubernetes CLI.');
+            terminal.writeln('Type commands directly in this window and press Enter to execute.');
+            terminal.writeln('');
+            terminal.write('$ ');
+            
+            // Handle user input
+            terminal.onKey(({ key, domEvent }) => {
+                const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.ctrlKey && !domEvent.metaKey;
                 
-                // Listen for terminal output from server
-                window.app.socket.on('output', function(data) {
-                    if (window.app.terminal) {
-                        window.app.terminal.write(data.data);
-                        // Write prompt after server response
-                        window.app.terminal.write('\r\n$ ');
+                // Handle special keys
+                if (domEvent.keyCode === 13) { // Enter key
+                    // Send command to server
+                    if (currentLine.trim()) {
+                        // Add to history
+                        commandHistory.push(currentLine);
+                        historyIndex = commandHistory.length;
+                        
+                        // Execute command via REST API
+                        executeCliCommand(currentLine);
+                        
+                        // Visual feedback
+                        terminal.write('\r\n');
+                        currentLine = '';
+                    } else {
+                        // Empty command, just show new prompt
+                        terminal.write('\r\n$ ');
+                    }
+                } else if (domEvent.keyCode === 8) { // Backspace
+                    if (currentLine.length > 0) {
+                        currentLine = currentLine.slice(0, -1);
+                        terminal.write('\b \b'); // Erase character
+                    }
+                } else if (domEvent.keyCode === 38) { // Up arrow - history
+                    if (historyIndex > 0) {
+                        historyIndex--;
+                        // Clear current line
+                        terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                        // Display command from history
+                        currentLine = commandHistory[historyIndex];
+                        terminal.write(currentLine);
+                    }
+                } else if (domEvent.keyCode === 40) { // Down arrow - history
+                    if (historyIndex < commandHistory.length - 1) {
+                        historyIndex++;
+                        // Clear current line
+                        terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                        // Display next command from history
+                        currentLine = commandHistory[historyIndex];
+                        terminal.write(currentLine);
+                    } else if (historyIndex === commandHistory.length - 1) {
+                        historyIndex = commandHistory.length;
+                        // Clear current line
+                        terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
                         currentLine = '';
                     }
-                });
-                
-                // Handle user input
-                terminal.onKey(({ key, domEvent }) => {
-                    const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.ctrlKey && !domEvent.metaKey;
-                    
-                    // Handle special keys
-                    if (domEvent.keyCode === 13) { // Enter key
-                        // Send command to server
-                        if (currentLine.trim()) {
-                            // Add to history
-                            commandHistory.push(currentLine);
-                            historyIndex = commandHistory.length;
-                            
-                            // Send to server
-                            window.app.socket.emit('run_cli_command', { command: currentLine });
-                            
-                            // Visual feedback but wait for server response for prompt
-                            terminal.write('\r\n');
-                            currentLine = '';
-                        } else {
-                            // Empty command, just show new prompt
-                            terminal.write('\r\n$ ');
-                        }
-                    } else if (domEvent.keyCode === 8) { // Backspace
-                        if (currentLine.length > 0) {
-                            currentLine = currentLine.slice(0, -1);
-                            terminal.write('\b \b'); // Erase character
-                        }
-                    } else if (domEvent.keyCode === 38) { // Up arrow - history
-                        if (historyIndex > 0) {
-                            historyIndex--;
-                            // Clear current line
-                            terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                            // Display command from history
-                            currentLine = commandHistory[historyIndex];
-                            terminal.write(currentLine);
-                        }
-                    } else if (domEvent.keyCode === 40) { // Down arrow - history
-                        if (historyIndex < commandHistory.length - 1) {
-                            historyIndex++;
-                            // Clear current line
-                            terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                            // Display next command from history
-                            currentLine = commandHistory[historyIndex];
-                            terminal.write(currentLine);
-                        } else if (historyIndex === commandHistory.length - 1) {
-                            historyIndex = commandHistory.length;
-                            // Clear current line
-                            terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                            currentLine = '';
-                        }
-                    } else if (printable) {
-                        // Regular printable character
-                        currentLine += key;
-                        terminal.write(key);
-                    }
-                });
-                
-                console.log('Terminal initialized successfully with interactive mode');
-            } else {
-                terminal.write('\r\n\x1b[31mError: Socket connection not available. Terminal functionality is limited.\x1b[0m\r\n');
-                console.warn('Socket not available for terminal output');
-            }
+                } else if (printable) {
+                    // Regular printable character
+                    currentLine += key;
+                    terminal.write(key);
+                }
+            });
+            
+            console.log('Terminal initialized successfully with REST mode');
         } catch (error) {
             console.error('Failed to initialize terminal:', error);
             const terminalElement = document.getElementById('terminal');
             terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
         }
     }
+}
+
+// Function to execute commands via REST API
+function executeCliCommand(command) {
+    if (!command) return;
+    
+    fetch('/api/cli/exec', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            command: command
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.output) {
+            window.app.terminal.writeln(data.output);
+        } else {
+            window.app.terminal.writeln('Command executed with no output.');
+        }
+        window.app.terminal.write('\r\n$ ');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        window.app.terminal.writeln('Error executing command.');
+        window.app.terminal.write('\r\n$ ');
+    });
 }
 
 // Socket event listeners
@@ -983,16 +875,30 @@ function connectSocketListeners() {
     }
 }
 
-// Fetch all resources for each tab
+// Fetch all resources for each tab (line 882)
 function fetchResourcesForAllTabs() {
+    // Skip if already run
+    if (window.resourcesTabsInitialized) {
+        console.log('Resource tabs already initialized, skipping duplicate initialization');
+        return;
+    }
+    
+    console.log('Setting up resource tabs and loading initial data...');
+    
+    // Skip this function on the Charts page
+    if (window.isChartsPage === true) {
+        console.log('Charts page detected, skipping resource tab initialization');
+        return;
+    }
+    
+    // Define supported resource types
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
     
-    // Track loaded resources to avoid unnecessary reloading
+    // Initialize loadedResources tracking object if not already created
     window.loadedResources = window.loadedResources || {};
     
-    // Add controls to each resource tab and set up click handlers 
+    // Setup for each resource type
     resourceTypes.forEach(resourceType => {
-        // Initialize loading indicators
         showLoading(resourceType);
         
         // Add refresh button and search bar to each resource tab
@@ -1030,12 +936,32 @@ function fetchResourcesForAllTabs() {
             }
         }
     }, 5000);
+    
+    // Mark as initialized
+    window.resourcesTabsInitialized = true;
 }
 
 // Add refresh button and search bar to each resource tab
 function addResourceControls(resourceType) {
+    // Store a global flag to prevent multiple calls creating duplicates
+    window.resourceControlsCreated = window.resourceControlsCreated || {};
+    
+    // Skip if already created for this resource type
+    if (window.resourceControlsCreated[resourceType]) {
+        console.log(`Controls already exist for ${resourceType}, skipping creation`);
+        return;
+    }
+    
     const tabPane = document.getElementById(resourceType);
     if (!tabPane) return;
+    
+    // Find existing controls to avoid duplicates
+    const existingControls = tabPane.querySelector('.resource-controls-container');
+    if (existingControls) {
+        console.log(`Controls already exist in DOM for ${resourceType}, skipping creation`);
+        window.resourceControlsCreated[resourceType] = true;
+        return;
+    }
     
     // Find where to insert controls (before the table)
     let tableContainer = tabPane.querySelector('.table-responsive');
@@ -1043,7 +969,7 @@ function addResourceControls(resourceType) {
     
     // Create controls container
     const controlsContainer = document.createElement('div');
-    controlsContainer.className = 'mb-3 d-flex justify-content-between align-items-center';
+    controlsContainer.className = 'mb-3 d-flex justify-content-between align-items-center resource-controls-container';
     
     // Create search input
     const searchContainer = document.createElement('div');
@@ -1072,7 +998,10 @@ function addResourceControls(resourceType) {
     controlsContainer.appendChild(refreshButton);
     
     // Insert controls before the table
-    tabPane.insertBefore(controlsContainer, tableContainer);
+    tableContainer.parentNode.insertBefore(controlsContainer, tableContainer);
+    
+    // Mark as created
+    window.resourceControlsCreated[resourceType] = true;
     
     // Add event listener for search input
     const searchInput = document.getElementById(`${resourceType}Search`);
@@ -1107,7 +1036,9 @@ function filterResources(resourceType, searchTerm) {
     
     // Check if GPU filter is active
     const isGPUFilterActive = document.getElementById('gpuCard')?.classList.contains('filter-active');
-    const gpuPodNames = window.podsWithGPUs?.map(pod => `${pod.namespace}/${pod.name}`) || [];
+    // Use gpuPodNames from the window object, falling back to podsWithGPUs if needed
+    const gpuPodNames = window.gpuPodNames || 
+                         (window.podsWithGPUs?.map(pod => `${pod.namespace}/${pod.name}`)) || [];
     
     rows.forEach(row => {
         if (row.classList.contains('no-results-row') || row.classList.contains('no-gpu-pods-row')) {
@@ -1140,7 +1071,7 @@ function filterResources(resourceType, searchTerm) {
         if (!noResultsRow) {
             noResultsRow = document.createElement('tr');
             noResultsRow.className = 'no-results-row';
-            const colspan = resourceType === 'pods' ? 10 : 
+            const colspan = resourceType === 'pods' ? 7 : 
                            (resourceType === 'inferenceservices' ? 11 : 7);
             noResultsRow.innerHTML = `<td colspan="${colspan}" class="text-center">No ${resourceType} matching "${searchTerm}"${isGPUFilterActive ? ' with GPU resources' : ''}</td>`;
             tableBody.appendChild(noResultsRow);
@@ -1218,14 +1149,14 @@ function fetchResourceData(resourceType) {
         tableBody.innerHTML = ''; // Clear existing rows
         
         if (data.format === 'error') {
-            tableBody.innerHTML = `<tr><td colspan="10">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
             hideLoading(resourceType);
             return;
         }
         
         // For empty results, show a message
         if (!data.data.items || data.data.items.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="10" class="text-center">No ${resourceType} found</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center">No ${resourceType} found</td></tr>`;
             hideLoading(resourceType);
             return;
         }
@@ -1244,13 +1175,10 @@ function fetchResourceData(resourceType) {
                     row.innerHTML = `
                         <td>${item.metadata.namespace}</td>
                         <td>${item.metadata.name}</td>
-                        <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
                         <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
                         <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
                         <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
                         <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
-                        <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
                         <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                     `;
                     break;
@@ -1373,7 +1301,7 @@ function fetchResourceData(resourceType) {
         
         const tableBody = document.querySelector(`#${resourceType}Table tbody`);
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
                 <i class="fas fa-exclamation-triangle"></i> Error fetching ${resourceType}: ${error.message}
             </td></tr>`;
         }
@@ -1431,14 +1359,17 @@ function createActionButton(resourceType, namespace, name) {
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
-                    <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">
+                    <li><a class="dropdown-item explore-pod-link" href="/explore/${namespace}/${name}" data-namespace="${namespace}" data-pod-name="${name}">
+                        <i class="fas fa-search text-primary"></i> View Details
+                    </a></li>
+                    <li><a class="dropdown-item" href="/explore/${namespace}/${name}#describe" data-namespace="${namespace}" data-pod-name="${name}">
                         <i class="fas fa-info-circle text-info"></i> Describe
                     </a></li>
-                    <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">
-                        <i class="fas fa-file-alt text-primary"></i> View Logs
+                    <li><a class="dropdown-item" href="/explore/${namespace}/${name}#logs" data-namespace="${namespace}" data-pod-name="${name}">
+                        <i class="fas fa-file-alt text-success"></i> Logs
                     </a></li>
-                    <li><a class="dropdown-item explore-pod-link" href="/explore/${namespace}/${name}" data-namespace="${namespace}" data-pod-name="${name}">
-                        <i class="fas fa-terminal text-success"></i> Explore Pod
+                    <li><a class="dropdown-item" href="/explore/${namespace}/${name}#access" data-namespace="${namespace}" data-pod-name="${name}">
+                        <i class="fas fa-terminal text-warning"></i> Access
                     </a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
@@ -1469,22 +1400,14 @@ function createActionButton(resourceType, namespace, name) {
 
 // CLI command execution - no longer needed as we type directly in terminal
 function runCliCommand() {
-    // This function is no longer needed, but we'll keep it for backward compatibility
-    // Commands are now entered directly in the terminal
+    // For backward compatibility with any buttons that might still call this
     const command = document.getElementById('cliCommand');
+    
     if (command && command.value) {
-        if (window.app.terminal) {
-            const cmd = command.value;
-            // Simulate typing the command
-            window.app.terminal.write(cmd);
-            window.app.terminal.write('\r\n');
-            
-            // Send the command
-            if (window.app.socket) {
-                window.app.socket.emit('run_cli_command', { command: cmd });
-            }
-            
-            // Clear the input field
+        const cmd = command.value.trim();
+        if (cmd) {
+            // Use the new function instead of socket
+            executeCliCommand(cmd);
             command.value = '';
         }
     }
@@ -1931,208 +1854,6 @@ function clearRefreshLog() {
     }
 }
 
-// Dashboard Metrics Functions
-function updateDashboardMetrics(pods) {
-    // Calculate total pods count
-    const totalPods = pods.length;
-    document.getElementById('totalPodsCount').textContent = totalPods;
-    
-    // Initialize pod status counters
-    let runningPods = 0;
-    let succeededPods = 0;
-    let errorPods = 0;
-    
-    // Calculate total CPU allocation
-    let totalCPU = 0;
-    
-    // Calculate total GPU allocation
-    let totalGPU = 0;
-    
-    // Keep track of pods with GPUs for filtering
-    window.podsWithGPUs = [];
-    
-    // Loop through all pods to calculate resource usage and count statuses
-    pods.forEach(pod => {
-        let podHasGPU = false;
-        
-        // Count pods by status
-        if (pod.status && pod.status.phase) {
-            const phase = pod.status.phase.toLowerCase();
-            
-            // Get container statuses to check for more detailed states
-            const containerStatuses = pod.status.containerStatuses || [];
-            const hasErrorCondition = containerStatuses.some(status => 
-                status.state && (
-                    status.state.waiting && ['CrashLoopBackOff', 'Error', 'ErrImagePull', 'ImagePullBackOff', 'CreateContainerError'].includes(status.state.waiting.reason) ||
-                    status.state.terminated && status.state.terminated.exitCode !== 0
-                )
-            );
-            
-            if (hasErrorCondition || phase === 'failed') {
-                errorPods++;
-            } else if (phase === 'running') {
-                if (containerStatuses.every(cs => cs.ready === true)) {
-                    runningPods++;
-                } else {
-                    // Count as error if running but not all containers are ready
-                    errorPods++;
-                }
-            } else if (phase === 'succeeded') {
-                succeededPods++;
-            } else if (phase === 'pending') {
-                // Pending pods with container errors should be counted as error pods
-                if (containerStatuses.some(status => status.state && status.state.waiting && 
-                    ['CrashLoopBackOff', 'Error', 'ErrImagePull', 'ImagePullBackOff', 'CreateContainerError'].includes(status.state.waiting.reason))) {
-                    errorPods++;
-                } else {
-                    // Pending pods without specific errors are counted as running (they're in progress)
-                    runningPods++;
-                }
-            } else {
-                // Unknown or other states count as error
-                errorPods++;
-            }
-        }
-        
-        // Check if the pod has containers with resource requests
-        if (pod.spec && pod.spec.containers) {
-            pod.spec.containers.forEach(container => {
-                if (container.resources && container.resources.requests) {
-                    // Add CPU resources if available
-                    if (container.resources.requests.cpu) {
-                        // Convert CPU request to a number (could be in m format like "500m")
-                        const cpuRequest = container.resources.requests.cpu;
-                        if (cpuRequest.endsWith('m')) {
-                            // Convert millicpu to CPU
-                            totalCPU += parseInt(cpuRequest.slice(0, -1)) / 1000;
-                        } else {
-                            // Direct CPU value
-                            totalCPU += parseFloat(cpuRequest);
-                        }
-                    }
-                    
-                    // Add GPU resources if available
-                    // NVIDIA GPU resources are typically specified as nvidia.com/gpu
-                    if (container.resources.requests['nvidia.com/gpu']) {
-                        const gpuCount = parseInt(container.resources.requests['nvidia.com/gpu']);
-                        totalGPU += gpuCount;
-                        if (gpuCount > 0) podHasGPU = true;
-                    }
-                    
-                    // Alternative GPU resource naming
-                    if (container.resources.requests['gpu']) {
-                        const gpuCount = parseInt(container.resources.requests['gpu']);
-                        totalGPU += gpuCount;
-                        if (gpuCount > 0) podHasGPU = true;
-                    }
-                }
-            });
-        }
-        
-        // Add pod to the GPU pods list if it has GPUs
-        if (podHasGPU) {
-            window.podsWithGPUs.push({
-                namespace: pod.metadata.namespace,
-                name: pod.metadata.name
-            });
-        }
-    });
-    
-    // Update pod status counts in the UI
-    document.getElementById('runningPodsCount').textContent = runningPods;
-    document.getElementById('succeededPodsCount').textContent = succeededPods;
-    document.getElementById('errorPodsCount').textContent = errorPods;
-    
-    // Update total CPU and GPU counts
-    document.getElementById('totalCPUCount').textContent = totalCPU.toFixed(1);
-    
-    // Calculate percentage based on dynamic CPU capacity
-    const totalCPUCapacity = window.clusterCapacity ? window.clusterCapacity.cpu : 256;
-    const cpuPercentage = ((totalCPU / totalCPUCapacity) * 100).toFixed(1);
-    document.getElementById('totalCPUPercentage').textContent = cpuPercentage;
-    document.getElementById('totalCPUCapacity').textContent = totalCPUCapacity;
-    
-    document.getElementById('totalGPUCount').textContent = totalGPU;
-
-    // Set up the GPU filter
-    initGPUFilter();
-    
-    console.log(`Dashboard updated with ${totalPods} pods (${runningPods} running, ${succeededPods} succeeded, ${errorPods} error), ${totalCPU.toFixed(1)} CPUs (${cpuPercentage}% of ${totalCPUCapacity}), ${totalGPU} GPUs`);
-}
-
-// GPU Filter Functionality
-function initGPUFilter() {
-    const gpuCard = document.getElementById('gpuCard');
-    const clearGPUFilterBtn = document.getElementById('clearGPUFilter');
-    
-    if (!gpuCard) return;
-    
-    // Remove existing event listeners (to prevent duplication if function is called multiple times)
-    const newGpuCard = gpuCard.cloneNode(true);
-    gpuCard.parentNode.replaceChild(newGpuCard, gpuCard);
-    
-    // Add event listener to GPU card
-    newGpuCard.addEventListener('click', function(e) {
-        // Don't trigger if the clear button was clicked
-        if (e.target.id === 'clearGPUFilter' || e.target.closest('#clearGPUFilter')) {
-            e.stopPropagation();
-            return;
-        }
-        toggleGPUFilter();
-    });
-    
-    // Add event listener to clear button
-    const newClearBtn = document.getElementById('clearGPUFilter');
-    if (newClearBtn) {
-        newClearBtn.addEventListener('click', function(e) {
-            e.stopPropagation(); // Prevent event from bubbling to the card
-            if (document.getElementById('gpuCard').classList.contains('filter-active')) {
-                toggleGPUFilter(); // Turn off the filter
-            }
-        });
-    }
-}
-
-// Toggle GPU filter on/off
-function toggleGPUFilter() {
-    const gpuCard = document.getElementById('gpuCard');
-    const gpuFilterStatus = document.getElementById('gpuFilterStatus');
-    const clearGPUFilterBtn = document.getElementById('clearGPUFilter');
-    const isFilterActive = gpuCard.classList.contains('filter-active');
-    
-    if (isFilterActive) {
-        // Disable filter
-        gpuCard.classList.remove('filter-active');
-        gpuFilterStatus.textContent = 'Click to filter';
-        clearGPUFilterBtn.style.display = 'none';
-        
-        // Show all pods
-        const podRows = document.querySelectorAll('#podsTable tbody tr');
-        podRows.forEach(row => {
-            row.style.display = '';
-        });
-        
-        // Apply any active search filter
-        const searchInput = document.getElementById('resourceSearchInput');
-        if (searchInput && searchInput.value.trim()) {
-            filterResources(searchInput.value.trim());
-        }
-    } else {
-        // Enable filter
-        gpuCard.classList.add('filter-active');
-        gpuFilterStatus.textContent = 'Filtering by GPU';
-        clearGPUFilterBtn.style.display = 'inline-block';
-        
-        if (!window.podsWithGPUs || window.podsWithGPUs.length === 0) {
-            // No pods with GPUs found
-            showNoGPUPodsMessage();
-        } else {
-            // Filter to show only pods with GPUs
-            filterPodsWithGPUs();
-        }
-    }
-}
-
 // Filter to show only pods with GPUs
 function filterPodsWithGPUs() {
     if (!window.podsWithGPUs) return;
@@ -2161,21 +1882,16 @@ function filterPodsWithGPUs() {
 // Show a message when no GPU pods are found
 function showNoGPUPodsMessage() {
     const tableBody = document.querySelector('#podsTable tbody');
+    if (!tableBody) return;
     
-    // First, make all rows invisible
-    const rows = tableBody.querySelectorAll('tr');
-    rows.forEach(row => {
-        row.style.display = 'none';
-    });
-    
-    // Check if the no-gpu-pods message already exists
+    // Check if message already exists
     let noGPURow = tableBody.querySelector('.no-gpu-pods-row');
     
     if (!noGPURow) {
         noGPURow = document.createElement('tr');
         noGPURow.className = 'no-gpu-pods-row';
         noGPURow.innerHTML = `
-            <td colspan="10" class="text-center">
+            <td colspan="7" class="text-center">
                 <div class="alert alert-info m-3">
                     <i class="fas fa-info-circle me-2"></i> No pods with GPU resources found.
                     <button class="btn btn-sm btn-outline-primary ms-3" onclick="clearGPUFilter()">
@@ -2433,14 +2149,37 @@ $(document).ready(function() {
         const action = $(this).data('action');
         const namespace = $(this).data('namespace');
         
-        if (action === 'edit') {
-            openNamespaceEdit(namespace);
+        if (action === 'events') {
+            openNamespaceModal(namespace, 'events');
+        } else if (action === 'describe') {
+            openNamespaceModal(namespace, 'describe');
+        } else if (action === 'edit') {
+            openNamespaceModal(namespace, 'edit');
+        } else if (action === 'delete') {
+            openNamespaceModal(namespace, 'delete');
         }
     });
 
     // Save namespace changes
     $('#saveNamespaceChanges').on('click', function() {
         saveNamespaceChanges();
+    });
+
+    // Handle namespace delete confirmation input
+    $('#namespaceDeleteConfirm').on('input', function() {
+        const inputValue = $(this).val();
+        const namespaceName = $('#currentNamespaceName').text();
+        
+        if (inputValue === namespaceName) {
+            $('#confirmNamespaceDelete').prop('disabled', false);
+        } else {
+            $('#confirmNamespaceDelete').prop('disabled', true);
+        }
+    });
+    
+    // Handle namespace delete button
+    $('#confirmNamespaceDelete').on('click', function() {
+        deleteNamespace();
     });
 
     // Switch tabs in namespace modal
@@ -2546,8 +2285,18 @@ function renderNamespaces(namespaces) {
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item namespace-action" href="#" data-action="events" data-namespace="${ns.name}">
+                        <i class="fas fa-clock text-info"></i> Events
+                    </a></li>
+                    <li><a class="dropdown-item namespace-action" href="#" data-action="describe" data-namespace="${ns.name}">
+                        <i class="fas fa-info-circle text-primary"></i> Describe
+                    </a></li>
                     <li><a class="dropdown-item namespace-action" href="#" data-action="edit" data-namespace="${ns.name}">
-                        <i class="fas fa-edit text-primary"></i> Edit
+                        <i class="fas fa-edit text-warning"></i> Edit
+                    </a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item namespace-action" href="#" data-action="delete" data-namespace="${ns.name}">
+                        <i class="fas fa-trash-alt text-danger"></i> Delete
                     </a></li>
                 </ul>
             </div>
@@ -2637,29 +2386,60 @@ function getNamespaceStatus(namespace) {
     return { text: 'Active', color: 'success' };
 }
 
-// Open namespace edit modal
-function openNamespaceEdit(namespace) {
+// Open namespace modal with specified tab
+function openNamespaceModal(namespace, initialTab = 'events') {
     // Set current namespace name
     $('#currentNamespaceName').text(namespace);
+    $('#deleteNamespaceConfirmName').text(namespace);
     
-    // Reset tabs to Describe tab
-    $('#describe-tab').tab('show');
+    // Reset delete confirmation input
+    $('#namespaceDeleteConfirm').val('');
+    $('#confirmNamespaceDelete').prop('disabled', true);
     
-    // Show loading indicators
+    // Show loading indicators and hide content
+    $('#namespaceEventsLoading').show();
+    $('#namespaceEventsOutput').hide();
     $('#namespaceDescribeLoading').show();
     $('#namespaceDescribeOutput').hide();
     $('#namespaceEditLoading').show();
     $('#namespaceEditContent').hide();
     $('#saveNamespaceChanges').hide();
     
+    // Activate the correct tab
+    $(`#${initialTab}-tab`).tab('show');
+    
     // Show the modal
     $('#namespaceEditModal').modal('show');
     
-    // Load describe data
+    // Load the data for each tab
+    loadNamespaceEvents(namespace);
     loadNamespaceDescribe(namespace);
-    
-    // Load edit data
     loadNamespaceEdit(namespace);
+}
+
+// Load namespace events data
+function loadNamespaceEvents(namespace) {
+    $.ajax({
+        url: '/api/namespace/events',
+        type: 'POST',
+        data: { namespace: namespace },
+        success: function(response) {
+            if (response.hasOwnProperty('output')) {
+                $('#namespaceEventsOutput').text(response.output);
+                $('#namespaceEventsOutput').show();
+            } else {
+                $('#namespaceEventsOutput').text('Error: ' + response.error);
+                $('#namespaceEventsOutput').show();
+            }
+        },
+        error: function() {
+            $('#namespaceEventsOutput').text('Failed to fetch namespace events');
+            $('#namespaceEventsOutput').show();
+        },
+        complete: function() {
+            $('#namespaceEventsLoading').hide();
+        }
+    });
 }
 
 // Load namespace describe data
@@ -2683,6 +2463,45 @@ function loadNamespaceDescribe(namespace) {
         },
         complete: function() {
             $('#namespaceDescribeLoading').hide();
+        }
+    });
+}
+
+// Delete namespace
+function deleteNamespace() {
+    const namespace = $('#currentNamespaceName').text();
+    
+    // Show confirmation dialog
+    if (!confirm(`Are you ABSOLUTELY SURE you want to delete the namespace "${namespace}" and ALL resources within it? This action CANNOT be undone!`)) {
+        return;
+    }
+    
+    // Disable the delete button and show a loading message
+    $('#confirmNamespaceDelete').prop('disabled', true);
+    $('#confirmNamespaceDelete').html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deleting...');
+    
+    $.ajax({
+        url: '/api/namespace/delete',
+        type: 'POST',
+        data: { namespace: namespace },
+        success: function(response) {
+            if (response.hasOwnProperty('output')) {
+                alert(`Namespace "${namespace}" has been deleted.`);
+                // Close the modal and refresh the namespaces list
+                $('#namespaceEditModal').modal('hide');
+                loadNamespaces();
+            } else {
+                alert('Error: ' + response.error);
+                // Re-enable the delete button
+                $('#confirmNamespaceDelete').prop('disabled', false);
+                $('#confirmNamespaceDelete').html('<i class="fas fa-trash-alt me-2"></i> Permanently Delete Namespace');
+            }
+        },
+        error: function() {
+            alert('Failed to delete namespace. Please try again.');
+            // Re-enable the delete button
+            $('#confirmNamespaceDelete').prop('disabled', false);
+            $('#confirmNamespaceDelete').html('<i class="fas fa-trash-alt me-2"></i> Permanently Delete Namespace');
         }
     });
 }
@@ -2751,5 +2570,235 @@ function saveNamespaceChanges() {
         }
     });
 }
+
+// Dashboard Metrics Functions
+function updateDashboardMetrics(pods) {
+    console.log('Updating dashboard metrics with data from', pods.length, 'pods');
+    
+    // Count all pods
+    const totalPods = pods.length;
+    
+    // Count pods by status (correctly accessing the status phase)
+    const runningPods = pods.filter(pod => pod.status && pod.status.phase && pod.status.phase.toLowerCase() === 'running').length;
+    const succeededPods = pods.filter(pod => pod.status && pod.status.phase && pod.status.phase.toLowerCase() === 'succeeded').length;
+    const errorPods = pods.filter(pod => {
+        if (!pod.status || !pod.status.phase) return false;
+        const phase = pod.status.phase.toLowerCase();
+        return phase === 'failed' || phase === 'error' || phase === 'unknown' || 
+            // Check for container statuses with specific error conditions
+            (pod.status.containerStatuses && pod.status.containerStatuses.some(status => 
+                status.state && (
+                    (status.state.waiting && ['crashloopbackoff', 'error', 'errimagepull', 'imagepullbackoff', 'createcontainererror'].includes(status.state.waiting.reason?.toLowerCase())) ||
+                    (status.state.terminated && status.state.terminated.exitCode !== 0)
+                )
+            ));
+    }).length;
+    
+    // Update the UI
+    document.getElementById('totalPodsCount').textContent = totalPods;
+    document.getElementById('runningPodsCount').textContent = runningPods;
+    document.getElementById('succeededPodsCount').textContent = succeededPods;
+    document.getElementById('errorPodsCount').textContent = errorPods;
+    
+    // Calculate and display CPU usage
+    const totalCPURequest = pods.reduce((total, pod) => {
+        // Get CPU from each container in the pod
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests && container.resources.requests.cpu) {
+                    const cpuRequest = container.resources.requests.cpu;
+                    if (cpuRequest.endsWith('m')) {
+                        // Convert millicpu to CPU
+                        total += parseInt(cpuRequest.slice(0, -1)) / 1000;
+                    } else {
+                        // Direct CPU value
+                        total += parseFloat(cpuRequest);
+                    }
+                }
+            });
+        }
+        return total;
+    }, 0);
+    
+    // For debugging
+    console.log(`Total CPU request: ${totalCPURequest.toFixed(1)} cores`);
+    console.log(`Cluster capacity: ${window.clusterCapacity ? window.clusterCapacity.cpu : 'unknown'} cores`);
+    
+    const cpuPercentage = window.clusterCapacity && window.clusterCapacity.cpu ? 
+        Math.round((totalCPURequest / window.clusterCapacity.cpu) * 100) : 0;
+    
+    document.getElementById('totalCPUCount').textContent = totalCPURequest.toFixed(1);
+    document.getElementById('totalCPUPercentage').textContent = cpuPercentage;
+    
+    // Update CPU progress bar
+    const cpuProgressBar = document.getElementById('cpuProgressBar');
+    if (cpuProgressBar) {
+        cpuProgressBar.style.width = `${cpuPercentage}%`;
+        
+        // Change color based on usage
+        if (cpuPercentage > 90) {
+            cpuProgressBar.className = 'progress-bar bg-danger';
+        } else if (cpuPercentage > 75) {
+            cpuProgressBar.className = 'progress-bar bg-warning';
+        } else {
+            cpuProgressBar.className = 'progress-bar';
+        }
+    }
+    
+    // Count GPU resources
+    const gpuPods = pods.filter(pod => {
+        let hasGPU = false;
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests) {
+                    if (container.resources.requests['nvidia.com/gpu'] || container.resources.requests.gpu) {
+                        hasGPU = true;
+                    }
+                }
+            });
+        }
+        return hasGPU;
+    });
+    
+    const totalGPURequest = gpuPods.reduce((total, pod) => {
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests) {
+                    if (container.resources.requests['nvidia.com/gpu']) {
+                        total += parseInt(container.resources.requests['nvidia.com/gpu']);
+                    } else if (container.resources.requests.gpu) {
+                        total += parseInt(container.resources.requests.gpu);
+                    }
+                }
+            });
+        }
+        return total;
+    }, 0);
+    
+    document.getElementById('totalGPUCount').textContent = totalGPURequest.toFixed(0);
+    
+    // Store pods with GPU for filtering
+    window.gpuPodNames = gpuPods.map(pod => `${pod.metadata.namespace}/${pod.metadata.name}`);
+    // Also store the full pod objects for use in the filter function
+    window.podsWithGPUs = gpuPods;
+    
+    // Reset GPU filter text based on state
+    if (window.gpuFilterActive) {
+        document.getElementById('gpuFilterStatus').innerHTML = `<span class="badge bg-success"><i class="fas fa-filter"></i> Filtered</span>`;
+        document.getElementById('clearGPUFilter').style.display = 'inline-block';
+    } else {
+        document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+        document.getElementById('clearGPUFilter').style.display = 'none';
+    }
+}
+
+// GPU Filter Functionality
+function initializeGPUFilter() {
+    console.log('Initializing GPU filter');
+    window.gpuFilterActive = false;
+    
+    // Add event listener to GPU card for filtering
+    const gpuCard = document.getElementById('gpuCard');
+    const clearFilter = document.getElementById('clearGPUFilter');
+    
+    if (gpuCard) {
+        gpuCard.addEventListener('click', function(e) {
+            // Don't trigger if clicking on the clear button
+            if (e.target.closest('#clearGPUFilter')) {
+                return;
+            }
+            
+            window.gpuFilterActive = !window.gpuFilterActive;
+            
+            // Apply the filter
+            applyGPUFilter();
+            
+            // Update UI to show filter state
+            gpuCard.classList.toggle('filter-active', window.gpuFilterActive);
+            
+            if (window.gpuFilterActive) {
+                document.getElementById('gpuFilterStatus').innerHTML = `<span class="badge bg-success"><i class="fas fa-filter"></i> Filtered</span>`;
+                clearFilter.style.display = 'inline-block';
+            } else {
+                document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+                clearFilter.style.display = 'none';
+            }
+        });
+    }
+    
+    if (clearFilter) {
+        clearFilter.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent triggering the card click
+            
+            window.gpuFilterActive = false;
+            
+            // Clear the filter
+            applyGPUFilter();
+            
+            // Update UI
+            gpuCard.classList.remove('filter-active');
+            document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+            clearFilter.style.display = 'none';
+        });
+    }
+}
+
+function applyGPUFilter() {
+    const activeTab = document.querySelector('#resourceTabs .nav-link.active');
+    if (activeTab && activeTab.id === 'pods-tab') {
+        filterResourceTable('pods');
+    }
+}
+
+// Clear GPU filter directly (for use in the "Clear Filter" button)
+function clearGPUFilter() {
+    const gpuCard = document.getElementById('gpuCard');
+    if (gpuCard) {
+        window.gpuFilterActive = false;
+        gpuCard.classList.remove('filter-active');
+        
+        // Update UI
+        document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+        document.getElementById('clearGPUFilter').style.display = 'none';
+        
+        // Clear filter in the table
+        applyGPUFilter();
+    }
+}
+
+// Initialize namespace functionality separately to ensure it works regardless of jQuery load order
+function initializeNamespaceFunctionality() {
+    console.log('Initializing namespace functionality');
+    // Initialize namespaces tab
+    $(document).ready(function() {
+        // Initialize namespaces tab
+        $('a[data-bs-toggle="tab"][data-bs-target="#namespaces"]').on('shown.bs.tab', function (e) {
+            loadNamespaces();
+        });
+
+        // Refresh namespaces button
+        $('#refreshNamespaces').on('click', function() {
+            loadNamespaces();
+        });
+
+        // Filter namespaces
+        $('#namespaceSearchInput').on('keyup', function() {
+            filterNamespaces();
+        });
+
+        // Sort namespaces
+        $('.sort-option').on('click', function(e) {
+            e.preventDefault();
+            const sortOption = $(this).data('sort');
+            sortNamespaces(sortOption);
+        });
+    });
+}
+
+// Add call to initialize namespace functionality in the main initialization
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait a short moment to ensure jQuery is fully loaded
+    setTimeout(initializeNamespaceFunctionality, 500);
+});
 </script>
 {% endblock %}
