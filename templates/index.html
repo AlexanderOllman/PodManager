@@ -19,26 +19,34 @@
         <div class="row mb-4">
             <!-- Pods Card -->
             <div class="col-md-3">
-                <div class="dashboard-metric-card pods-card">
+                <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
-                        <i class="fas fa-cubes card-icon"></i>
-                        <h5 class="card-title">Total Pods</h5>
-                        <h3 class="counter-value" id="totalPodsCount">-</h3>
-                        <div class="metric-details">
-                            <div class="metric-item">
-                                <i class="fas fa-check-circle running"></i>
-                                <div class="value" id="runningPodsCount">-</div>
-                                <div class="label">Running</div>
+                        <div class="d-flex">
+                            <div class="avatar-sm rounded bg-info me-3">
+                                <span class="avatar-title rounded">
+                                    <i class="fas fa-cubes text-white"></i>
+                                </span>
                             </div>
-                            <div class="metric-item">
-                                <i class="fas fa-flag-checkered succeeded"></i>
-                                <div class="value" id="succeededPodsCount">-</div>
-                                <div class="label">Succeeded</div>
-                            </div>
-                            <div class="metric-item">
-                                <i class="fas fa-exclamation-circle error"></i>
-                                <div class="value" id="errorPodsCount">-</div>
-                                <div class="label">Error</div>
+                            <div class="w-100">
+                                <h5 class="card-title">Total Pods</h5>
+                                <h3 class="counter-value" id="totalPodsCount">-</h3>
+                                <div class="mt-3 d-flex justify-content-between">
+                                    <div class="pod-status text-center px-1" style="flex: 1;">
+                                        <div class="text-success"><i class="fas fa-check-circle"></i></div>
+                                        <div class="fw-bold" id="runningPodsCount">-</div>
+                                        <div class="small text-muted">Running</div>
+                                    </div>
+                                    <div class="pod-status text-center px-1" style="flex: 1;">
+                                        <div class="text-primary"><i class="fas fa-flag-checkered"></i></div>
+                                        <div class="fw-bold" id="succeededPodsCount">-</div>
+                                        <div class="small text-muted">Succeeded</div>
+                                    </div>
+                                    <div class="pod-status text-center px-1" style="flex: 1;">
+                                        <div class="text-danger"><i class="fas fa-exclamation-circle"></i></div>
+                                        <div class="fw-bold" id="errorPodsCount">-</div>
+                                        <div class="small text-muted">Error</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -47,14 +55,19 @@
 
             <!-- vCPU Card -->
             <div class="col-md-3">
-                <div class="dashboard-metric-card cpu-card">
+                <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
-                        <i class="fas fa-microchip card-icon"></i>
-                        <h5 class="card-title">vCPU Usage</h5>
-                        <h3 class="counter-value" id="totalCPUCount">-</h3>
-                        <span class="counter-info"><span id="totalCPUPercentage">-</span>% of <span id="totalCPUCapacity">256</span> Cores</span>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" id="cpuProgressBar" role="progressbar" style="width: 0%"></div>
+                        <div class="d-flex">
+                            <div class="avatar-sm rounded bg-primary me-3">
+                                <span class="avatar-title rounded">
+                                    <i class="fas fa-microchip text-white"></i>
+                                </span>
+                            </div>
+                            <div class="w-100">
+                                <h5 class="card-title">vCPU Usage</h5>
+                                <h3 class="counter-value" id="totalCPUCount">-</h3>
+                                <p class="counter-info"><span id="totalCPUPercentage">-</span>% of <span id="totalCPUCapacity">256</span> Cores</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -62,29 +75,45 @@
 
             <!-- GPU Card -->
             <div class="col-md-3">
-                <div class="dashboard-metric-card gpu-card" id="gpuCard" role="button">
+                <div class="card border-0 shadow-sm h-100 gpu-filter-card" id="gpuCard" role="button">
                     <div class="card-body">
-                        <i class="fas fa-tachometer-alt card-icon"></i>
-                        <h5 class="card-title">GPU Resources</h5>
-                        <h3 class="counter-value" id="totalGPUCount">-</h3>
-                        <span class="counter-info d-flex align-items-center">
-                            <span id="gpuFilterStatus">Click to filter</span>
-                            <button id="clearGPUFilter" class="btn btn-sm btn-outline-secondary ms-2" style="display: none;">Clear</button>
-                        </span>
+                        <div class="d-flex">
+                            <div class="avatar-sm rounded bg-success me-3">
+                                <span class="avatar-title rounded">
+                                    <i class="fas fa-tachometer-alt text-white"></i>
+                                </span>
+                            </div>
+                            <div class="w-100">
+                                <h5 class="card-title">GPU Resources</h5>
+                                <h3 class="counter-value" id="totalGPUCount">-</h3>
+                                <p class="d-flex align-items-center counter-info">
+                                    <span id="gpuFilterStatus">Click to filter</span>
+                                    <button id="clearGPUFilter" class="btn btn-sm btn-outline-secondary ms-2" style="display: none;">Clear</button>
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- Future Metric Card -->
             <div class="col-md-3">
-                <div class="dashboard-metric-card metric-card">
+                <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
-                        <i class="fas fa-chart-line card-icon"></i>
-                        <h5 class="card-title">Resource Metric</h5>
-                        <h3 class="counter-value">-</h3>
-                        <span class="counter-info">
-                            <i class="fas fa-clock me-1"></i> Coming Soon
-                        </span>
+                        <div class="d-flex">
+                            <div class="avatar-sm rounded bg-warning me-3">
+                                <span class="avatar-title rounded">
+                                    <i class="fas fa-chart-line text-white"></i>
+                                </span>
+                            </div>
+                            <div class="w-100">
+                                <h5 class="card-title">Resource Metric</h5>
+                                <h3 class="counter-value">-</h3>
+                                <p class="counter-info">
+                                    <i class="fas fa-clock me-1"></i> Coming Soon
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -129,10 +158,13 @@
                             <tr>
                                 <th class="border-0">Namespace</th>
                                 <th class="border-0">Name</th>
+                                <th class="border-0">Ready</th>
                                 <th class="border-0">Status</th>
                                 <th class="border-0">vCPU</th>
                                 <th class="border-0">GPU</th>
                                 <th class="border-0">Memory</th>
+                                <th class="border-0">Restarts</th>
+                                <th class="border-0">Age</th>
                                 <th class="border-0 text-center">Actions</th>
                             </tr>
                         </thead>
@@ -651,9 +683,6 @@ function initializeApp() {
 function initializeHomePage() {
     console.log('Initializing home page components...');
     
-    // Initialize GPU filter card
-    initializeGPUFilter();
-    
     // Add controls to each resource tab
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
     resourceTypes.forEach(resourceType => {
@@ -875,30 +904,24 @@ function connectSocketListeners() {
     }
 }
 
-// Fetch all resources for each tab (line 882)
+// Fetch all resources for each tab
 function fetchResourcesForAllTabs() {
-    // Skip if already run
-    if (window.resourcesTabsInitialized) {
-        console.log('Resource tabs already initialized, skipping duplicate initialization');
-        return;
-    }
-    
-    console.log('Setting up resource tabs and loading initial data...');
+    console.log("Initializing resource tabs...");
     
     // Skip this function on the Charts page
     if (window.isChartsPage === true) {
-        console.log('Charts page detected, skipping resource tab initialization');
+        console.log("Charts page detected, skipping resource tab initialization");
         return;
     }
     
-    // Define supported resource types
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
     
-    // Initialize loadedResources tracking object if not already created
+    // Track loaded resources to avoid unnecessary reloading
     window.loadedResources = window.loadedResources || {};
     
-    // Setup for each resource type
+    // Add controls to each resource tab and set up click handlers 
     resourceTypes.forEach(resourceType => {
+        // Initialize loading indicators
         showLoading(resourceType);
         
         // Add refresh button and search bar to each resource tab
@@ -936,32 +959,12 @@ function fetchResourcesForAllTabs() {
             }
         }
     }, 5000);
-    
-    // Mark as initialized
-    window.resourcesTabsInitialized = true;
 }
 
 // Add refresh button and search bar to each resource tab
 function addResourceControls(resourceType) {
-    // Store a global flag to prevent multiple calls creating duplicates
-    window.resourceControlsCreated = window.resourceControlsCreated || {};
-    
-    // Skip if already created for this resource type
-    if (window.resourceControlsCreated[resourceType]) {
-        console.log(`Controls already exist for ${resourceType}, skipping creation`);
-        return;
-    }
-    
     const tabPane = document.getElementById(resourceType);
     if (!tabPane) return;
-    
-    // Find existing controls to avoid duplicates
-    const existingControls = tabPane.querySelector('.resource-controls-container');
-    if (existingControls) {
-        console.log(`Controls already exist in DOM for ${resourceType}, skipping creation`);
-        window.resourceControlsCreated[resourceType] = true;
-        return;
-    }
     
     // Find where to insert controls (before the table)
     let tableContainer = tabPane.querySelector('.table-responsive');
@@ -969,7 +972,7 @@ function addResourceControls(resourceType) {
     
     // Create controls container
     const controlsContainer = document.createElement('div');
-    controlsContainer.className = 'mb-3 d-flex justify-content-between align-items-center resource-controls-container';
+    controlsContainer.className = 'mb-3 d-flex justify-content-between align-items-center';
     
     // Create search input
     const searchContainer = document.createElement('div');
@@ -998,10 +1001,7 @@ function addResourceControls(resourceType) {
     controlsContainer.appendChild(refreshButton);
     
     // Insert controls before the table
-    tableContainer.parentNode.insertBefore(controlsContainer, tableContainer);
-    
-    // Mark as created
-    window.resourceControlsCreated[resourceType] = true;
+    tabPane.insertBefore(controlsContainer, tableContainer);
     
     // Add event listener for search input
     const searchInput = document.getElementById(`${resourceType}Search`);
@@ -1036,9 +1036,7 @@ function filterResources(resourceType, searchTerm) {
     
     // Check if GPU filter is active
     const isGPUFilterActive = document.getElementById('gpuCard')?.classList.contains('filter-active');
-    // Use gpuPodNames from the window object, falling back to podsWithGPUs if needed
-    const gpuPodNames = window.gpuPodNames || 
-                         (window.podsWithGPUs?.map(pod => `${pod.namespace}/${pod.name}`)) || [];
+    const gpuPodNames = window.podsWithGPUs?.map(pod => `${pod.namespace}/${pod.name}`) || [];
     
     rows.forEach(row => {
         if (row.classList.contains('no-results-row') || row.classList.contains('no-gpu-pods-row')) {
@@ -1071,7 +1069,7 @@ function filterResources(resourceType, searchTerm) {
         if (!noResultsRow) {
             noResultsRow = document.createElement('tr');
             noResultsRow.className = 'no-results-row';
-            const colspan = resourceType === 'pods' ? 7 : 
+            const colspan = resourceType === 'pods' ? 10 : 
                            (resourceType === 'inferenceservices' ? 11 : 7);
             noResultsRow.innerHTML = `<td colspan="${colspan}" class="text-center">No ${resourceType} matching "${searchTerm}"${isGPUFilterActive ? ' with GPU resources' : ''}</td>`;
             tableBody.appendChild(noResultsRow);
@@ -1149,14 +1147,14 @@ function fetchResourceData(resourceType) {
         tableBody.innerHTML = ''; // Clear existing rows
         
         if (data.format === 'error') {
-            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="10">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
             hideLoading(resourceType);
             return;
         }
         
         // For empty results, show a message
         if (!data.data.items || data.data.items.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="7" class="text-center">No ${resourceType} found</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="10" class="text-center">No ${resourceType} found</td></tr>`;
             hideLoading(resourceType);
             return;
         }
@@ -1175,10 +1173,13 @@ function fetchResourceData(resourceType) {
                     row.innerHTML = `
                         <td>${item.metadata.namespace}</td>
                         <td>${item.metadata.name}</td>
+                        <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
                         <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
                         <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
                         <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
                         <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
+                        <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
                         <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                     `;
                     break;
@@ -1301,7 +1302,7 @@ function fetchResourceData(resourceType) {
         
         const tableBody = document.querySelector(`#${resourceType}Table tbody`);
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
+            tableBody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">
                 <i class="fas fa-exclamation-triangle"></i> Error fetching ${resourceType}: ${error.message}
             </td></tr>`;
         }
@@ -1359,17 +1360,14 @@ function createActionButton(resourceType, namespace, name) {
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
-                    <li><a class="dropdown-item explore-pod-link" href="/explore/${namespace}/${name}" data-namespace="${namespace}" data-pod-name="${name}">
-                        <i class="fas fa-search text-primary"></i> View Details
-                    </a></li>
-                    <li><a class="dropdown-item" href="/explore/${namespace}/${name}#describe" data-namespace="${namespace}" data-pod-name="${name}">
+                    <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">
                         <i class="fas fa-info-circle text-info"></i> Describe
                     </a></li>
-                    <li><a class="dropdown-item" href="/explore/${namespace}/${name}#logs" data-namespace="${namespace}" data-pod-name="${name}">
-                        <i class="fas fa-file-alt text-success"></i> Logs
+                    <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">
+                        <i class="fas fa-file-alt text-primary"></i> View Logs
                     </a></li>
-                    <li><a class="dropdown-item" href="/explore/${namespace}/${name}#access" data-namespace="${namespace}" data-pod-name="${name}">
-                        <i class="fas fa-terminal text-warning"></i> Access
+                    <li><a class="dropdown-item explore-pod-link" href="/explore/${namespace}/${name}" data-namespace="${namespace}" data-pod-name="${name}">
+                        <i class="fas fa-terminal text-success"></i> Explore Pod
                     </a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
@@ -1854,6 +1852,208 @@ function clearRefreshLog() {
     }
 }
 
+// Dashboard Metrics Functions
+function updateDashboardMetrics(pods) {
+    // Calculate total pods count
+    const totalPods = pods.length;
+    document.getElementById('totalPodsCount').textContent = totalPods;
+    
+    // Initialize pod status counters
+    let runningPods = 0;
+    let succeededPods = 0;
+    let errorPods = 0;
+    
+    // Calculate total CPU allocation
+    let totalCPU = 0;
+    
+    // Calculate total GPU allocation
+    let totalGPU = 0;
+    
+    // Keep track of pods with GPUs for filtering
+    window.podsWithGPUs = [];
+    
+    // Loop through all pods to calculate resource usage and count statuses
+    pods.forEach(pod => {
+        let podHasGPU = false;
+        
+        // Count pods by status
+        if (pod.status && pod.status.phase) {
+            const phase = pod.status.phase.toLowerCase();
+            
+            // Get container statuses to check for more detailed states
+            const containerStatuses = pod.status.containerStatuses || [];
+            const hasErrorCondition = containerStatuses.some(status => 
+                status.state && (
+                    status.state.waiting && ['CrashLoopBackOff', 'Error', 'ErrImagePull', 'ImagePullBackOff', 'CreateContainerError'].includes(status.state.waiting.reason) ||
+                    status.state.terminated && status.state.terminated.exitCode !== 0
+                )
+            );
+            
+            if (hasErrorCondition || phase === 'failed') {
+                errorPods++;
+            } else if (phase === 'running') {
+                if (containerStatuses.every(cs => cs.ready === true)) {
+                    runningPods++;
+                } else {
+                    // Count as error if running but not all containers are ready
+                    errorPods++;
+                }
+            } else if (phase === 'succeeded') {
+                succeededPods++;
+            } else if (phase === 'pending') {
+                // Pending pods with container errors should be counted as error pods
+                if (containerStatuses.some(status => status.state && status.state.waiting && 
+                    ['CrashLoopBackOff', 'Error', 'ErrImagePull', 'ImagePullBackOff', 'CreateContainerError'].includes(status.state.waiting.reason))) {
+                    errorPods++;
+                } else {
+                    // Pending pods without specific errors are counted as running (they're in progress)
+                    runningPods++;
+                }
+            } else {
+                // Unknown or other states count as error
+                errorPods++;
+            }
+        }
+        
+        // Check if the pod has containers with resource requests
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests) {
+                    // Add CPU resources if available
+                    if (container.resources.requests.cpu) {
+                        // Convert CPU request to a number (could be in m format like "500m")
+                        const cpuRequest = container.resources.requests.cpu;
+                        if (cpuRequest.endsWith('m')) {
+                            // Convert millicpu to CPU
+                            totalCPU += parseInt(cpuRequest.slice(0, -1)) / 1000;
+                        } else {
+                            // Direct CPU value
+                            totalCPU += parseFloat(cpuRequest);
+                        }
+                    }
+                    
+                    // Add GPU resources if available
+                    // NVIDIA GPU resources are typically specified as nvidia.com/gpu
+                    if (container.resources.requests['nvidia.com/gpu']) {
+                        const gpuCount = parseInt(container.resources.requests['nvidia.com/gpu']);
+                        totalGPU += gpuCount;
+                        if (gpuCount > 0) podHasGPU = true;
+                    }
+                    
+                    // Alternative GPU resource naming
+                    if (container.resources.requests['gpu']) {
+                        const gpuCount = parseInt(container.resources.requests['gpu']);
+                        totalGPU += gpuCount;
+                        if (gpuCount > 0) podHasGPU = true;
+                    }
+                }
+            });
+        }
+        
+        // Add pod to the GPU pods list if it has GPUs
+        if (podHasGPU) {
+            window.podsWithGPUs.push({
+                namespace: pod.metadata.namespace,
+                name: pod.metadata.name
+            });
+        }
+    });
+    
+    // Update pod status counts in the UI
+    document.getElementById('runningPodsCount').textContent = runningPods;
+    document.getElementById('succeededPodsCount').textContent = succeededPods;
+    document.getElementById('errorPodsCount').textContent = errorPods;
+    
+    // Update total CPU and GPU counts
+    document.getElementById('totalCPUCount').textContent = totalCPU.toFixed(1);
+    
+    // Calculate percentage based on dynamic CPU capacity
+    const totalCPUCapacity = window.clusterCapacity ? window.clusterCapacity.cpu : 256;
+    const cpuPercentage = ((totalCPU / totalCPUCapacity) * 100).toFixed(1);
+    document.getElementById('totalCPUPercentage').textContent = cpuPercentage;
+    document.getElementById('totalCPUCapacity').textContent = totalCPUCapacity;
+    
+    document.getElementById('totalGPUCount').textContent = totalGPU;
+
+    // Set up the GPU filter
+    initGPUFilter();
+    
+    console.log(`Dashboard updated with ${totalPods} pods (${runningPods} running, ${succeededPods} succeeded, ${errorPods} error), ${totalCPU.toFixed(1)} CPUs (${cpuPercentage}% of ${totalCPUCapacity}), ${totalGPU} GPUs`);
+}
+
+// GPU Filter Functionality
+function initGPUFilter() {
+    const gpuCard = document.getElementById('gpuCard');
+    const clearGPUFilterBtn = document.getElementById('clearGPUFilter');
+    
+    if (!gpuCard) return;
+    
+    // Remove existing event listeners (to prevent duplication if function is called multiple times)
+    const newGpuCard = gpuCard.cloneNode(true);
+    gpuCard.parentNode.replaceChild(newGpuCard, gpuCard);
+    
+    // Add event listener to GPU card
+    newGpuCard.addEventListener('click', function(e) {
+        // Don't trigger if the clear button was clicked
+        if (e.target.id === 'clearGPUFilter' || e.target.closest('#clearGPUFilter')) {
+            e.stopPropagation();
+            return;
+        }
+        toggleGPUFilter();
+    });
+    
+    // Add event listener to clear button
+    const newClearBtn = document.getElementById('clearGPUFilter');
+    if (newClearBtn) {
+        newClearBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent event from bubbling to the card
+            if (document.getElementById('gpuCard').classList.contains('filter-active')) {
+                toggleGPUFilter(); // Turn off the filter
+            }
+        });
+    }
+}
+
+// Toggle GPU filter on/off
+function toggleGPUFilter() {
+    const gpuCard = document.getElementById('gpuCard');
+    const gpuFilterStatus = document.getElementById('gpuFilterStatus');
+    const clearGPUFilterBtn = document.getElementById('clearGPUFilter');
+    const isFilterActive = gpuCard.classList.contains('filter-active');
+    
+    if (isFilterActive) {
+        // Disable filter
+        gpuCard.classList.remove('filter-active');
+        gpuFilterStatus.textContent = 'Click to filter';
+        clearGPUFilterBtn.style.display = 'none';
+        
+        // Show all pods
+        const podRows = document.querySelectorAll('#podsTable tbody tr');
+        podRows.forEach(row => {
+            row.style.display = '';
+        });
+        
+        // Apply any active search filter
+        const searchInput = document.getElementById('resourceSearchInput');
+        if (searchInput && searchInput.value.trim()) {
+            filterResources(searchInput.value.trim());
+        }
+    } else {
+        // Enable filter
+        gpuCard.classList.add('filter-active');
+        gpuFilterStatus.textContent = 'Filtering by GPU';
+        clearGPUFilterBtn.style.display = 'inline-block';
+        
+        if (!window.podsWithGPUs || window.podsWithGPUs.length === 0) {
+            // No pods with GPUs found
+            showNoGPUPodsMessage();
+        } else {
+            // Filter to show only pods with GPUs
+            filterPodsWithGPUs();
+        }
+    }
+}
+
 // Filter to show only pods with GPUs
 function filterPodsWithGPUs() {
     if (!window.podsWithGPUs) return;
@@ -1882,16 +2082,21 @@ function filterPodsWithGPUs() {
 // Show a message when no GPU pods are found
 function showNoGPUPodsMessage() {
     const tableBody = document.querySelector('#podsTable tbody');
-    if (!tableBody) return;
     
-    // Check if message already exists
+    // First, make all rows invisible
+    const rows = tableBody.querySelectorAll('tr');
+    rows.forEach(row => {
+        row.style.display = 'none';
+    });
+    
+    // Check if the no-gpu-pods message already exists
     let noGPURow = tableBody.querySelector('.no-gpu-pods-row');
     
     if (!noGPURow) {
         noGPURow = document.createElement('tr');
         noGPURow.className = 'no-gpu-pods-row';
         noGPURow.innerHTML = `
-            <td colspan="7" class="text-center">
+            <td colspan="10" class="text-center">
                 <div class="alert alert-info m-3">
                     <i class="fas fa-info-circle me-2"></i> No pods with GPU resources found.
                     <button class="btn btn-sm btn-outline-primary ms-3" onclick="clearGPUFilter()">
@@ -2570,235 +2775,5 @@ function saveNamespaceChanges() {
         }
     });
 }
-
-// Dashboard Metrics Functions
-function updateDashboardMetrics(pods) {
-    console.log('Updating dashboard metrics with data from', pods.length, 'pods');
-    
-    // Count all pods
-    const totalPods = pods.length;
-    
-    // Count pods by status (correctly accessing the status phase)
-    const runningPods = pods.filter(pod => pod.status && pod.status.phase && pod.status.phase.toLowerCase() === 'running').length;
-    const succeededPods = pods.filter(pod => pod.status && pod.status.phase && pod.status.phase.toLowerCase() === 'succeeded').length;
-    const errorPods = pods.filter(pod => {
-        if (!pod.status || !pod.status.phase) return false;
-        const phase = pod.status.phase.toLowerCase();
-        return phase === 'failed' || phase === 'error' || phase === 'unknown' || 
-            // Check for container statuses with specific error conditions
-            (pod.status.containerStatuses && pod.status.containerStatuses.some(status => 
-                status.state && (
-                    (status.state.waiting && ['crashloopbackoff', 'error', 'errimagepull', 'imagepullbackoff', 'createcontainererror'].includes(status.state.waiting.reason?.toLowerCase())) ||
-                    (status.state.terminated && status.state.terminated.exitCode !== 0)
-                )
-            ));
-    }).length;
-    
-    // Update the UI
-    document.getElementById('totalPodsCount').textContent = totalPods;
-    document.getElementById('runningPodsCount').textContent = runningPods;
-    document.getElementById('succeededPodsCount').textContent = succeededPods;
-    document.getElementById('errorPodsCount').textContent = errorPods;
-    
-    // Calculate and display CPU usage
-    const totalCPURequest = pods.reduce((total, pod) => {
-        // Get CPU from each container in the pod
-        if (pod.spec && pod.spec.containers) {
-            pod.spec.containers.forEach(container => {
-                if (container.resources && container.resources.requests && container.resources.requests.cpu) {
-                    const cpuRequest = container.resources.requests.cpu;
-                    if (cpuRequest.endsWith('m')) {
-                        // Convert millicpu to CPU
-                        total += parseInt(cpuRequest.slice(0, -1)) / 1000;
-                    } else {
-                        // Direct CPU value
-                        total += parseFloat(cpuRequest);
-                    }
-                }
-            });
-        }
-        return total;
-    }, 0);
-    
-    // For debugging
-    console.log(`Total CPU request: ${totalCPURequest.toFixed(1)} cores`);
-    console.log(`Cluster capacity: ${window.clusterCapacity ? window.clusterCapacity.cpu : 'unknown'} cores`);
-    
-    const cpuPercentage = window.clusterCapacity && window.clusterCapacity.cpu ? 
-        Math.round((totalCPURequest / window.clusterCapacity.cpu) * 100) : 0;
-    
-    document.getElementById('totalCPUCount').textContent = totalCPURequest.toFixed(1);
-    document.getElementById('totalCPUPercentage').textContent = cpuPercentage;
-    
-    // Update CPU progress bar
-    const cpuProgressBar = document.getElementById('cpuProgressBar');
-    if (cpuProgressBar) {
-        cpuProgressBar.style.width = `${cpuPercentage}%`;
-        
-        // Change color based on usage
-        if (cpuPercentage > 90) {
-            cpuProgressBar.className = 'progress-bar bg-danger';
-        } else if (cpuPercentage > 75) {
-            cpuProgressBar.className = 'progress-bar bg-warning';
-        } else {
-            cpuProgressBar.className = 'progress-bar';
-        }
-    }
-    
-    // Count GPU resources
-    const gpuPods = pods.filter(pod => {
-        let hasGPU = false;
-        if (pod.spec && pod.spec.containers) {
-            pod.spec.containers.forEach(container => {
-                if (container.resources && container.resources.requests) {
-                    if (container.resources.requests['nvidia.com/gpu'] || container.resources.requests.gpu) {
-                        hasGPU = true;
-                    }
-                }
-            });
-        }
-        return hasGPU;
-    });
-    
-    const totalGPURequest = gpuPods.reduce((total, pod) => {
-        if (pod.spec && pod.spec.containers) {
-            pod.spec.containers.forEach(container => {
-                if (container.resources && container.resources.requests) {
-                    if (container.resources.requests['nvidia.com/gpu']) {
-                        total += parseInt(container.resources.requests['nvidia.com/gpu']);
-                    } else if (container.resources.requests.gpu) {
-                        total += parseInt(container.resources.requests.gpu);
-                    }
-                }
-            });
-        }
-        return total;
-    }, 0);
-    
-    document.getElementById('totalGPUCount').textContent = totalGPURequest.toFixed(0);
-    
-    // Store pods with GPU for filtering
-    window.gpuPodNames = gpuPods.map(pod => `${pod.metadata.namespace}/${pod.metadata.name}`);
-    // Also store the full pod objects for use in the filter function
-    window.podsWithGPUs = gpuPods;
-    
-    // Reset GPU filter text based on state
-    if (window.gpuFilterActive) {
-        document.getElementById('gpuFilterStatus').innerHTML = `<span class="badge bg-success"><i class="fas fa-filter"></i> Filtered</span>`;
-        document.getElementById('clearGPUFilter').style.display = 'inline-block';
-    } else {
-        document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
-        document.getElementById('clearGPUFilter').style.display = 'none';
-    }
-}
-
-// GPU Filter Functionality
-function initializeGPUFilter() {
-    console.log('Initializing GPU filter');
-    window.gpuFilterActive = false;
-    
-    // Add event listener to GPU card for filtering
-    const gpuCard = document.getElementById('gpuCard');
-    const clearFilter = document.getElementById('clearGPUFilter');
-    
-    if (gpuCard) {
-        gpuCard.addEventListener('click', function(e) {
-            // Don't trigger if clicking on the clear button
-            if (e.target.closest('#clearGPUFilter')) {
-                return;
-            }
-            
-            window.gpuFilterActive = !window.gpuFilterActive;
-            
-            // Apply the filter
-            applyGPUFilter();
-            
-            // Update UI to show filter state
-            gpuCard.classList.toggle('filter-active', window.gpuFilterActive);
-            
-            if (window.gpuFilterActive) {
-                document.getElementById('gpuFilterStatus').innerHTML = `<span class="badge bg-success"><i class="fas fa-filter"></i> Filtered</span>`;
-                clearFilter.style.display = 'inline-block';
-            } else {
-                document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
-                clearFilter.style.display = 'none';
-            }
-        });
-    }
-    
-    if (clearFilter) {
-        clearFilter.addEventListener('click', function(e) {
-            e.stopPropagation(); // Prevent triggering the card click
-            
-            window.gpuFilterActive = false;
-            
-            // Clear the filter
-            applyGPUFilter();
-            
-            // Update UI
-            gpuCard.classList.remove('filter-active');
-            document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
-            clearFilter.style.display = 'none';
-        });
-    }
-}
-
-function applyGPUFilter() {
-    const activeTab = document.querySelector('#resourceTabs .nav-link.active');
-    if (activeTab && activeTab.id === 'pods-tab') {
-        filterResourceTable('pods');
-    }
-}
-
-// Clear GPU filter directly (for use in the "Clear Filter" button)
-function clearGPUFilter() {
-    const gpuCard = document.getElementById('gpuCard');
-    if (gpuCard) {
-        window.gpuFilterActive = false;
-        gpuCard.classList.remove('filter-active');
-        
-        // Update UI
-        document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
-        document.getElementById('clearGPUFilter').style.display = 'none';
-        
-        // Clear filter in the table
-        applyGPUFilter();
-    }
-}
-
-// Initialize namespace functionality separately to ensure it works regardless of jQuery load order
-function initializeNamespaceFunctionality() {
-    console.log('Initializing namespace functionality');
-    // Initialize namespaces tab
-    $(document).ready(function() {
-        // Initialize namespaces tab
-        $('a[data-bs-toggle="tab"][data-bs-target="#namespaces"]').on('shown.bs.tab', function (e) {
-            loadNamespaces();
-        });
-
-        // Refresh namespaces button
-        $('#refreshNamespaces').on('click', function() {
-            loadNamespaces();
-        });
-
-        // Filter namespaces
-        $('#namespaceSearchInput').on('keyup', function() {
-            filterNamespaces();
-        });
-
-        // Sort namespaces
-        $('.sort-option').on('click', function(e) {
-            e.preventDefault();
-            const sortOption = $(this).data('sort');
-            sortNamespaces(sortOption);
-        });
-    });
-}
-
-// Add call to initialize namespace functionality in the main initialization
-document.addEventListener('DOMContentLoaded', function() {
-    // Wait a short moment to ensure jQuery is fully loaded
-    setTimeout(initializeNamespaceFunctionality, 500);
-});
 </script>
 {% endblock %}
