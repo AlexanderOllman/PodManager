@@ -7,8 +7,8 @@
     <!-- CSS Files -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
     <link href="{{ url_for('static', filename='js/xterm/xterm.css') }}" rel="stylesheet" />
-    <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet" />
     
     <!-- Core JavaScript Libraries - No defer to ensure they load first -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
@@ -18,7 +18,213 @@
     <script src="{{ url_for('static', filename='js/socket.io/socket.io.js') }}"></script>
     <script src="{{ url_for('static', filename='js/xterm/xterm.js') }}"></script>
     
-    <!-- Additional styles specific to each page -->
+    <!-- Style definitions remain the same -->
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            padding-top: 56px; /* Add padding for fixed navbar */
+        }
+        /* Top Navbar Styles */
+        .top-navbar {
+            background-color: #0e5c8b;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            height: 56px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1030;
+        }
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            color: white;
+            font-weight: 500;
+            font-size: 1.2rem;
+        }
+        .navbar-brand img {
+            height: 32px;
+            margin-right: 10px;
+        }
+        .navbar-brand:hover {
+            color: rgba(255,255,255,0.9);
+        }
+        /* Improved Sidebar Styles */
+        .sidebar {
+            height: 100vh;
+            background: linear-gradient(135deg, #01a982, #0e5c8b);
+            transition: all 0.3s ease;
+            width: 250px;
+            position: fixed;
+            top: 56px;
+            left: 0;
+            overflow-y: auto;
+            box-shadow: 3px 0 10px rgba(0,0,0,0.1);
+            z-index: 1020;
+        }
+        .sidebar-collapsed {
+            width: 60px;
+        }
+        .sidebar .nav-link {
+            color: white;
+            white-space: nowrap;
+            padding: 12px 20px;
+            border-radius: 6px;
+            margin: 5px 10px;
+            transition: all 0.3s ease;
+        }
+        .sidebar .nav-link:hover {
+            background-color: rgba(255,255,255,0.1);
+            transform: translateX(5px);
+        }
+        .sidebar .nav-link.active {
+            background-color: rgba(255,255,255,0.2);
+            font-weight: 500;
+        }
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            color: white;
+            width: 20px;
+            text-align: center;
+            font-size: 18px;
+        }
+        .sidebar-toggle {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 20px;
+            margin-right: 15px;
+            cursor: pointer;
+        }
+        .logo-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 15px 0;
+        }
+        .logo-container img {
+            max-width: 80%;
+            max-height: 80px;
+        }
+        /* Adjust main content */
+        #main-content {
+            margin-left: 250px;
+            transition: margin-left 0.3s ease;
+            min-height: calc(100vh - 56px);
+            padding-top: 20px;
+        }
+        #main-content.expanded {
+            margin-left: 60px;
+        }
+        /* Remaining styles unchanged */
+        .status-icon {
+            margin-right: 5px;
+        }
+        .status-running { color: #28a745; }
+        .status-pending { color: #ffc107; }
+        .status-failed { color: #dc3545; }
+        .status-unknown { color: #6c757d; }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #007bff;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-container, .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+        }
+        .header {
+            background-color: #01a982;
+            color: white;
+            padding: 15px 0;
+            margin-bottom: 20px;
+        }
+        .tab-content {
+            padding: 20px;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 70vh;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .terminal-container {
+            height: 70vh;
+            background-color: #000;
+            color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #terminal {
+            width: 100%;
+            height: 100%;
+        }
+        .command-input {
+            margin-top: 10px;
+            display: flex;
+        }
+        .command-input input {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 20px;
+            width: 480px;
+            font-family: sans-serif;
+            margin: 100px auto;
+            padding: 20px;
+        }
+        .drop-zone--over {
+            border-style: solid;
+        }
+        .drop-zone__prompt {
+            color: #999;
+            font-size: 20px;
+            text-align: center;
+            padding: 20px;
+        }
+        .drop-zone__input {
+            display: none;
+        }
+        .drop-zone__thumb {
+            width: 100%;
+            height: 150px;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #cccccc;
+            background-size: cover;
+            position: relative;
+        }
+        .drop-zone__thumb::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 5px 0;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.75);
+            font-size: 14px;
+            text-align: center;
+        }
+        #app-content {
+            display: none;
+        }
+    </style>
     {% block additional_styles %}{% endblock %}
 </head>
 <body>
@@ -60,13 +266,13 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="#namespaces" data-bs-toggle="tab" data-bs-target="#namespaces">
-                                <i class="fas fa-project-diagram"></i> <span class="menu-text">Namespaces</span>
+                            <a class="nav-link" href="#events" data-bs-toggle="tab" data-bs-target="#events">
+                                <i class="fas fa-clock"></i> <span class="menu-text">Events</span>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="javascript:void(0);" onclick="navigateToCharts()">
-                                <i class="fas fa-ship"></i> <span class="menu-text">Charts</span>
+                            <a class="nav-link" href="#namespaces" data-bs-toggle="tab" data-bs-target="#namespaces">
+                                <i class="fas fa-project-diagram"></i> <span class="menu-text">Namespaces</span>
                             </a>
                         </li>
                         <li class="nav-item">
@@ -252,80 +458,13 @@
                 });
         }
         
-        function navigateToCharts() {
-            console.log("Navigation: Navigating to Charts page...");
-            
-            // Store the current page state in history before navigating away
-            const currentState = document.getElementById('main-content').innerHTML;
-            window.history.pushState({content: currentState, page: 'current'}, '', '/');
-            
-            // Set a custom flag to prevent fetchResourcesForAllTabs from running
-            window.isChartsPage = true;
-            
-            // Set active state for Charts nav item before fetching
-            document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-                link.classList.remove('active');
-            });
-            const chartsLink = document.querySelector('.sidebar .nav-link[onclick*="navigateToCharts"]');
-            if (chartsLink) {
-                chartsLink.classList.add('active');
-            }
-            
-            // Show loading spinner while fetching
-            document.getElementById('main-content').innerHTML = `
-                <div class="d-flex justify-content-center mt-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading charts content...</span>
-                    </div>
-                </div>
-            `;
-            
-            // Load chart content directly from the content endpoint
-            fetch('/charts_content')
-                .then(response => {
-                    console.log("Navigation: Charts content fetched, status:", response.status);
-                    return response.text();
-                })
-                .then(html => {
-                    console.log("Navigation: Processing charts content...");
-                    
-                    // Update the page content
-                    document.getElementById('main-content').innerHTML = html;
-                    
-                    // Execute any scripts in the content
-                    executeScripts(html);
-                    
-                    // Update history
-                    window.history.pushState({content: html, page: 'charts'}, '', '/charts');
-                    
-                    console.log("Navigation: Charts content loaded and scripts executed");
-                })
-                .catch(error => {
-                    console.error('Navigation: Error loading charts content:', error);
-                    document.getElementById('main-content').innerHTML = `
-                        <div class="alert alert-danger m-3">
-                            Error loading charts content: ${error.message}
-                        </div>
-                    `;
-                });
-        }
-        
         window.addEventListener('popstate', function(event) {
             if (event.state) {
                 document.getElementById('main-content').innerHTML = event.state.content;
                 if (event.state.page === 'home' && typeof initializeHomePage === 'function') {
-                    window.isChartsPage = false;
                     initializeHomePage();
                 } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
-                    window.isChartsPage = false;
                     initializeExplorePage();
-                } else if (event.state.page === 'charts') {
-                    window.isChartsPage = true;
-                    // Trigger the DOM content loaded event to initialize charts
-                    const event = new Event('DOMContentLoaded');
-                    document.dispatchEvent(event);
-                } else {
-                    window.isChartsPage = false;
                 }
             }
         });
@@ -430,100 +569,6 @@
             checkScreenSize();
             window.addEventListener('resize', checkScreenSize);
         });
-    </script>
-    
-    <!-- Utility for executing scripts in dynamically loaded content -->
-    <script>
-        // Function to execute scripts contained in dynamically added HTML content
-        function executeScripts(htmlContent) {
-            console.log("Executing scripts in dynamically loaded content...");
-            
-            // Create a temporary div to hold the content
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = htmlContent;
-            
-            // Find all script tags
-            const scripts = tempDiv.querySelectorAll('script');
-            if (scripts.length > 0) {
-                console.log(`Found ${scripts.length} scripts to execute`);
-            }
-            
-            // Execute each script
-            scripts.forEach((oldScript, index) => {
-                const newScript = document.createElement('script');
-                
-                // Copy all attributes
-                Array.from(oldScript.attributes).forEach(attr => {
-                    newScript.setAttribute(attr.name, attr.value);
-                });
-                
-                // Copy the content
-                newScript.textContent = oldScript.textContent;
-                
-                // Replace the old script with the new one to execute it
-                console.log(`Executing script ${index + 1}`);
-                oldScript.parentNode.replaceChild(newScript, oldScript);
-            });
-            
-            // Return the HTML without the scripts (they've already been executed)
-            return tempDiv.innerHTML;
-        }
-    </script>
-
-    <!-- Add utility function to execute scripts from dynamically loaded content -->
-    <script>
-        // Function to execute scripts from dynamically loaded content
-        function executeScripts(html) {
-            // Create a temporary container for the content
-            const temp = document.createElement('div');
-            temp.innerHTML = html;
-            
-            // Find all script tags
-            const scripts = temp.querySelectorAll('script');
-            console.log(`Navigation: Found ${scripts.length} scripts to execute`);
-            
-            // Execute each script
-            scripts.forEach((oldScript, index) => {
-                console.log(`Navigation: Executing script ${index + 1}`);
-                const newScript = document.createElement('script');
-                
-                // Copy all attributes
-                Array.from(oldScript.attributes).forEach(attr => {
-                    newScript.setAttribute(attr.name, attr.value);
-                });
-                
-                // Copy the content
-                newScript.textContent = oldScript.textContent;
-                
-                // Replace the old script with the new one (which will execute)
-                if (oldScript.parentNode) {
-                    oldScript.parentNode.replaceChild(newScript, oldScript);
-                } else {
-                    // If it's not in the DOM yet, append to body
-                    document.body.appendChild(newScript);
-                }
-            });
-            
-            // Special handling for charts content - manually initialize if we're on the charts page
-            if (window.location.pathname.includes('/charts')) {
-                console.log("Navigation: Manually initializing chart functionality");
-                // Call the chart initialization function directly
-                if (typeof checkChartMuseumStatus === 'function') {
-                    checkChartMuseumStatus();
-                } else {
-                    console.log("Navigation: checkChartMuseumStatus function not found, waiting and trying again");
-                    // Try again after a short delay
-                    setTimeout(() => {
-                        if (typeof checkChartMuseumStatus === 'function') {
-                            console.log("Navigation: Calling checkChartMuseumStatus on retry");
-                            checkChartMuseumStatus();
-                        } else {
-                            console.log("Navigation: checkChartMuseumStatus function still not available");
-                        }
-                    }, 500);
-                }
-            }
-        }
     </script>
 </body>
 </html> 
