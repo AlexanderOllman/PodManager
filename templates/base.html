@@ -348,6 +348,9 @@
                         document.getElementById('main-content').innerHTML = content;
                         window.history.pushState({content: content, page: 'home'}, '', '/');
                         
+                        // Now activate the requested tab
+                        activateTab(tabId);
+                        
                         // Reset the loaded resources state
                         window.loadedResources = {};
                         
@@ -355,79 +358,39 @@
                         if (typeof initializeHomePage === 'function') {
                             initializeHomePage();
                         }
-                        
-                        // Make namespace functions globally available by copying them from the page
-                        ensureGlobalNamespaceFunctions();
-                        
-                        // Now activate the requested tab
-                        activateTab(tabId);
                     })
                     .catch(error => {
                         console.error('Error navigating to home:', error);
                     });
             } else {
                 // If already on home page, just activate the tab
-                ensureGlobalNamespaceFunctions();
                 activateTab(tabId);
             }
         }
         
-        // Function to ensure namespace functions are globally available
-        function ensureGlobalNamespaceFunctions() {
-            // Copy the namespace functions to the window object if not already there
-            if (typeof window.loadNamespaces !== 'function' && typeof loadNamespaces === 'function') {
-                console.log('Making loadNamespaces globally available');
-                window.loadNamespaces = loadNamespaces;
-            }
-            
-            if (typeof window.renderNamespaces !== 'function' && typeof renderNamespaces === 'function') {
-                window.renderNamespaces = renderNamespaces;
-            }
-            
-            if (typeof window.showNoNamespaces !== 'function' && typeof showNoNamespaces === 'function') {
-                window.showNoNamespaces = showNoNamespaces;
-            }
-            
-            // Initialize namespace functionality if not already done
-            if (typeof initializeNamespaceFunctionality === 'function') {
-                initializeNamespaceFunctionality();
-            }
-        }
-        
         function activateTab(tabId) {
-            console.log(`Activating tab: ${tabId}`);
-            
-            // First, deactivate all tabs
-            const allTabs = document.querySelectorAll('#resourceTabs .nav-link');
-            allTabs.forEach(tab => tab.classList.remove('active'));
-            
-            // Deactivate all tab panes
-            const allTabPanes = document.querySelectorAll('.tab-pane');
-            allTabPanes.forEach(pane => {
-                pane.classList.remove('show');
-                pane.classList.remove('active');
+            // Remove active class from all tabs and panes
+            document.querySelectorAll('.nav-link[data-bs-toggle="tab"]').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-pane').forEach(pane => {
+                pane.classList.remove('show', 'active');
             });
             
-            // Activate the selected tab
-            const activeTab = document.querySelector(`#${tabId}-tab`);
-            if (activeTab) {
-                activeTab.classList.add('active');
+            // Add active class to selected tab and pane
+            const tabElement = document.querySelector(`.nav-link[data-bs-target="#${tabId}"]`) || 
+                              document.querySelector(`.nav-link[href="#${tabId}"]`);
+            const paneElement = document.getElementById(tabId);
+            
+            if (tabElement) {
+                tabElement.classList.add('active');
             }
             
-            // Activate the selected tab pane
-            const activePane = document.querySelector(`#${tabId}`);
-            if (activePane) {
-                activePane.classList.add('active');
-                activePane.classList.add('show');
+            if (paneElement) {
+                paneElement.classList.add('show', 'active');
             }
             
-            // Update active tab in localStorage
-            localStorage.setItem('activeTab', tabId);
-            
-            // Update the URL with the tab hash
-            history.replaceState(null, null, `#${tabId}`);
-            
-            // If it's a resource tab, load the data if not already loaded
+            // Load resources if needed
             if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
                 // Load the specific resource
                 if (typeof fetchResourceData === 'function') {
@@ -435,82 +398,8 @@
                 }
             } else if (tabId === 'namespaces') {
                 // Load namespaces
-                console.log('Activating namespaces tab, loading namespaces data directly');
-                try {
-                    if (typeof window.loadNamespaces === 'function') {
-                        console.log('Using window.loadNamespaces function');
-                        window.loadNamespaces();
-                    } else if (typeof loadNamespaces === 'function') {
-                        console.log('Using loadNamespaces function from current scope');
-                        loadNamespaces();
-                    } else {
-                        console.error('loadNamespaces function not found, trying to load it via jQuery selector');
-                        // Try direct jQuery method as a fallback
-                        try {
-                            $('#namespacesLoading').show();
-                            $('#namespacesTableCard').hide();
-                            $('#noNamespacesMessage').hide();
-                            
-                            $.ajax({
-                                url: '/get_namespace_details',
-                                type: 'GET',
-                                success: function(response) {
-                                    console.log('AJAX response received for namespaces:', response);
-                                    if (response.hasOwnProperty('namespaces')) {
-                                        window.namespacesData = response.namespaces;
-                                        if (typeof window.renderNamespaces === 'function') {
-                                            console.log('Using window.renderNamespaces');
-                                            window.renderNamespaces(window.namespacesData);
-                                        } else if (typeof renderNamespaces === 'function') {
-                                            console.log('Using renderNamespaces from current scope');
-                                            renderNamespaces(window.namespacesData);
-                                        } else {
-                                            console.error('renderNamespaces function not available');
-                                            $('#namespacesLoading').hide();
-                                            $('#noNamespacesMessage').show();
-                                            $('#noNamespacesMessage h5').text('Error: renderNamespaces function not found');
-                                        }
-                                    } else {
-                                        console.error('No namespaces in response:', response);
-                                        if (typeof window.showNoNamespaces === 'function') {
-                                            window.showNoNamespaces('Error loading namespaces');
-                                        } else if (typeof showNoNamespaces === 'function') {
-                                            showNoNamespaces('Error loading namespaces');
-                                        } else {
-                                            $('#namespacesLoading').hide();
-                                            $('#noNamespacesMessage').show();
-                                            $('#noNamespacesMessage h5').text('Error loading namespaces');
-                                        }
-                                    }
-                                },
-                                error: function(xhr, status, error) {
-                                    console.error('Error fetching namespaces:', status, error);
-                                    if (typeof window.showNoNamespaces === 'function') {
-                                        window.showNoNamespaces('Failed to fetch namespaces data');
-                                    } else if (typeof showNoNamespaces === 'function') {
-                                        showNoNamespaces('Failed to fetch namespaces data');
-                                    } else {
-                                        $('#namespacesLoading').hide();
-                                        $('#noNamespacesMessage').show();
-                                        $('#noNamespacesMessage h5').text('Failed to fetch namespaces data');
-                                    }
-                                },
-                                complete: function() {
-                                    $('#namespacesLoading').hide();
-                                }
-                            });
-                        } catch (e) {
-                            console.error('Error loading namespaces via jQuery:', e);
-                            $('#namespacesLoading').hide();
-                            $('#noNamespacesMessage').show();
-                            $('#noNamespacesMessage h5').text('Error: ' + e.message);
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error in namespaces tab activation:', e);
-                    $('#namespacesLoading').hide();
-                    $('#noNamespacesMessage').show();
-                    $('#noNamespacesMessage h5').text('Error: ' + e.message);
+                if (typeof loadNamespaces === 'function') {
+                    loadNamespaces();
                 }
             }
         }
@@ -619,6 +508,44 @@
     
     <!-- Utility for executing scripts in dynamically loaded content -->
     <script>
+        // Function to execute scripts contained in dynamically added HTML content
+        function executeScripts(htmlContent) {
+            console.log("Executing scripts in dynamically loaded content...");
+            
+            // Create a temporary div to hold the content
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlContent;
+            
+            // Find all script tags
+            const scripts = tempDiv.querySelectorAll('script');
+            if (scripts.length > 0) {
+                console.log(`Found ${scripts.length} scripts to execute`);
+            }
+            
+            // Execute each script
+            scripts.forEach((oldScript, index) => {
+                const newScript = document.createElement('script');
+                
+                // Copy all attributes
+                Array.from(oldScript.attributes).forEach(attr => {
+                    newScript.setAttribute(attr.name, attr.value);
+                });
+                
+                // Copy the content
+                newScript.textContent = oldScript.textContent;
+                
+                // Replace the old script with the new one to execute it
+                console.log(`Executing script ${index + 1}`);
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+            
+            // Return the HTML without the scripts (they've already been executed)
+            return tempDiv.innerHTML;
+        }
+    </script>
+
+    <!-- Add utility function to execute scripts from dynamically loaded content -->
+    <script>
         // Function to execute scripts from dynamically loaded content
         function executeScripts(html) {
             // Create a temporary container for the content
@@ -670,9 +597,6 @@
                     }, 500);
                 }
             }
-            
-            // Return the HTML for consistency with original function
-            return temp.innerHTML;
         }
     </script>
 </body>
