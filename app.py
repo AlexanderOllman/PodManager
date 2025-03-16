@@ -26,7 +26,14 @@ socketio = SocketIO(
     ping_timeout=60,           # Increase ping timeout
     ping_interval=25,          # Adjust ping interval
     max_http_buffer_size=10e7, # Increase buffer size for larger messages
-    async_mode='threading'     # Use threading mode for better performance
+    async_mode='threading',    # Use threading mode for better performance
+    logger=True,               # Enable logging
+    engineio_logger=True,      # Enable Engine.IO logging
+    websocket_class=None,      # Use default WebSocket implementation
+    websocket_max_message_size=10e7,  # Increase WebSocket message size limit
+    allow_upgrades=True,       # Allow transport upgrades
+    http_compression=True,     # Enable HTTP compression
+    compression_threshold=1024 # Compress messages larger than 1KB
 )
 
 # Get GitHub repo URL from environment variable or use default
@@ -1010,6 +1017,22 @@ def delete_chart_version(chart_name, version):
     except Exception as e:
         app.logger.error(f"Error in delete_chart_version: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+# Add error handlers for Socket.IO
+@socketio.on_error_default
+def default_error_handler(e):
+    print('Socket.IO error:', str(e))
+    return None
+
+@socketio.on('connect_error')
+def handle_connect_error(error):
+    print('Connection error:', str(error))
+    return None
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Client disconnected')
+    return None
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
