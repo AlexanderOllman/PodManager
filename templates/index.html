@@ -2996,8 +2996,18 @@ function populateNamespaceSelector(resourceType, namespaces) {
     selector.innerHTML = '';
     selector.appendChild(allOption);
     
+    // Ensure namespaces is an array
+    if (!namespaces) {
+        console.warn(`No namespaces provided for ${resourceType}`);
+        return;
+    }
+    
+    // Convert to array if it's not already one
+    const namespacesArray = Array.isArray(namespaces) ? namespaces : 
+                           (typeof namespaces === 'object' ? Object.keys(namespaces) : []);
+    
     // Add namespace options
-    namespaces.forEach(ns => {
+    namespacesArray.forEach(ns => {
         const option = document.createElement('option');
         option.value = ns;
         option.textContent = ns;
