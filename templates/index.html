@@ -663,10 +663,19 @@ function initializeHomePage() {
         const tabElement = document.querySelector(`#${resourceType}-tab`);
         if (tabElement) {
             tabElement.addEventListener('click', () => {
-                // Only fetch data if not already loaded
-                if (!window.loadedResources || !window.loadedResources[resourceType]) {
-                    fetchResourceData(resourceType);
+                // Always fetch fresh data when tab is clicked
+                console.log(`Tab ${resourceType} clicked, fetching fresh data...`);
+                
+                // Get current namespace selection
+                const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
+                const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+                
+                // Force fetch by clearing the cached state
+                if (window.loadedResources) {
+                    delete window.loadedResources[resourceType];
                 }
+                
+                fetchResourceData(resourceType, currentNamespace);
             });
         }
     });
@@ -674,10 +683,14 @@ function initializeHomePage() {
     // Load the active tab content
     const activeTabId = document.querySelector('.tab-pane.active')?.id;
     if (activeTabId && resourceTypes.includes(activeTabId)) {
-        fetchResourceData(activeTabId);
+        // Get the namespace for this tab
+        const namespaceSelector = document.getElementById(`${activeTabId}Namespace`);
+        const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+        
+        fetchResourceData(activeTabId, currentNamespace);
     } else {
         // If no tab is active, load pods as default
-        fetchResourceData('pods');
+        fetchResourceData('pods', 'all');
     }
 }
 
@@ -908,10 +921,19 @@ function fetchResourcesForAllTabs() {
         const tabElement = document.querySelector(`#${resourceType}-tab`);
         if (tabElement) {
             tabElement.addEventListener('click', () => {
-                // Only fetch data if not already loaded
-                if (!window.loadedResources[resourceType]) {
-                    fetchResourceData(resourceType);
+                // Always fetch fresh data when tab is clicked
+                console.log(`Tab ${resourceType} clicked, fetching fresh data...`);
+                
+                // Get current namespace selection
+                const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
+                const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+                
+                // Force fetch by clearing the cached state
+                if (window.loadedResources) {
+                    delete window.loadedResources[resourceType];
                 }
+                
+                fetchResourceData(resourceType, currentNamespace);
             });
         }
     });
@@ -919,10 +941,14 @@ function fetchResourcesForAllTabs() {
     // Only load the active tab initially
     const activeTabId = document.querySelector('.tab-pane.active').id;
     if (activeTabId && resourceTypes.includes(activeTabId)) {
-        fetchResourceData(activeTabId);
+        // Get the namespace for this tab
+        const namespaceSelector = document.getElementById(`${activeTabId}Namespace`);
+        const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+        
+        fetchResourceData(activeTabId, currentNamespace);
     } else {
         // If no tab is active, load pods as default
-        fetchResourceData('pods');
+        fetchResourceData('pods', 'all');
     }
     
     // Set up a failsafe to check if the resources loaded correctly
@@ -973,12 +999,22 @@ function addResourceControls(resourceType) {
     
     // Create search input
     const searchContainer = document.createElement('div');
-    searchContainer.className = 'input-group w-50';
+    searchContainer.className = 'input-group w-25';
     searchContainer.innerHTML = `
         <input type="text" class="form-control" placeholder="Filter ${resourceType}..." id="${resourceType}Search">
         <button class="btn btn-outline-secondary" type="button" onclick="clearSearch('${resourceType}')">
             <i class="fas fa-times"></i>
         </button>
+    `;
+    
+    // Create namespace selector
+    const namespaceContainer = document.createElement('div');
+    namespaceContainer.className = 'namespace-selector w-25 mx-2';
+    namespaceContainer.innerHTML = `
+        <select class="form-select" id="${resourceType}Namespace" onchange="namespaceChanged('${resourceType}')">
+            <option value="all" selected>All Namespaces</option>
+            <option value="loading" disabled>Loading namespaces...</option>
+        </select>
     `;
     
     // Create refresh button
@@ -995,6 +1031,7 @@ function addResourceControls(resourceType) {
     
     // Add components to the container
     controlsContainer.appendChild(searchContainer);
+    controlsContainer.appendChild(namespaceContainer);
     controlsContainer.appendChild(refreshButton);
     
     // Insert controls before the table
@@ -1010,6 +1047,9 @@ function addResourceControls(resourceType) {
             filterResources(resourceType, this.value);
         });
     }
+    
+    // Load namespaces for the selector
+    loadNamespacesForSelector(resourceType);
 }
 
 // Capitalize first letter helper (for button labels)
@@ -1094,8 +1134,23 @@ function filterResources(resourceType, searchTerm) {
 }
 
 // Resource data fetching (for individual tab clicks or refresh button)
-function fetchResourceData(resourceType) {
+function fetchResourceData(resourceType, namespace) {
     console.log(`Fetching ${resourceType} data...`);
+    
+    // Track start time for performance monitoring
+    const startTime = performance.now();
+    
+    // If namespace wasn't provided, get it from the selector
+    if (!namespace) {
+        const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
+        if (namespaceSelector) {
+            namespace = namespaceSelector.value;
+        } else {
+            namespace = 'all'; // Default to all namespaces
+        }
+    }
+    
+    console.log(`Using namespace: ${namespace}`);
     
     // Save the current search term before refreshing
     const searchInput = document.getElementById(`${resourceType}Search`);
@@ -1115,18 +1170,36 @@ function fetchResourceData(resourceType) {
         progressBar.style.width = '20%';
     }
     
+    // Update loading info text
+    const loadingInfo = document.getElementById(`${resourceType}LoadingInfo`);
+    if (loadingInfo) {
+        loadingInfo.textContent = `Sending request to server for ${resourceType}${namespace !== 'all' ? ` in ${namespace} namespace` : ' in all namespaces'}...`;
+    }
+    
+    // Log the API request
+    console.log(`API Request: POST /get_resources with resource_type=${resourceType}&namespace=${namespace}`);
+    
     fetch('/get_resources', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `resource_type=${resourceType}`
+        body: `resource_type=${resourceType}&namespace=${namespace}`
     })
     .then(response => {
         // Update progress bar to indicate response received
         if (progressBar) {
             progressBar.style.width = '70%';
         }
+        
+        // Update loading info text
+        if (loadingInfo) {
+            loadingInfo.textContent = `Server response received, processing data...`;
+        }
+        
+        // Log response received time
+        const responseTime = performance.now();
+        console.log(`Response received in ${Math.round(responseTime - startTime)}ms`);
         
         if (!response.ok) {
             throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
@@ -1138,6 +1211,16 @@ function fetchResourceData(resourceType) {
         if (progressBar) {
             progressBar.style.width = '90%';
         }
+        
+        // Update loading info text
+        if (loadingInfo) {
+            const itemCount = data.data.items ? data.data.items.length : 0;
+            loadingInfo.textContent = `Processing ${itemCount} ${resourceType}...`;
+        }
+        
+        // Log data processing start time
+        const processingStartTime = performance.now();
+        console.log(`Starting to process ${resourceType} data...`);
         
         const tableBody = document.querySelector(`#${resourceType}Table tbody`);
         if (!tableBody) {
@@ -1167,6 +1250,16 @@ function fetchResourceData(resourceType) {
             updateDashboardMetrics(data.data.items);
         }
         
+        // Mark this resource type as loaded, with the current namespace
+        if (!window.loadedResources) {
+            window.loadedResources = {};
+        }
+        window.loadedResources[resourceType] = namespace;
+        
+        // Log information about the number of items
+        console.log(`Processing ${data.data.items.length} ${resourceType} items`);
+        
+        // Render the table rows
         data.data.items.forEach(item => {
             const row = document.createElement('tr');
             switch (resourceType) {
@@ -1284,73 +1377,141 @@ function fetchResourceData(resourceType) {
         
         hideLoading(resourceType);
         
-        // Mark this resource type as loaded
-        window.loadedResources = window.loadedResources || {};
-        window.loadedResources[resourceType] = true;
-        
         // Reapply search filter after loading new data
         if (searchTerm) {
             filterResources(resourceType, searchTerm);
         }
         
-        console.log(`${resourceType} data loaded successfully`);
+        // Calculate and log total time
+        const endTime = performance.now();
+        const totalTime = Math.round(endTime - startTime);
+        const processingTime = Math.round(endTime - processingStartTime);
+        
+        console.log(`Completed loading ${resourceType}:`);
+        console.log(`- API request/response time: ${Math.round(processingStartTime - startTime)}ms`);
+        console.log(`- Data processing time: ${processingTime}ms`);
+        console.log(`- Total time: ${totalTime}ms`);
     })
     .catch(error => {
         console.error(`Error fetching ${resourceType}:`, error);
-        hideLoading(resourceType);
         
+        // Update loading status to show error
+        const loadingText = document.querySelector(`#${resourceType}Loading .loading-text`);
+        if (loadingText) {
+            loadingText.textContent = `Error loading ${capitalizeFirstLetter(resourceType)}: ${error.message}`;
+            loadingText.classList.add('text-danger');
+        }
+        
+        // Update progress bar to indicate error
+        if (progressBar) {
+            progressBar.classList.remove('progress-bar');
+            progressBar.classList.add('progress-bar', 'bg-danger');
+            progressBar.style.width = '100%';
+        }
+        
+        // Update loading info
+        if (loadingInfo) {
+            loadingInfo.textContent = `Failed to load data. Try again or check console for details.`;
+            loadingInfo.classList.add('text-danger');
+        }
+        
+        // Show error in table
         const tableBody = document.querySelector(`#${resourceType}Table tbody`);
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
-                <i class="fas fa-exclamation-triangle"></i> Error fetching ${resourceType}: ${error.message}
-            </td></tr>`;
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center text-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error loading data: ${error.message}
+                    </td>
+                </tr>
+            `;
         }
+        
+        // Don't hide the loading element completely, as it contains our error message
+        // But do show the table so the error message there is visible
+        const tableElement = document.getElementById(`${resourceType}Table`);
+        if (tableElement) {
+            tableElement.style.display = 'block';
+        }
+        
+        // After a delay, reset the UI to allow retrying
+        setTimeout(() => {
+            if (loadingText) {
+                loadingText.classList.remove('text-danger');
+            }
+            if (progressBar) {
+                progressBar.classList.remove('bg-danger');
+                progressBar.classList.add('bg-primary');
+            }
+            if (loadingInfo) {
+                loadingInfo.classList.remove('text-danger');
+            }
+            hideLoading(resourceType);
+        }, 5000);
     });
 }
 
-// UI helpers
+// Show loading indicator
 function showLoading(resourceType) {
     const loadingElement = document.getElementById(`${resourceType}Loading`);
-    const tableElement = document.getElementById(`${resourceType}Table`);
+    if (loadingElement) {
+        loadingElement.style.display = 'flex';
+    } else {
+        // Create loading indicator if it doesn't exist
+        const tableContainer = document.querySelector(`#${resourceType} .table-responsive`);
+        if (tableContainer) {
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = `${resourceType}Loading`;
+            loadingDiv.className = 'loading-container';
+            loadingDiv.innerHTML = `
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <span class="loading-text ms-2">Loading ${capitalizeFirstLetter(resourceType)}...</span>
+                <div class="progress mt-2 w-100">
+                    <div id="${resourceType}ProgressBar" class="progress-bar" role="progressbar" 
+                         style="width: 10%" aria-valuenow="10" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                <div id="${resourceType}LoadingInfo" class="loading-info mt-1 small text-muted"></div>
+            `;
+            tableContainer.parentNode.insertBefore(loadingDiv, tableContainer);
+        }
+    }
+    
+    // Reset progress bar
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
-    
-    if (loadingElement) loadingElement.style.display = 'flex';
-    if (tableElement) tableElement.style.display = 'none';
-    
-    // Animate progress bar
     if (progressBar) {
-        progressBar.style.width = '0%';
-        setTimeout(() => {
-            progressBar.style.width = '40%';
-            
-            // This simulates the progress advancing in stages
-            setTimeout(() => {
-                progressBar.style.width = '65%';
-            }, 300);
-        }, 100);
+        progressBar.style.width = '10%';
+    }
+    
+    // Reset loading info
+    const loadingInfo = document.getElementById(`${resourceType}LoadingInfo`);
+    if (loadingInfo) {
+        loadingInfo.textContent = 'Preparing request...';
     }
 }
 
+// Hide loading indicator
 function hideLoading(resourceType) {
     const loadingElement = document.getElementById(`${resourceType}Loading`);
-    const tableElement = document.getElementById(`${resourceType}Table`);
-    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
-    
-    // Complete the progress bar animation
-    if (progressBar) {
-        progressBar.style.width = '100%';
-        
-        // Short delay to show the completed progress before hiding
-        setTimeout(() => {
-            if (loadingElement) loadingElement.style.display = 'none';
-            if (tableElement) tableElement.style.display = 'block';
-        }, 200);
-    } else {
-        if (loadingElement) loadingElement.style.display = 'none';
-        if (tableElement) tableElement.style.display = 'block';
+    if (loadingElement) {
+        // Animate completion before hiding
+        const progressBar = document.getElementById(`${resourceType}ProgressBar`);
+        if (progressBar) {
+            progressBar.style.width = '100%';
+            
+            // Give a slight delay to show the completed progress
+            setTimeout(() => {
+                loadingElement.style.display = 'none';
+            }, 500);
+        } else {
+            loadingElement.style.display = 'none';
+        }
     }
 }
 
+// UI helpers
 function createActionButton(resourceType, namespace, name) {
     if (resourceType === 'pods') {
         return `
@@ -2800,5 +2961,64 @@ document.addEventListener('DOMContentLoaded', function() {
     // Wait a short moment to ensure jQuery is fully loaded
     setTimeout(initializeNamespaceFunctionality, 500);
 });
+
+// Load namespaces for the selector dropdown
+function loadNamespacesForSelector(resourceType) {
+    // Skip if namespaces are already loaded globally
+    if (window.namespaces) {
+        populateNamespaceSelector(resourceType, window.namespaces);
+        return;
+    }
+    
+    fetch('/get_namespaces')
+        .then(response => response.json())
+        .then(data => {
+            if (data.namespaces) {
+                // Cache namespaces globally
+                window.namespaces = data.namespaces;
+                populateNamespaceSelector(resourceType, data.namespaces);
+            } else {
+                console.error('Failed to load namespaces:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading namespaces:', error);
+        });
+}
+
+// Populate namespace dropdown with options
+function populateNamespaceSelector(resourceType, namespaces) {
+    const selector = document.getElementById(`${resourceType}Namespace`);
+    if (!selector) return;
+    
+    // Clear existing options, keeping only the "All Namespaces" option
+    const allOption = selector.querySelector('option[value="all"]');
+    selector.innerHTML = '';
+    selector.appendChild(allOption);
+    
+    // Add namespace options
+    namespaces.forEach(ns => {
+        const option = document.createElement('option');
+        option.value = ns;
+        option.textContent = ns;
+        selector.appendChild(option);
+    });
+}
+
+// Handle namespace selection change
+function namespaceChanged(resourceType) {
+    const selector = document.getElementById(`${resourceType}Namespace`);
+    if (!selector) return;
+    
+    const selectedNamespace = selector.value;
+    console.log(`Namespace changed to ${selectedNamespace} for ${resourceType}`);
+    
+    // Force refresh data with new namespace
+    if (window.loadedResources) {
+        delete window.loadedResources[resourceType];
+    }
+    
+    fetchResourceData(resourceType, selectedNamespace);
+}
 </script>
 {% endblock %}

@@ -41,11 +41,71 @@ def index():
 @app.route('/get_resources', methods=['POST'])
 def get_resources():
     resource_type = request.form['resource_type']
-    command = f"kubectl get {resource_type} -A -o json"
+    namespace = request.form.get('namespace', '')
+    
+    # If namespace is provided, fetch resources only from that namespace
+    if namespace and namespace != 'all':
+        command = f"kubectl get {resource_type} -n {namespace} -o json"
+    else:
+        command = f"kubectl get {resource_type} -A -o json"
+    
     output = run_kubectl_command(command)
     
     try:
+        # Parse the full JSON response
         resources = json.loads(output)
+        
+        # For large responses, optimize by filtering fields based on resource type
+        if resource_type in ['pods', 'services', 'deployments', 'inferenceservices', 'configmaps', 'secrets']:
+            # Keep only necessary fields to reduce response size
+            optimized_items = []
+            for item in resources.get('items', []):
+                # Always include core metadata
+                optimized_item = {
+                    'metadata': {
+                        'name': item.get('metadata', {}).get('name', ''),
+                        'namespace': item.get('metadata', {}).get('namespace', ''),
+                        'creationTimestamp': item.get('metadata', {}).get('creationTimestamp', '')
+                    }
+                }
+                
+                # Add resource-specific fields
+                if resource_type == 'pods':
+                    optimized_item['status'] = {
+                        'phase': item.get('status', {}).get('phase', ''),
+                        'containerStatuses': item.get('status', {}).get('containerStatuses', [])
+                    }
+                    optimized_item['spec'] = {
+                        'containers': item.get('spec', {}).get('containers', [])
+                    }
+                elif resource_type == 'services':
+                    optimized_item['spec'] = {
+                        'type': item.get('spec', {}).get('type', ''),
+                        'clusterIP': item.get('spec', {}).get('clusterIP', ''),
+                        'externalIP': item.get('spec', {}).get('externalIP', ''),
+                        'ports': item.get('spec', {}).get('ports', [])
+                    }
+                elif resource_type == 'deployments':
+                    optimized_item['spec'] = {
+                        'replicas': item.get('spec', {}).get('replicas', 0)
+                    }
+                    optimized_item['status'] = {
+                        'availableReplicas': item.get('status', {}).get('availableReplicas', 0),
+                        'readyReplicas': item.get('status', {}).get('readyReplicas', 0)
+                    }
+                
+                # Add the optimized item to the collection
+                optimized_items.append(optimized_item)
+            
+            # Replace the original items with the optimized ones
+            resources['items'] = optimized_items
+            
+            # Log optimization metrics
+            original_size = len(output)
+            optimized_output = json.dumps(resources)
+            optimized_size = len(optimized_output)
+            print(f"Optimized response for {resource_type}: {original_size} bytes → {optimized_size} bytes")
+        
         return jsonify(format='table', data=resources)
     except json.JSONDecodeError:
         return jsonify(format='error', message=f"Unable to fetch {resource_type}")
@@ -112,10 +172,11 @@ def get_namespaces():
     
     try:
         namespaces = json.loads(output)
-        namespace_names = [item['metadata']['name'] for item in namespaces['items']]
+        # Extract just the namespace names for simplicity
+        namespace_names = [ns['metadata']['name'] for ns in namespaces.get('items', [])]
         return jsonify(namespaces=namespace_names)
     except json.JSONDecodeError:
-        return jsonify(error="Unable to fetch namespaces")
+        return jsonify(namespaces=[], error="Unable to fetch namespaces")
 
 @app.route('/get_namespace_details', methods=['GET'])
 def get_namespace_details():
