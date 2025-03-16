@@ -157,8 +157,30 @@
     <script>
         // Initialize Socket.IO connection - no need to load the script
         try {
-            window.app.socket = io();
-            console.log('Socket.IO connected');
+            // Configure socket.io with more robust options
+            window.app.socket = io({
+                transports: ['polling', 'websocket'], // Prefer polling as initial transport
+                upgrade: true,                        // Try to upgrade to WebSocket
+                reconnection: true,                   // Enable reconnection
+                reconnectionAttempts: 10,             // Number of reconnection attempts
+                reconnectionDelay: 1000,              // Initial delay between reconnections
+                timeout: 20000,                       // Connection timeout
+                autoConnect: true,                    // Connect automatically
+                forceNew: true,                       // Create a new connection
+                path: '/socket.io/'                   // Ensure correct path
+            });
+            
+            // Add global error handling for socket
+            window.app.socket.on('connect_error', function(error) {
+                console.error('Socket.IO connection error:', error);
+            });
+            
+            // Log successful connection
+            window.app.socket.on('connect', function() {
+                console.log('Socket.IO connected successfully');
+            });
+            
+            console.log('Socket.IO initialized');
         } catch (err) {
             console.error('Failed to connect Socket.IO:', err);
         }

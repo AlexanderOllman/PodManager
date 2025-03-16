@@ -19,7 +19,15 @@ except ImportError:
     print("Git module could not be imported. GitHub update functionality will be disabled.")
 
 app = Flask(__name__)
-socketio = SocketIO(app)
+# Configure SocketIO with enhanced settings for reliability
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*",  # Allow connections from any origin
+    ping_timeout=60,           # Increase ping timeout
+    ping_interval=25,          # Adjust ping interval
+    max_http_buffer_size=10e7, # Increase buffer size for larger messages
+    async_mode='threading'     # Use threading mode for better performance
+)
 
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
