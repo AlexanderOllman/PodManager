@@ -323,6 +323,34 @@
                     window.history.pushState({content: html, page: 'charts'}, '', '/charts');
                     
                     console.log("Navigation: Charts content loaded and scripts executed");
+                    
+                    // Manually initialize chart functionality
+                    console.log("Navigation: Manually initializing chart functionality");
+                    
+                    // First try to find and execute the checkChartMuseumStatus function
+                    if (typeof window.checkChartMuseumStatus === 'function') {
+                        console.log("Navigation: Found checkChartMuseumStatus function, calling it");
+                        window.checkChartMuseumStatus();
+                    } else {
+                        console.log("Navigation: checkChartMuseumStatus function not found, trying direct API call");
+                        // Try making the API call directly
+                        fetch('/api/charts/status')
+                            .then(response => {
+                                console.log("Direct API call status:", response.status);
+                                return response.json();
+                            })
+                            .then(data => {
+                                console.log("Direct API response:", data);
+                                // If successful, try to fetch charts
+                                if (data.status === 'success' && typeof window.fetchCharts === 'function') {
+                                    console.log("Navigation: API check successful, fetching charts");
+                                    window.fetchCharts();
+                                }
+                            })
+                            .catch(err => {
+                                console.error("Direct API call error:", err);
+                            });
+                    }
                 })
                 .catch(error => {
                     console.error('Navigation: Error loading charts content:', error);
@@ -540,42 +568,6 @@
             
             // Find all script tags
             const scripts = tempDiv.querySelectorAll('script');
-            if (scripts.length > 0) {
-                console.log(`Found ${scripts.length} scripts to execute`);
-            }
-            
-            // Execute each script
-            scripts.forEach((oldScript, index) => {
-                const newScript = document.createElement('script');
-                
-                // Copy all attributes
-                Array.from(oldScript.attributes).forEach(attr => {
-                    newScript.setAttribute(attr.name, attr.value);
-                });
-                
-                // Copy the content
-                newScript.textContent = oldScript.textContent;
-                
-                // Replace the old script with the new one to execute it
-                console.log(`Executing script ${index + 1}`);
-                oldScript.parentNode.replaceChild(newScript, oldScript);
-            });
-            
-            // Return the HTML without the scripts (they've already been executed)
-            return tempDiv.innerHTML;
-        }
-    </script>
-
-    <!-- Add utility function to execute scripts from dynamically loaded content -->
-    <script>
-        // Function to execute scripts from dynamically loaded content
-        function executeScripts(html) {
-            // Create a temporary container for the content
-            const temp = document.createElement('div');
-            temp.innerHTML = html;
-            
-            // Find all script tags
-            const scripts = temp.querySelectorAll('script');
             console.log(`Navigation: Found ${scripts.length} scripts to execute`);
             
             // Execute each script
@@ -591,7 +583,7 @@
                 // Copy the content
                 newScript.textContent = oldScript.textContent;
                 
-                // Replace the old script with the new one (which will execute)
+                // Replace the old script with the new one to execute it
                 if (oldScript.parentNode) {
                     oldScript.parentNode.replaceChild(newScript, oldScript);
                 } else {
@@ -603,23 +595,36 @@
             // Special handling for charts content - manually initialize if we're on the charts page
             if (window.location.pathname.includes('/charts')) {
                 console.log("Navigation: Manually initializing chart functionality");
-                // Call the chart initialization function directly
-                if (typeof checkChartMuseumStatus === 'function') {
-                    checkChartMuseumStatus();
-                } else {
-                    console.log("Navigation: checkChartMuseumStatus function not found, waiting and trying again");
-                    // Try again after a short delay
-                    setTimeout(() => {
-                        if (typeof checkChartMuseumStatus === 'function') {
-                            console.log("Navigation: Calling checkChartMuseumStatus on retry");
-                            checkChartMuseumStatus();
-                        } else {
-                            console.log("Navigation: checkChartMuseumStatus function still not available");
-                        }
-                    }, 500);
-                }
+                
+                // Try executing chart initialization with delay to ensure DOM is ready
+                setTimeout(() => {
+                    console.log("Navigation: Delayed initialization of chart functionality");
+                    if (typeof window.checkChartMuseumStatus === 'function') {
+                        console.log("Navigation: Found checkChartMuseumStatus function, calling it");
+                        window.checkChartMuseumStatus();
+                    } else {
+                        console.log("Navigation: checkChartMuseumStatus function not found, trying direct call to API");
+                        // Try making the API call directly
+                        fetch('/api/charts/status')
+                            .then(response => {
+                                console.log("Direct API call status:", response.status);
+                                return response.json();
+                            })
+                            .then(data => {
+                                console.log("Direct API response:", data);
+                            })
+                            .catch(err => {
+                                console.error("Direct API call error:", err);
+                            });
+                    }
+                }, 500);
             }
+            
+            return tempDiv.innerHTML;
         }
     </script>
+
+    <!-- Add additional page scripts -->
+    {% block additional_scripts %}{% endblock %}
 </body>
 </html> 

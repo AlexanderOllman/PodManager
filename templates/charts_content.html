@@ -65,18 +65,28 @@
 </div>
 
 <script>
+    console.log("CHART CONTENT SCRIPT LOADING");
+    
     // Make functions globally accessible
     window.checkChartMuseumStatus = function() {
         console.log("ChartMuseum: Checking connection status...");
         const statusDiv = document.getElementById('chart-service-status');
         const statusMessage = document.getElementById('chart-service-message');
         
+        if (!statusDiv || !statusMessage) {
+            console.error("ChartMuseum: Could not find status elements in DOM");
+            return;
+        }
+        
         statusDiv.classList.remove('d-none');
         statusDiv.classList.remove('alert-success', 'alert-danger', 'alert-warning');
         statusDiv.classList.add('alert-info');
         
         fetch('/api/charts/status')
-            .then(response => response.json())
+            .then(response => {
+                console.log("ChartMuseum API response status:", response.status);
+                return response.json();
+            })
             .then(data => {
                 console.log("ChartMuseum status response:", data);
                 if (data.status === 'success') {

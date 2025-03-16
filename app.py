@@ -847,7 +847,7 @@ def charts_status():
     """Check if the port forwarding is running and ChartMuseum is accessible."""
     global chart_museum_process
     
-    print("Checking ChartMuseum status...")
+    print("=== CHARTMUSEUM STATUS CHECK CALLED ===")
     
     try:
         # If process is not running, start it
