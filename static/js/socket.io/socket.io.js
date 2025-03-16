@@ -6039,4 +6039,3 @@ module.exports = yeast;
 
 /******/ });
 });
-//# sourceMappingURL=socket.io.js.map
