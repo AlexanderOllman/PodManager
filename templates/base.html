@@ -346,83 +346,9 @@
                     
                     // Check ChartMuseum status and fetch charts
                     console.log("Navigation: Checking ChartMuseum status...");
-                    fetch('/api/charts/status')
-                        .then(response => {
-                            console.log("Direct API call status:", response.status);
-                            return response.json();
-                        })
-                        .then(data => {
-                            console.log("Direct API response:", data);
-                            if (data.status === 'success') {
-                                console.log("Navigation: ChartMuseum is accessible, fetching charts...");
-                                // Fetch the charts
-                                fetch('/api/charts')
-                                    .then(response => {
-                                        console.log("Charts fetch status:", response.status);
-                                        return response.json();
-                                    })
-                                    .then(chartsData => {
-                                        console.log("Charts data received:", chartsData);
-                                        // Update the UI with the charts data
-                                        const chartsContainer = document.getElementById('charts-container');
-                                        if (chartsContainer) {
-                                            if (chartsData.charts && chartsData.charts.length > 0) {
-                                                // Create the charts table
-                                                const table = document.createElement('table');
-                                                table.className = 'table table-striped';
-                                                table.innerHTML = `
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Name</th>
-                                                            <th>Version</th>
-                                                            <th>Description</th>
-                                                            <th>Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        ${chartsData.charts.map(chart => `
-                                                            <tr>
-                                                                <td>${chart.name}</td>
-                                                                <td>${chart.version}</td>
-                                                                <td>${chart.description || 'No description available'}</td>
-                                                                <td>
-                                                                    <button class="btn btn-sm btn-primary" onclick="installChart('${chart.name}', '${chart.version}')">
-                                                                        Install
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        `).join('')}
-                                                    </tbody>
-                                                `;
-                                                chartsContainer.innerHTML = '';
-                                                chartsContainer.appendChild(table);
-                                            } else {
-                                                chartsContainer.innerHTML = '<div class="alert alert-info">No charts available.</div>';
-                                            }
-                                        }
-                                    })
-                                    .catch(err => {
-                                        console.error("Error fetching charts:", err);
-                                        const chartsContainer = document.getElementById('charts-container');
-                                        if (chartsContainer) {
-                                            chartsContainer.innerHTML = '<div class="alert alert-danger">Error loading charts. Please try again.</div>';
-                                        }
-                                    });
-                            } else {
-                                console.error("ChartMuseum is not accessible");
-                                const chartsContainer = document.getElementById('charts-container');
-                                if (chartsContainer) {
-                                    chartsContainer.innerHTML = '<div class="alert alert-danger">ChartMuseum is not accessible. Please check the connection.</div>';
-                                }
-                            }
-                        })
-                        .catch(err => {
-                            console.error("Direct API call error:", err);
-                            const chartsContainer = document.getElementById('charts-container');
-                            if (chartsContainer) {
-                                chartsContainer.innerHTML = '<div class="alert alert-danger">Error checking ChartMuseum status. Please try again.</div>';
-                            }
-                        });
+                    if (typeof window.checkChartMuseumStatus === 'function') {
+                        window.checkChartMuseumStatus();
+                    }
                 })
                 .catch(error => {
                     console.error('Navigation: Error loading charts content:', error);
