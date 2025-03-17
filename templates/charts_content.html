@@ -15,6 +15,14 @@
                 </div>
             </div>
             
+            <div id="port-forwarding-instructions" class="alert alert-warning d-none">
+                <h4 class="alert-heading">Port Forwarding Required</h4>
+                <p>To access the ChartMuseum, you need to set up port forwarding first. Follow these steps:</p>
+                <ol class="mb-0" id="port-forwarding-steps">
+                    <!-- Steps will be populated here -->
+                </ol>
+            </div>
+            
             <div id="loading" class="loader-container">
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
@@ -72,6 +80,8 @@
         console.log("ChartMuseum: Checking connection status...");
         const statusDiv = document.getElementById('chart-service-status');
         const statusMessage = document.getElementById('chart-service-message');
+        const instructionsDiv = document.getElementById('port-forwarding-instructions');
+        const stepsList = document.getElementById('port-forwarding-steps');
         
         if (!statusDiv || !statusMessage) {
             console.error("ChartMuseum: Could not find status elements in DOM");
@@ -94,16 +104,18 @@
                     statusDiv.classList.remove('alert-info', 'alert-danger', 'alert-warning');
                     statusDiv.classList.add('alert-success');
                     statusMessage.textContent = 'ChartMuseum connected successfully!';
+                    instructionsDiv.classList.add('d-none');
                     setTimeout(() => {
                         statusDiv.classList.add('d-none');
                     }, 3000);
                     fetchCharts();
                 } else if (data.status === 'pending') {
-                    console.log("ChartMuseum: Connection pending, retrying...");
-                    statusDiv.classList.remove('alert-info', 'alert-danger', 'alert-success');
-                    statusDiv.classList.add('alert-warning');
-                    statusMessage.textContent = 'Establishing connection to ChartMuseum...';
-                    setTimeout(checkChartMuseumStatus, 2000);
+                    console.log("ChartMuseum: Port forwarding required");
+                    statusDiv.classList.add('d-none');
+                    instructionsDiv.classList.remove('d-none');
+                    if (data.instructions && data.instructions.steps) {
+                        stepsList.innerHTML = data.instructions.steps.map(step => `<li>${step}</li>`).join('');
+                    }
                 } else {
                     console.error("ChartMuseum: Connection error:", data.message);
                     statusDiv.classList.remove('alert-info', 'alert-success', 'alert-warning');

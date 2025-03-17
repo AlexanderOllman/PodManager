@@ -39,9 +39,6 @@ socketio = SocketIO(
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
 
-# Global variable to track the port forwarding process
-chart_museum_process = None
-
 def run_kubectl_command(command):
     try:
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -754,204 +751,10 @@ def charts_content():
     """Render just the charts page content for AJAX loading."""
     return render_template('charts_content.html')
 
-def start_port_forwarding():
-    """Start the port forwarding process for ChartMuseum."""
-    global chart_museum_process
-    
-    print("Starting ChartMuseum port forwarding...")
-    
-    # Kill any existing process
-    stop_port_forwarding()
-    
-    try:
-        # Try multiple ways to find the ChartMuseum pod
-        pod_name = None
-        
-        # First try with app=chartmuseum selector
-        try:
-            command = "kubectl get pod -n ez-chartmuseum-ns -l app=chartmuseum -o jsonpath='{.items[0].metadata.name}'"
-            print(f"Trying command: {command}")
-            result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            pod_name = result.stdout.decode('utf-8').strip()
-        except Exception as e:
-            print(f"First lookup method failed: {str(e)}")
-        
-        # If that fails, try again with name pattern
-        if not pod_name:
-            try:
-                command = "kubectl get pod -n ez-chartmuseum-ns | grep chartmuseum | awk '{print $1}' | head -n 1"
-                print(f"Trying fallback command: {command}")
-                result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                pod_name = result.stdout.decode('utf-8').strip()
-            except Exception as e:
-                print(f"Second lookup method failed: {str(e)}")
-        
-        # If still no pod, try without label selector
-        if not pod_name:
-            try:
-                command = "kubectl get pod -n ez-chartmuseum-ns -o jsonpath='{.items[0].metadata.name}'"
-                print(f"Trying final fallback command: {command}")
-                result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                pod_name = result.stdout.decode('utf-8').strip()
-            except Exception as e:
-                print(f"Final lookup method failed: {str(e)}")
-        
-        # Check if we found a pod
-        if not pod_name:
-            print("Failed to find chartmuseum pod - no pod name returned from any method")
-            app.logger.error("Failed to find chartmuseum pod")
-            return False
-        
-        print(f"Found ChartMuseum pod: {pod_name}")
-        
-        # Start port forwarding
-        port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
-        print(f"Running port forwarding command: {port_forward_cmd}")
-        
-        chart_museum_process = subprocess.Popen(
-            port_forward_cmd,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid  # This allows us to kill the process group later
-        )
-        
-        # Give it a moment to establish
-        print("Waiting for port forwarding to establish...")
-        time.sleep(2)
-        
-        # Check if the process is still running
-        if chart_museum_process.poll() is None:
-            print(f"Port forwarding started successfully for pod {pod_name}")
-            app.logger.info(f"Started port forwarding for ChartMuseum: {pod_name}")
-            return True
-        else:
-            err = chart_museum_process.stderr.read().decode('utf-8')
-            print(f"Port forwarding failed with error: {err}")
-            app.logger.error(f"Port forwarding failed: {err}")
-            return False
-    except Exception as e:
-        print(f"Exception during port forwarding setup: {str(e)}")
-        app.logger.error(f"Error starting port forwarding: {str(e)}")
-        return False
-
-def stop_port_forwarding():
-    """Stop the port forwarding process."""
-    global chart_museum_process
-    if chart_museum_process:
-        try:
-            print("Stopping existing port forwarding process...")
-            os.killpg(os.getpgid(chart_museum_process.pid), signal.SIGTERM)
-            chart_museum_process = None
-            print("Port forwarding stopped")
-            app.logger.info("Stopped port forwarding for ChartMuseum")
-        except Exception as e:
-            print(f"Error stopping port forwarding: {str(e)}")
-            app.logger.error(f"Error stopping port forwarding: {str(e)}")
-
-@app.route('/api/charts/status', methods=['GET'])
-def charts_status():
-    """Check if the port forwarding is running and ChartMuseum is accessible."""
-    global chart_museum_process
-    
-    print("=== CHARTMUSEUM STATUS CHECK CALLED ===")
-    
-    try:
-        # If process is not running, start it
-        if not chart_museum_process or chart_museum_process.poll() is not None:
-            print("Port forwarding not running, starting it...")
-            if not start_port_forwarding():
-                print("Failed to start port forwarding")
-                return jsonify({"status": "error", "message": "Failed to start port forwarding"}), 500
-        
-        # Test if ChartMuseum is accessible
-        import requests
-        
-        # First check if port is open with a socket connection
-        import socket
-        print("Testing if port 8855 is open...")
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.connect(('127.0.0.1', 8855))
-            print("Port 8855 is open")
-            s.close()
-        except Exception as e:
-            print(f"Port 8855 is not accessible: {str(e)}")
-            # Try to restart port forwarding
-            if start_port_forwarding():
-                return jsonify({"status": "pending", "message": "Port forwarding restarted, port was not open"}), 202
-            return jsonify({"status": "error", "message": "Port 8855 is not accessible after restart"}), 500
-            
-        # Now try API endpoints - try healthz first
-        print("Testing connection to ChartMuseum health endpoint...")
-        try:
-            health_endpoint = 'http://127.0.0.1:8855/api/healthz'
-            print(f"GET {health_endpoint}")
-            response = requests.get(health_endpoint, timeout=2)
-            print(f"ChartMuseum health check response: {response.status_code}")
-            
-            if response.status_code == 200:
-                print("ChartMuseum health endpoint is accessible")
-            else:
-                print(f"ChartMuseum health check unexpected status: {response.status_code}")
-        except Exception as e:
-            print(f"Error checking health endpoint: {str(e)}")
-            # Continue to next check
-            
-        # Try the charts endpoint
-        print("Testing connection to ChartMuseum charts endpoint...")
-        try:
-            charts_endpoint = 'http://127.0.0.1:8855/api/charts'
-            print(f"GET {charts_endpoint}")
-            response = requests.get(charts_endpoint, timeout=2)
-            print(f"ChartMuseum charts endpoint response: {response.status_code}")
-            
-            if response.status_code == 200:
-                print("ChartMuseum charts endpoint is accessible")
-                return jsonify({
-                    "status": "success", 
-                    "message": "ChartMuseum is accessible",
-                    "endpoints": {
-                        "health": True,
-                        "charts": True
-                    }
-                })
-            else:
-                print(f"ChartMuseum charts endpoint unexpected status: {response.status_code}")
-                return jsonify({
-                    "status": "warning", 
-                    "message": f"ChartMuseum charts endpoint returned status code {response.status_code}"
-                }), 200
-        except Exception as e:
-            print(f"Error checking charts endpoint: {str(e)}")
-            return jsonify({
-                "status": "error", 
-                "message": f"Error accessing ChartMuseum API: {str(e)}"
-            }), 500
-            
-    except requests.exceptions.ConnectionError as e:
-        print(f"Connection error accessing ChartMuseum: {str(e)}")
-        # Try to start port forwarding again
-        if start_port_forwarding():
-            print("Port forwarding restarted, connection not established yet")
-            return jsonify({"status": "pending", "message": "Port forwarding started, connection not established yet"})
-        print("Cannot connect to ChartMuseum after restart attempt")
-        return jsonify({"status": "error", "message": "Cannot connect to ChartMuseum"}), 500
-    except Exception as e:
-        print(f"Error checking ChartMuseum status: {str(e)}")
-        app.logger.error(f"Error in charts_status: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
 @app.route('/api/charts', methods=['GET'])
 def get_charts():
     """Get all charts from the ChartMuseum instance."""
     try:
-        # Ensure port forwarding is running
-        global chart_museum_process
-        if not chart_museum_process or chart_museum_process.poll() is not None:
-            if not start_port_forwarding():
-                return jsonify({"error": "Failed to start port forwarding"}), 500
-                
         # Make the request to ChartMuseum
         import requests
         response = requests.get('http://127.0.0.1:8855/api/charts', timeout=5)
@@ -960,10 +763,7 @@ def get_charts():
         else:
             return jsonify({"error": f"Error fetching charts: Status code {response.status_code}"}), response.status_code
     except requests.exceptions.ConnectionError:
-        # Try to restart port forwarding
-        if start_port_forwarding():
-            return jsonify({"error": "Connection to ChartMuseum failed. Port forwarding restarted, please try again."}), 503
-        return jsonify({"error": "Cannot connect to ChartMuseum. Port forwarding failed."}), 500
+        return jsonify({"error": "Cannot connect to ChartMuseum. Please ensure port forwarding is active."}), 503
     except Exception as e:
         app.logger.error(f"Error in get_charts: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -972,12 +772,6 @@ def get_charts():
 def delete_chart(chart_name):
     """Delete a chart by name."""
     try:
-        # Ensure port forwarding is running
-        global chart_museum_process
-        if not chart_museum_process or chart_museum_process.poll() is not None:
-            if not start_port_forwarding():
-                return jsonify({"error": "Failed to start port forwarding"}), 500
-                
         import requests
         response = requests.delete(f'http://127.0.0.1:8855/api/charts/{chart_name}', timeout=5)
         if response.status_code == 200:
@@ -985,10 +779,7 @@ def delete_chart(chart_name):
         else:
             return jsonify({"error": f"Error deleting chart: Status code {response.status_code}"}), response.status_code
     except requests.exceptions.ConnectionError:
-        # Try to restart port forwarding
-        if start_port_forwarding():
-            return jsonify({"error": "Connection to ChartMuseum failed. Port forwarding restarted, please try again."}), 503
-        return jsonify({"error": "Cannot connect to ChartMuseum. Port forwarding failed."}), 500
+        return jsonify({"error": "Cannot connect to ChartMuseum. Please ensure port forwarding is active."}), 503
     except Exception as e:
         app.logger.error(f"Error in delete_chart: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -997,12 +788,6 @@ def delete_chart(chart_name):
 def delete_chart_version(chart_name, version):
     """Delete a specific version of a chart."""
     try:
-        # Ensure port forwarding is running
-        global chart_museum_process
-        if not chart_museum_process or chart_museum_process.poll() is not None:
-            if not start_port_forwarding():
-                return jsonify({"error": "Failed to start port forwarding"}), 500
-                
         import requests
         response = requests.delete(f'http://127.0.0.1:8855/api/charts/{chart_name}/{version}', timeout=5)
         if response.status_code == 200:
@@ -1010,10 +795,7 @@ def delete_chart_version(chart_name, version):
         else:
             return jsonify({"error": f"Error deleting chart version: Status code {response.status_code}"}), response.status_code
     except requests.exceptions.ConnectionError:
-        # Try to restart port forwarding
-        if start_port_forwarding():
-            return jsonify({"error": "Connection to ChartMuseum failed. Port forwarding restarted, please try again."}), 503
-        return jsonify({"error": "Cannot connect to ChartMuseum. Port forwarding failed."}), 500
+        return jsonify({"error": "Cannot connect to ChartMuseum. Please ensure port forwarding is active."}), 503
     except Exception as e:
         app.logger.error(f"Error in delete_chart_version: {str(e)}")
         return jsonify({"error": str(e)}), 500
