@@ -800,6 +800,70 @@ def delete_chart_version(chart_name, version):
         app.logger.error(f"Error in delete_chart_version: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/charts/status', methods=['GET'])
+def charts_status():
+    """Check if ChartMuseum is accessible and provide port forwarding instructions if needed."""
+    print("=== CHARTMUSEUM STATUS CHECK CALLED ===")
+    
+    try:
+        # Test if ChartMuseum is accessible
+        import requests
+        import socket
+        
+        # First check if port is open with a socket connection
+        print("Testing if port 8855 is open...")
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.connect(('127.0.0.1', 8855))
+            print("Port 8855 is open")
+            s.close()
+            
+            # Try the charts endpoint
+            print("Testing connection to ChartMuseum charts endpoint...")
+            response = requests.get('http://127.0.0.1:8855/api/charts', timeout=2)
+            print(f"ChartMuseum charts endpoint response: {response.status_code}")
+            
+            if response.status_code == 200:
+                print("ChartMuseum charts endpoint is accessible")
+                return jsonify({
+                    "status": "success", 
+                    "message": "ChartMuseum is accessible",
+                    "endpoints": {
+                        "health": True,
+                        "charts": True
+                    }
+                })
+            else:
+                print(f"ChartMuseum charts endpoint unexpected status: {response.status_code}")
+                return jsonify({
+                    "status": "warning", 
+                    "message": f"ChartMuseum charts endpoint returned status code {response.status_code}"
+                }), 200
+                
+        except Exception as e:
+            print(f"Port 8855 is not accessible: {str(e)}")
+            # Return instructions for manual port forwarding
+            return jsonify({
+                "status": "pending",
+                "message": "ChartMuseum port forwarding is not active",
+                "instructions": {
+                    "title": "Port Forwarding Required",
+                    "steps": [
+                        "1. Open a terminal and run:",
+                        "   kubectl get svc -n ez-chartmuseum-ns",
+                        "   kubectl get pod -n ez-chartmuseum-ns",
+                        "2. Start port forwarding:",
+                        "   kubectl port-forward <chartmuseum pod name> -n ez-chartmuseum-ns 8855:8080",
+                        "3. Keep this terminal window open while using the Charts page"
+                    ]
+                }
+            }), 202
+            
+    except Exception as e:
+        print(f"Error checking ChartMuseum status: {str(e)}")
+        app.logger.error(f"Error in charts_status: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 # Add error handlers for Socket.IO
 @socketio.on_error_default
 def default_error_handler(e):
