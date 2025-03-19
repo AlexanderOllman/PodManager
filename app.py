@@ -9,6 +9,7 @@ import shutil
 import sys
 import time
 import signal
+import atexit
 
 # We'll check for git availability at runtime rather than import time
 git_available = False
@@ -35,6 +36,75 @@ socketio = SocketIO(
     http_compression=True,     # Enable HTTP compression
     compression_threshold=1024 # Compress messages larger than 1KB
 )
+
+# Global variable to store the port forwarding process
+chart_museum_process = None
+
+def start_port_forwarding():
+    """Start port forwarding for ChartMuseum."""
+    global chart_museum_process
+    
+    try:
+        # First, try to find the ChartMuseum pod
+        print("Finding ChartMuseum pod...")
+        pod_cmd = "kubectl get pod -n ez-chartmuseum-ns -l app=chartmuseum -o jsonpath='{.items[0].metadata.name}'"
+        pod_name = subprocess.run(pod_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode('utf-8').strip()
+        
+        if not pod_name:
+            print("ChartMuseum pod not found, trying alternative method...")
+            # Fallback method to find the pod
+            pods_cmd = "kubectl get pods -n ez-chartmuseum-ns"
+            pods_output = subprocess.run(pods_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode('utf-8')
+            pod_name = pods_output.split('\n')[1].split()[0]  # Get first pod name from the list
+        
+        print(f"Found ChartMuseum pod: {pod_name}")
+        
+        # Start port forwarding
+        port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
+        print(f"Starting port forwarding with command: {port_forward_cmd}")
+        
+        chart_museum_process = subprocess.Popen(
+            port_forward_cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        
+        # Wait a moment for the port forwarding to establish
+        time.sleep(2)
+        
+        # Check if the process is still running
+        if chart_museum_process.poll() is None:
+            print("Port forwarding started successfully")
+            return True
+        else:
+            print("Port forwarding failed to start")
+            return False
+            
+    except Exception as e:
+        print(f"Error starting port forwarding: {str(e)}")
+        return False
+
+def stop_port_forwarding():
+    """Stop the ChartMuseum port forwarding process."""
+    global chart_museum_process
+    
+    if chart_museum_process:
+        print("Stopping ChartMuseum port forwarding...")
+        chart_museum_process.terminate()
+        try:
+            chart_museum_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            chart_museum_process.kill()
+        chart_museum_process = None
+        print("Port forwarding stopped")
+
+# Register the cleanup function
+atexit.register(stop_port_forwarding)
+
+# Start port forwarding when the application starts
+if not start_port_forwarding():
+    print("Warning: Failed to start ChartMuseum port forwarding")
 
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
@@ -751,11 +821,57 @@ def charts_content():
     """Render just the charts page content for AJAX loading."""
     return render_template('charts_content.html')
 
+@app.route('/api/charts/status', methods=['GET'])
+def charts_status():
+    """Check if ChartMuseum is accessible."""
+    print("=== CHARTMUSEUM STATUS CHECK CALLED ===")
+    
+    try:
+        # Test if ChartMuseum is accessible
+        import requests
+        
+        # Try to connect to the local port forwarding
+        print("Testing connection to ChartMuseum through port forwarding...")
+        response = requests.get('http://127.0.0.1:8855/api/charts', timeout=2)
+        print(f"ChartMuseum service response: {response.status_code}")
+        
+        if response.status_code == 200:
+            print("ChartMuseum service is accessible")
+            return jsonify({
+                "status": "success", 
+                "message": "ChartMuseum is accessible",
+                "endpoints": {
+                    "health": True,
+                    "charts": True
+                }
+            })
+        else:
+            print(f"ChartMuseum service unexpected status: {response.status_code}")
+            return jsonify({
+                "status": "warning", 
+                "message": f"ChartMuseum service returned status code {response.status_code}"
+            }), 200
+            
+    except Exception as e:
+        print(f"Error accessing ChartMuseum service: {str(e)}")
+        # Try to restart port forwarding if it failed
+        if not chart_museum_process or chart_museum_process.poll() is not None:
+            print("Attempting to restart port forwarding...")
+            if start_port_forwarding():
+                return jsonify({
+                    "status": "pending",
+                    "message": "Restarting ChartMuseum connection..."
+                }), 202
+        return jsonify({
+            "status": "error",
+            "message": "Cannot connect to ChartMuseum service. Please ensure the service is running."
+        }), 500
+
 @app.route('/api/charts', methods=['GET'])
 def get_charts():
     """Get all charts from the ChartMuseum instance."""
     try:
-        # Make the request to ChartMuseum
+        # Make the request to ChartMuseum through port forwarding
         import requests
         response = requests.get('http://127.0.0.1:8855/api/charts', timeout=5)
         if response.status_code == 200:
@@ -800,69 +916,48 @@ def delete_chart_version(chart_name, version):
         app.logger.error(f"Error in delete_chart_version: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/charts/status', methods=['GET'])
-def charts_status():
-    """Check if ChartMuseum is accessible and provide port forwarding instructions if needed."""
-    print("=== CHARTMUSEUM STATUS CHECK CALLED ===")
-    
+@app.route('/api/charts/port-forward', methods=['POST'])
+def toggle_port_forwarding():
+    """Toggle port forwarding for ChartMuseum."""
     try:
-        # Test if ChartMuseum is accessible
-        import requests
-        import socket
+        data = request.get_json()
+        action = data.get('action')
         
-        # First check if port is open with a socket connection
-        print("Testing if port 8855 is open...")
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.connect(('127.0.0.1', 8855))
-            print("Port 8855 is open")
-            s.close()
-            
-            # Try the charts endpoint
-            print("Testing connection to ChartMuseum charts endpoint...")
-            response = requests.get('http://127.0.0.1:8855/api/charts', timeout=2)
-            print(f"ChartMuseum charts endpoint response: {response.status_code}")
-            
-            if response.status_code == 200:
-                print("ChartMuseum charts endpoint is accessible")
-                return jsonify({
-                    "status": "success", 
-                    "message": "ChartMuseum is accessible",
-                    "endpoints": {
-                        "health": True,
-                        "charts": True
-                    }
-                })
+        if action == 'start':
+            if not chart_museum_process or chart_museum_process.poll() is not None:
+                if start_port_forwarding():
+                    return jsonify({
+                        "status": "success",
+                        "message": "Port forwarding started successfully"
+                    })
+                else:
+                    return jsonify({
+                        "status": "error",
+                        "message": "Failed to start port forwarding"
+                    }), 500
             else:
-                print(f"ChartMuseum charts endpoint unexpected status: {response.status_code}")
                 return jsonify({
-                    "status": "warning", 
-                    "message": f"ChartMuseum charts endpoint returned status code {response.status_code}"
-                }), 200
-                
-        except Exception as e:
-            print(f"Port 8855 is not accessible: {str(e)}")
-            # Return instructions for manual port forwarding
+                    "status": "success",
+                    "message": "Port forwarding is already active"
+                })
+        elif action == 'stop':
+            stop_port_forwarding()
             return jsonify({
-                "status": "pending",
-                "message": "ChartMuseum port forwarding is not active",
-                "instructions": {
-                    "title": "Port Forwarding Required",
-                    "steps": [
-                        "1. Open a terminal and run:",
-                        "   kubectl get svc -n ez-chartmuseum-ns",
-                        "   kubectl get pod -n ez-chartmuseum-ns",
-                        "2. Start port forwarding:",
-                        "   kubectl port-forward <chartmuseum pod name> -n ez-chartmuseum-ns 8855:8080",
-                        "3. Keep this terminal window open while using the Charts page"
-                    ]
-                }
-            }), 202
+                "status": "success",
+                "message": "Port forwarding stopped successfully"
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid action"
+            }), 400
             
     except Exception as e:
-        print(f"Error checking ChartMuseum status: {str(e)}")
-        app.logger.error(f"Error in charts_status: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        app.logger.error(f"Error toggling port forwarding: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 # Add error handlers for Socket.IO
 @socketio.on_error_default

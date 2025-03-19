@@ -8,19 +8,24 @@
         <div class="card-body p-0">
             <div class="alert-container" id="alert-container"></div>
             
+            <div class="port-forwarding-control p-3 border-bottom">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 class="mb-0">Port Forwarding Status</h5>
+                        <small class="text-muted" id="port-forwarding-status">Checking status...</small>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="port-forwarding-toggle" role="switch">
+                        <label class="form-check-label" for="port-forwarding-toggle">Enable Port Forwarding</label>
+                    </div>
+                </div>
+            </div>
+            
             <div id="chart-service-status" class="alert alert-info d-none">
                 <span id="chart-service-message">Checking ChartMuseum connection...</span>
                 <div class="spinner-border spinner-border-sm ms-2" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
-            </div>
-            
-            <div id="port-forwarding-instructions" class="alert alert-warning d-none">
-                <h4 class="alert-heading">Port Forwarding Required</h4>
-                <p>To access the ChartMuseum, you need to set up port forwarding first. Follow these steps:</p>
-                <ol class="mb-0" id="port-forwarding-steps">
-                    <!-- Steps will be populated here -->
-                </ol>
             </div>
             
             <div id="loading" class="loader-container">
@@ -80,11 +85,11 @@
         console.log("ChartMuseum: Checking connection status...");
         const statusDiv = document.getElementById('chart-service-status');
         const statusMessage = document.getElementById('chart-service-message');
-        const instructionsDiv = document.getElementById('port-forwarding-instructions');
-        const stepsList = document.getElementById('port-forwarding-steps');
+        const toggleSwitch = document.getElementById('port-forwarding-toggle');
+        const statusText = document.getElementById('port-forwarding-status');
         
-        if (!statusDiv || !statusMessage) {
-            console.error("ChartMuseum: Could not find status elements in DOM");
+        if (!statusDiv || !statusMessage || !toggleSwitch || !statusText) {
+            console.error("ChartMuseum: Could not find required elements in DOM");
             return;
         }
         
@@ -104,23 +109,23 @@
                     statusDiv.classList.remove('alert-info', 'alert-danger', 'alert-warning');
                     statusDiv.classList.add('alert-success');
                     statusMessage.textContent = 'ChartMuseum connected successfully!';
-                    instructionsDiv.classList.add('d-none');
+                    toggleSwitch.checked = true;
+                    statusText.textContent = 'Port forwarding is active';
                     setTimeout(() => {
                         statusDiv.classList.add('d-none');
                     }, 3000);
                     fetchCharts();
                 } else if (data.status === 'pending') {
-                    console.log("ChartMuseum: Port forwarding required");
-                    statusDiv.classList.add('d-none');
-                    instructionsDiv.classList.remove('d-none');
-                    if (data.instructions && data.instructions.steps) {
-                        stepsList.innerHTML = data.instructions.steps.map(step => `<li>${step}</li>`).join('');
-                    }
+                    console.log("ChartMuseum: Port forwarding is starting");
+                    statusText.textContent = 'Port forwarding is starting...';
+                    toggleSwitch.checked = true;
                 } else {
                     console.error("ChartMuseum: Connection error:", data.message);
                     statusDiv.classList.remove('alert-info', 'alert-success', 'alert-warning');
                     statusDiv.classList.add('alert-danger');
                     statusMessage.textContent = 'Error: ' + data.message;
+                    toggleSwitch.checked = false;
+                    statusText.textContent = 'Port forwarding is inactive';
                     document.getElementById('loading').classList.add('d-none');
                 }
             })
@@ -129,6 +134,8 @@
                 statusDiv.classList.remove('alert-info', 'alert-success', 'alert-warning');
                 statusDiv.classList.add('alert-danger');
                 statusMessage.textContent = 'Error: ' + error.message;
+                toggleSwitch.checked = false;
+                statusText.textContent = 'Port forwarding is inactive';
                 document.getElementById('loading').classList.add('d-none');
             });
     };
@@ -171,6 +178,46 @@
     };
 
     document.addEventListener('DOMContentLoaded', function() {
+        // Add port forwarding toggle handler
+        const toggleSwitch = document.getElementById('port-forwarding-toggle');
+        if (toggleSwitch) {
+            toggleSwitch.addEventListener('change', function() {
+                const statusText = document.getElementById('port-forwarding-status');
+                const action = this.checked ? 'start' : 'stop';
+                
+                statusText.textContent = `Port forwarding is ${action}ing...`;
+                
+                fetch('/api/charts/port-forward', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ action: action })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        statusText.textContent = this.checked ? 'Port forwarding is active' : 'Port forwarding is inactive';
+                        if (this.checked) {
+                            // Check status after a short delay to ensure port forwarding is established
+                            setTimeout(checkChartMuseumStatus, 2000);
+                        } else {
+                            document.getElementById('loading').classList.add('d-none');
+                            document.getElementById('chart-container').classList.add('d-none');
+                            document.getElementById('empty-state').classList.remove('d-none');
+                        }
+                    } else {
+                        this.checked = !this.checked; // Revert the toggle
+                        statusText.textContent = 'Error: ' + data.message;
+                    }
+                })
+                .catch(error => {
+                    this.checked = !this.checked; // Revert the toggle
+                    statusText.textContent = 'Error: ' + error.message;
+                });
+            });
+        }
+        
         // Start checking ChartMuseum status
         checkChartMuseumStatus();
 
