@@ -37,100 +37,137 @@ socketio = SocketIO(
     compression_threshold=1024 # Compress messages larger than 1KB
 )
 
-# Global variable to store the port forwarding process
+# Global variables for port forwarding
 chart_museum_process = None
+port_forward_thread = None
+port_forward_status = {
+    'running': False,
+    'message': 'Not started',
+    'last_check': None
+}
+
+def port_forward_worker():
+    """Background worker to maintain port forwarding."""
+    global chart_museum_process, port_forward_status
+    import socket
+    import requests
+    from datetime import datetime
+    
+    print("\n=== PORT FORWARD WORKER STARTED ===")
+    
+    while True:
+        try:
+            # Update status
+            current_time = datetime.now()
+            port_forward_status['last_check'] = current_time
+            
+            # Check if process is running
+            if not chart_museum_process or chart_museum_process.poll() is not None:
+                print("Port forwarding process not running, attempting to start...")
+                port_forward_status.update({
+                    'running': False,
+                    'message': 'Starting port forwarding...'
+                })
+                
+                # Try to start port forwarding
+                try:
+                    # Find ChartMuseum pod
+                    pod_cmd = "kubectl get pod -n ez-chartmuseum-ns -l app=chartmuseum -o jsonpath='{.items[0].metadata.name}'"
+                    pod_result = subprocess.run(pod_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    
+                    if pod_result.returncode != 0:
+                        print("Error finding pod, trying alternative method...")
+                        pods_cmd = "kubectl get pods -n ez-chartmuseum-ns"
+                        pods_result = subprocess.run(pods_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        
+                        if pods_result.returncode != 0:
+                            raise Exception("Failed to find ChartMuseum pod")
+                            
+                        pods_output = pods_result.stdout.decode('utf-8')
+                        pod_lines = pods_output.split('\n')
+                        if len(pod_lines) < 2:
+                            raise Exception("No pods found in namespace")
+                        pod_name = pod_lines[1].split()[0]
+                    else:
+                        pod_name = pod_result.stdout.decode('utf-8').strip()
+                    
+                    print(f"Found ChartMuseum pod: {pod_name}")
+                    
+                    # Start port forwarding
+                    port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
+                    chart_museum_process = subprocess.Popen(
+                        port_forward_cmd,
+                        shell=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    
+                    # Wait for port to become available
+                    time.sleep(2)
+                    
+                except Exception as e:
+                    print(f"Error starting port forwarding: {str(e)}")
+                    port_forward_status.update({
+                        'running': False,
+                        'message': f'Failed to start: {str(e)}'
+                    })
+                    time.sleep(10)  # Wait before retrying
+                    continue
+            
+            # Check if port is accessible
+            try:
+                response = requests.get('http://127.0.0.1:8855/api/charts', timeout=2)
+                if response.status_code == 200:
+                    port_forward_status.update({
+                        'running': True,
+                        'message': 'Port forwarding active'
+                    })
+                else:
+                    port_forward_status.update({
+                        'running': False,
+                        'message': f'ChartMuseum returned status {response.status_code}'
+                    })
+            except requests.exceptions.RequestException as e:
+                print(f"Error checking ChartMuseum connection: {str(e)}")
+                port_forward_status.update({
+                    'running': False,
+                    'message': 'Connection failed'
+                })
+                # Kill the process if it's not working
+                if chart_museum_process:
+                    chart_museum_process.terminate()
+                    try:
+                        chart_museum_process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        chart_museum_process.kill()
+                    chart_museum_process = None
+            
+            # Wait before next check
+            time.sleep(5)
+            
+        except Exception as e:
+            print(f"Error in port forward worker: {str(e)}")
+            port_forward_status.update({
+                'running': False,
+                'message': f'Worker error: {str(e)}'
+            })
+            time.sleep(10)  # Wait before retrying
 
 def start_port_forwarding():
-    """Start port forwarding for ChartMuseum."""
-    global chart_museum_process
+    """Start the port forwarding background thread."""
+    global port_forward_thread
     
-    print("\n=== STARTING PORT FORWARDING ===")
-    try:
-        # First, try to find the ChartMuseum pod
-        print("Finding ChartMuseum pod...")
-        pod_cmd = "kubectl get pod -n ez-chartmuseum-ns -l app=chartmuseum -o jsonpath='{.items[0].metadata.name}'"
-        print(f"Running command: {pod_cmd}")
-        pod_result = subprocess.run(pod_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        if pod_result.returncode != 0:
-            print(f"Error finding pod: {pod_result.stderr.decode('utf-8')}")
-            print("Trying alternative method...")
-            # Fallback method to find the pod
-            pods_cmd = "kubectl get pods -n ez-chartmuseum-ns"
-            print(f"Running command: {pods_cmd}")
-            pods_result = subprocess.run(pods_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            
-            if pods_result.returncode != 0:
-                print(f"Error listing pods: {pods_result.stderr.decode('utf-8')}")
-                return False
-                
-            pods_output = pods_result.stdout.decode('utf-8')
-            print(f"Pods output:\n{pods_output}")
-            pod_lines = pods_output.split('\n')
-            if len(pod_lines) < 2:
-                print("No pods found in namespace")
-                return False
-            pod_name = pod_lines[1].split()[0]
-        else:
-            pod_name = pod_result.stdout.decode('utf-8').strip()
-        
-        print(f"Found ChartMuseum pod: {pod_name}")
-        
-        # Check if port forwarding is already running
-        if chart_museum_process and chart_museum_process.poll() is None:
-            print("Port forwarding is already running")
-            return True
-        
-        # Start port forwarding
-        port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
-        print(f"Starting port forwarding with command: {port_forward_cmd}")
-        
-        chart_museum_process = subprocess.Popen(
-            port_forward_cmd,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        
-        # Wait a moment for the port forwarding to establish
-        print("Waiting for port forwarding to establish...")
-        time.sleep(2)
-        
-        # Check if the process is still running and the port is accessible
-        if chart_museum_process.poll() is None:
-            # Try to connect to the port to verify it's working
-            import socket
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                result = sock.connect_ex(('127.0.0.1', 8855))
-                sock.close()
-                
-                if result == 0:
-                    print("Port forwarding started successfully and port is accessible")
-                    return True
-                else:
-                    print(f"Port 8855 is not accessible (result: {result})")
-                    stop_port_forwarding()
-                    return False
-            except Exception as e:
-                print(f"Error checking port: {str(e)}")
-                stop_port_forwarding()
-                return False
-        else:
-            stdout, stderr = chart_museum_process.communicate()
-            print(f"Port forwarding failed to start")
-            print(f"stdout: {stdout}")
-            print(f"stderr: {stderr}")
-            return False
-            
-    except Exception as e:
-        print(f"Error starting port forwarding: {str(e)}")
-        return False
+    if port_forward_thread and port_forward_thread.is_alive():
+        print("Port forwarding thread already running")
+        return
+    
+    print("Starting port forwarding thread")
+    port_forward_thread = threading.Thread(target=port_forward_worker, daemon=True)
+    port_forward_thread.start()
 
 def stop_port_forwarding():
-    """Stop the ChartMuseum port forwarding process."""
-    global chart_museum_process
+    """Stop the port forwarding process."""
+    global chart_museum_process, port_forward_status
     
     print("\n=== STOPPING PORT FORWARDING ===")
     if chart_museum_process:
@@ -138,25 +175,21 @@ def stop_port_forwarding():
         try:
             chart_museum_process.terminate()
             try:
-                print("Waiting for process to terminate...")
                 chart_museum_process.wait(timeout=5)
-                print("Process terminated successfully")
             except subprocess.TimeoutExpired:
-                print("Process did not terminate, forcing kill...")
                 chart_museum_process.kill()
-                print("Process killed")
             chart_museum_process = None
+            port_forward_status.update({
+                'running': False,
+                'message': 'Port forwarding stopped'
+            })
         except Exception as e:
             print(f"Error stopping port forwarding: {str(e)}")
     else:
         print("No port forwarding process to stop")
 
-# Register the cleanup function
-atexit.register(stop_port_forwarding)
-
 # Start port forwarding when the application starts
-if not start_port_forwarding():
-    print("Warning: Failed to start ChartMuseum port forwarding")
+start_port_forwarding()
 
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
@@ -878,55 +911,20 @@ def charts_status():
     """Check if ChartMuseum is accessible."""
     print("\n=== CHARTMUSEUM STATUS CHECK CALLED ===")
     
-    try:
-        # Test if ChartMuseum is accessible
-        import requests
-        
-        # Check if port forwarding is running
-        if not chart_museum_process or chart_museum_process.poll() is not None:
-            print("Port forwarding is not running, attempting to start...")
-            if start_port_forwarding():
-                print("Port forwarding started successfully")
-            else:
-                print("Failed to start port forwarding")
-                return jsonify({
-                    "status": "error",
-                    "message": "Failed to establish port forwarding"
-                }), 500
-        
-        # Try to connect to the local port forwarding
-        print("Testing connection to ChartMuseum through port forwarding...")
-        response = requests.get('http://127.0.0.1:8855/api/charts', timeout=2)
-        print(f"ChartMuseum service response: {response.status_code}")
-        
-        if response.status_code == 200:
-            print("ChartMuseum service is accessible")
-            return jsonify({
-                "status": "success", 
-                "message": "ChartMuseum is accessible",
-                "endpoints": {
-                    "health": True,
-                    "charts": True
-                }
-            })
-        else:
-            print(f"ChartMuseum service unexpected status: {response.status_code}")
-            return jsonify({
-                "status": "warning", 
-                "message": f"ChartMuseum service returned status code {response.status_code}"
-            }), 200
-            
-    except requests.exceptions.ConnectionError as e:
-        print(f"Connection error: {str(e)}")
+    # Return the current status
+    if port_forward_status['running']:
+        return jsonify({
+            "status": "success",
+            "message": "ChartMuseum is accessible",
+            "endpoints": {
+                "health": True,
+                "charts": True
+            }
+        })
+    else:
         return jsonify({
             "status": "error",
-            "message": "Cannot connect to ChartMuseum. Please check if the service is running."
-        }), 500
-    except Exception as e:
-        print(f"Error accessing ChartMuseum service: {str(e)}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
+            "message": port_forward_status['message']
         }), 500
 
 @app.route('/api/charts', methods=['GET'])

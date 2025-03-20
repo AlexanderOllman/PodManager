@@ -5,26 +5,18 @@
     </div>
 
     <div class="card">
-        <div class="card-body p-0">
+        <div class="card-body">
             <div class="alert-container" id="alert-container"></div>
             
-            <div class="port-forwarding-control p-3 border-bottom">
-                <div class="d-flex align-items-center justify-content-between">
+            <div class="port-forwarding-status mb-4">
+                <div class="d-flex align-items-center">
+                    <div class="status-indicator me-3">
+                        <span id="status-icon" class="fas fa-circle text-warning"></span>
+                    </div>
                     <div>
-                        <h5 class="mb-0">Port Forwarding Status</h5>
-                        <small class="text-muted" id="port-forwarding-status">Checking status...</small>
+                        <h5 class="mb-1">ChartMuseum Connection Status</h5>
+                        <p id="connection-status" class="mb-0 text-muted">Checking connection...</p>
                     </div>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="port-forwarding-toggle" role="switch">
-                        <label class="form-check-label" for="port-forwarding-toggle">Enable Port Forwarding</label>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="chart-service-status" class="alert alert-info d-none">
-                <span id="chart-service-message">Checking ChartMuseum connection...</span>
-                <div class="spinner-border spinner-border-sm ms-2" role="status">
-                    <span class="visually-hidden">Loading...</span>
                 </div>
             </div>
             
@@ -78,92 +70,87 @@
 </div>
 
 <script>
-    console.log("CHART CONTENT SCRIPT LOADING");
+    console.log("[ChartMuseum] Content script loading");
     
     // Make functions globally accessible
-    window.checkChartMuseumStatus = function() {
-        console.log("ChartMuseum: Checking connection status...");
-        const statusDiv = document.getElementById('chart-service-status');
-        const statusMessage = document.getElementById('chart-service-message');
-        const toggleSwitch = document.getElementById('port-forwarding-toggle');
-        const statusText = document.getElementById('port-forwarding-status');
+    window.updateConnectionStatus = function(status, message) {
+        console.log("[ChartMuseum] Updating status:", status, message);
+        const statusIcon = document.getElementById('status-icon');
+        const connectionStatus = document.getElementById('connection-status');
         
-        if (!statusDiv || !statusMessage || !toggleSwitch || !statusText) {
-            console.error("ChartMuseum: Could not find required elements in DOM");
+        if (!statusIcon || !connectionStatus) {
+            console.error("[ChartMuseum] Could not find status elements");
             return;
         }
         
-        statusDiv.classList.remove('d-none');
-        statusDiv.classList.remove('alert-success', 'alert-danger', 'alert-warning');
-        statusDiv.classList.add('alert-info');
+        // Remove all possible classes
+        statusIcon.classList.remove('text-warning', 'text-success', 'text-danger');
+        
+        switch(status) {
+            case 'checking':
+                statusIcon.classList.add('text-warning');
+                break;
+            case 'connected':
+                statusIcon.classList.add('text-success');
+                break;
+            case 'error':
+                statusIcon.classList.add('text-danger');
+                break;
+        }
+        
+        connectionStatus.textContent = message;
+    };
+
+    window.checkChartMuseumStatus = function() {
+        console.log("[ChartMuseum] Checking connection status");
+        updateConnectionStatus('checking', 'Checking connection...');
         
         fetch('/api/charts/status')
             .then(response => {
-                console.log("ChartMuseum API response status:", response.status);
+                console.log("[ChartMuseum] Status response:", response.status);
                 return response.json();
             })
             .then(data => {
-                console.log("ChartMuseum status response:", data);
+                console.log("[ChartMuseum] Status data:", data);
                 if (data.status === 'success') {
-                    console.log("ChartMuseum: Connection successful");
-                    statusDiv.classList.remove('alert-info', 'alert-danger', 'alert-warning');
-                    statusDiv.classList.add('alert-success');
-                    statusMessage.textContent = 'ChartMuseum connected successfully!';
-                    toggleSwitch.checked = true;
-                    statusText.textContent = 'Port forwarding is active';
-                    setTimeout(() => {
-                        statusDiv.classList.add('d-none');
-                    }, 3000);
+                    console.log("[ChartMuseum] Connection successful");
+                    updateConnectionStatus('connected', 'Connected to ChartMuseum');
                     fetchCharts();
-                } else if (data.status === 'pending') {
-                    console.log("ChartMuseum: Port forwarding is starting");
-                    statusText.textContent = 'Port forwarding is starting...';
-                    toggleSwitch.checked = true;
                 } else {
-                    console.error("ChartMuseum: Connection error:", data.message);
-                    statusDiv.classList.remove('alert-info', 'alert-success', 'alert-warning');
-                    statusDiv.classList.add('alert-danger');
-                    statusMessage.textContent = 'Error: ' + data.message;
-                    toggleSwitch.checked = false;
-                    statusText.textContent = 'Port forwarding is inactive';
+                    console.error("[ChartMuseum] Connection error:", data.message);
+                    updateConnectionStatus('error', data.message);
                     document.getElementById('loading').classList.add('d-none');
                 }
             })
             .catch(error => {
-                console.error("ChartMuseum: Fetch error:", error);
-                statusDiv.classList.remove('alert-info', 'alert-success', 'alert-warning');
-                statusDiv.classList.add('alert-danger');
-                statusMessage.textContent = 'Error: ' + error.message;
-                toggleSwitch.checked = false;
-                statusText.textContent = 'Port forwarding is inactive';
+                console.error("[ChartMuseum] Status check error:", error);
+                updateConnectionStatus('error', error.message);
                 document.getElementById('loading').classList.add('d-none');
             });
     };
 
-    // Make fetchCharts globally accessible as well
     window.fetchCharts = function() {
-        console.log("ChartMuseum: Fetching charts...");
+        console.log("[ChartMuseum] Fetching charts");
         document.getElementById('loading').classList.remove('d-none');
         document.getElementById('chart-container').classList.add('d-none');
         document.getElementById('empty-state').classList.add('d-none');
 
         fetch('/api/charts')
             .then(response => {
-                console.log("ChartMuseum: Charts fetch response status:", response.status);
+                console.log("[ChartMuseum] Charts fetch response:", response.status);
                 if (!response.ok) {
                     return response.json().then(data => {
-                        console.error("ChartMuseum: Fetch error:", data);
-                        throw new Error(data.error || 'Network response was not ok');
+                        throw new Error(data.error || 'Failed to fetch charts');
                     });
                 }
                 return response.json();
             })
             .then(data => {
-                console.log("ChartMuseum: Charts data received:", Object.keys(data).length, "charts");
+                console.log("[ChartMuseum] Charts data received:", data);
                 document.getElementById('loading').classList.add('d-none');
                 
                 if (Object.keys(data).length === 0) {
-                    console.log("ChartMuseum: No charts found");
+                    console.log("[ChartMuseum] No charts found");
                     document.getElementById('empty-state').classList.remove('d-none');
                 } else {
                     document.getElementById('chart-container').classList.remove('d-none');
@@ -171,67 +158,18 @@
                 }
             })
             .catch(error => {
-                console.error("ChartMuseum: Charts fetch error:", error);
+                console.error("[ChartMuseum] Charts fetch error:", error);
                 document.getElementById('loading').classList.add('d-none');
-                showAlert('Error fetching charts: ' + error.message, 'danger');
+                showAlert('Error: ' + error.message, 'danger');
             });
     };
 
     document.addEventListener('DOMContentLoaded', function() {
-        // Add port forwarding toggle handler
-        const toggleSwitch = document.getElementById('port-forwarding-toggle');
-        if (toggleSwitch) {
-            toggleSwitch.addEventListener('change', function() {
-                const statusText = document.getElementById('port-forwarding-status');
-                const action = this.checked ? 'start' : 'stop';
-                
-                statusText.textContent = `Port forwarding is ${action}ing...`;
-                
-                fetch('/api/charts/port-forward', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ action: action })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        statusText.textContent = this.checked ? 'Port forwarding is active' : 'Port forwarding is inactive';
-                        if (this.checked) {
-                            // Check status after a short delay to ensure port forwarding is established
-                            setTimeout(checkChartMuseumStatus, 2000);
-                        } else {
-                            document.getElementById('loading').classList.add('d-none');
-                            document.getElementById('chart-container').classList.add('d-none');
-                            document.getElementById('empty-state').classList.remove('d-none');
-                        }
-                    } else {
-                        this.checked = !this.checked; // Revert the toggle
-                        statusText.textContent = 'Error: ' + data.message;
-                    }
-                })
-                .catch(error => {
-                    this.checked = !this.checked; // Revert the toggle
-                    statusText.textContent = 'Error: ' + error.message;
-                });
-            });
-        }
-        
-        // Start checking ChartMuseum status
+        console.log("[ChartMuseum] DOM loaded, starting status check");
         checkChartMuseumStatus();
-
-        // Close all dropdowns when clicking outside
-        document.addEventListener('click', function(event) {
-            if (!event.target.matches('.dropdown-toggle')) {
-                const dropdowns = document.getElementsByClassName('dropdown-menu');
-                for (let i = 0; i < dropdowns.length; i++) {
-                    if (dropdowns[i].classList.contains('show')) {
-                        dropdowns[i].classList.remove('show');
-                    }
-                }
-            }
-        });
+        
+        // Set up periodic status checks
+        setInterval(checkChartMuseumStatus, 30000); // Check every 30 seconds
     });
 
     // Rest of the functions should remain accessible
@@ -416,4 +354,24 @@
             }, 150);
         }, 5000);
     };
-</script> 
+</script>
+
+<style>
+    .status-indicator {
+        font-size: 1.2rem;
+        width: 30px;
+        text-align: center;
+    }
+    
+    .text-warning {
+        color: #ffc107;
+    }
+    
+    .text-success {
+        color: #28a745;
+    }
+    
+    .text-danger {
+        color: #dc3545;
+    }
+</style> 
