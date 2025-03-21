@@ -584,7 +584,8 @@
 
 <script>
 // Chart Management Functions
-function refreshCharts() {
+function refreshCharts(retryCount = 0) {
+    const MAX_RETRIES = 2;
     const loadingContainer = document.getElementById('chartsLoading');
     const progressBar = document.getElementById('chartsProgressBar');
     const warning = document.getElementById('chartsWarning');
@@ -601,12 +602,15 @@ function refreshCharts() {
                 warning.textContent = data.error;
                 warning.style.display = 'block';
                 
-                // If the error indicates port forwarding was attempted, retry after a delay
-                if (data.error.includes('Port forwarding was attempted')) {
+                // If the error indicates port forwarding was attempted and we haven't exceeded retries
+                if (data.error.includes('Port forwarding was attempted') && retryCount < MAX_RETRIES) {
+                    warning.textContent = `Setting up port forwarding... Attempt ${retryCount + 1} of ${MAX_RETRIES + 1}`;
                     setTimeout(() => {
-                        console.log('Retrying after port forwarding attempt...');
-                        refreshCharts();
+                        console.log(`Retrying after port forwarding attempt ${retryCount + 1}...`);
+                        refreshCharts(retryCount + 1);
                     }, 3000); // Wait 3 seconds before retrying
+                } else if (retryCount >= MAX_RETRIES) {
+                    warning.textContent = 'Failed to establish connection to ChartMuseum after multiple attempts. Please check if ChartMuseum is running in the ez-chartmuseum-ns namespace.';
                 }
                 return;
             }

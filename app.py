@@ -752,10 +752,25 @@ def list_charts():
         result = subprocess.run(check_command, shell=True, capture_output=True, text=True)
         
         if result.returncode != 0 or not result.stdout:
+            # Get the pod name first
+            pod_cmd = "kubectl get pod -n ez-chartmuseum-ns -l app=chartmuseum -o jsonpath='{.items[0].metadata.name}'"
+            pod_result = subprocess.run(pod_cmd, shell=True, capture_output=True, text=True)
+            
+            if pod_result.returncode != 0:
+                return jsonify({
+                    'success': False,
+                    'error': 'ChartMuseum pod not found in ez-chartmuseum-ns namespace'
+                })
+            
+            pod_name = pod_result.stdout.strip()
+            
             # Try to set up port forwarding in a new thread
             def setup_port_forward():
-                port_forward_cmd = "kubectl port-forward svc/chartmuseum 8855:8855 -n chartmuseum"
+                port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
                 subprocess.run(port_forward_cmd, shell=True)
+            
+            # Kill any existing port forwards on 8855
+            subprocess.run("pkill -f 'port-forward.*8855'", shell=True)
             
             # Start port forwarding in background
             import threading
