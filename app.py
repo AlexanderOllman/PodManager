@@ -52,9 +52,10 @@ def port_forward_worker():
     global chart_museum_process, port_forward_status
     import socket
     import requests
-    import psutil
-    from datetime import datetime
     import subprocess
+    from datetime import datetime
+    import time
+    import signal
     
     print("\n=== PORT FORWARD WORKER STARTED ===")
     app.logger.info("Port forward worker started")
@@ -62,43 +63,70 @@ def port_forward_worker():
     def kill_process_on_port(port):
         """Kill any process using the specified port."""
         try:
-            for proc in psutil.process_iter(['pid', 'name', 'connections']):
-                try:
-                    connections = proc.connections()
-                    for conn in connections:
-                        if conn.laddr.port == port:
-                            print(f"Found process using port {port}: {proc.pid}")
-                            psutil.Process(proc.pid).terminate()
-                            return True
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
+            # Use lsof to find process using the port
+            cmd = f"lsof -i :{port} -t"
+            result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode == 0:
+                pid = result.stdout.decode('utf-8').strip()
+                if pid:
+                    print(f"Found process {pid} using port {port}, killing it...")
+                    subprocess.run(f"kill -9 {pid}", shell=True)
+                    time.sleep(1)  # Wait for process to be killed
+                    return True
         except Exception as e:
-            print(f"Error checking processes on port: {str(e)}")
+            print(f"Error killing process on port: {str(e)}")
         return False
 
     def is_port_in_use(port):
         """Check if a port is in use."""
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            return s.connect_ex(('127.0.0.1', port)) == 0
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1)
+                result = s.connect_ex(('127.0.0.1', port))
+                return result == 0
+        except Exception as e:
+            print(f"Error checking port: {str(e)}")
+            return False
     
     while True:
         try:
             current_time = datetime.now()
             port_forward_status['last_check'] = current_time
             
-            # Check if process is running
-            if not chart_museum_process or chart_museum_process.poll() is not None:
-                print("Port forwarding process not running, checking port status...")
-                app.logger.info("Port forwarding process not running, checking port status")
+            # Check if process is running and port is accessible
+            port_accessible = False
+            try:
+                response = requests.get('http://127.0.0.1:8855/api/charts', timeout=2)
+                if response.status_code == 200:
+                    print("ChartMuseum connection successful")
+                    app.logger.info("ChartMuseum connection successful")
+                    port_forward_status.update({
+                        'running': True,
+                        'message': 'Port forwarding active'
+                    })
+                    port_accessible = True
+            except requests.exceptions.RequestException:
+                port_accessible = False
+            
+            if not port_accessible:
+                print("Port forwarding not working, attempting to restart...")
+                app.logger.info("Port forwarding not working, attempting to restart")
                 
-                # Check if port is in use
+                # Kill any existing port forward
+                if chart_museum_process:
+                    print("Terminating existing port forward process...")
+                    chart_museum_process.terminate()
+                    try:
+                        chart_museum_process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        chart_museum_process.kill()
+                    chart_museum_process = None
+                
+                # Check if port is in use and kill it
                 if is_port_in_use(8855):
                     print("Port 8855 is in use, attempting to kill existing process...")
                     app.logger.warning("Port 8855 is in use, attempting to kill existing process")
-                    if kill_process_on_port(8855):
-                        print("Successfully killed process using port 8855")
-                        app.logger.info("Successfully killed process using port 8855")
-                        time.sleep(2)  # Wait for port to be released
+                    kill_process_on_port(8855)
                 
                 port_forward_status.update({
                     'running': False,
@@ -156,46 +184,6 @@ def port_forward_worker():
                         'running': False,
                         'message': error_msg
                     })
-                    time.sleep(10)  # Wait before retrying
-                    continue
-            
-            # Check if port is accessible
-            try:
-                print("Checking ChartMuseum connection...")
-                response = requests.get('http://127.0.0.1:8855/api/charts', timeout=2)
-                if response.status_code == 200:
-                    print("ChartMuseum connection successful")
-                    app.logger.info("ChartMuseum connection successful")
-                    port_forward_status.update({
-                        'running': True,
-                        'message': 'Port forwarding active'
-                    })
-                else:
-                    error_msg = f"ChartMuseum returned status {response.status_code}"
-                    print(error_msg)
-                    app.logger.warning(error_msg)
-                    port_forward_status.update({
-                        'running': False,
-                        'message': error_msg
-                    })
-            except requests.exceptions.RequestException as e:
-                error_msg = f"Error checking ChartMuseum connection: {str(e)}"
-                print(error_msg)
-                app.logger.error(error_msg)
-                port_forward_status.update({
-                    'running': False,
-                    'message': 'Connection failed'
-                })
-                # Kill the process if it's not working
-                if chart_museum_process:
-                    print("Terminating non-responsive port forwarding process")
-                    app.logger.info("Terminating non-responsive port forwarding process")
-                    chart_museum_process.terminate()
-                    try:
-                        chart_museum_process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        chart_museum_process.kill()
-                    chart_museum_process = None
             
             # Wait before next check
             time.sleep(5)

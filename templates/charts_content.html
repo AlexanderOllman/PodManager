@@ -77,6 +77,9 @@
         console.log("[ChartMuseum] Updating status:", status, message);
         const statusIcon = document.getElementById('status-icon');
         const connectionStatus = document.getElementById('connection-status');
+        const loading = document.getElementById('loading');
+        const chartContainer = document.getElementById('chart-container');
+        const emptyState = document.getElementById('empty-state');
         
         if (!statusIcon || !connectionStatus) {
             console.error("[ChartMuseum] Could not find status elements");
@@ -86,15 +89,25 @@
         // Remove all possible classes
         statusIcon.classList.remove('text-warning', 'text-success', 'text-danger');
         
+        // Update status icon and message
         switch(status) {
             case 'checking':
                 statusIcon.classList.add('text-warning');
+                loading.classList.remove('d-none');
+                chartContainer.classList.add('d-none');
+                emptyState.classList.add('d-none');
                 break;
             case 'connected':
                 statusIcon.classList.add('text-success');
+                loading.classList.add('d-none');
                 break;
             case 'error':
                 statusIcon.classList.add('text-danger');
+                loading.classList.add('d-none');
+                chartContainer.classList.add('d-none');
+                emptyState.classList.remove('d-none');
+                // Update empty state message for connection error
+                document.querySelector('#empty-state p').textContent = message;
                 break;
         }
         
@@ -108,6 +121,9 @@
         fetch('/api/charts/status')
             .then(response => {
                 console.log("[ChartMuseum] Status response:", response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 return response.json();
             })
             .then(data => {
@@ -118,22 +134,24 @@
                     fetchCharts();
                 } else {
                     console.error("[ChartMuseum] Connection error:", data.message);
-                    updateConnectionStatus('error', data.message);
-                    document.getElementById('loading').classList.add('d-none');
+                    updateConnectionStatus('error', data.message || 'Failed to connect to ChartMuseum');
                 }
             })
             .catch(error => {
                 console.error("[ChartMuseum] Status check error:", error);
-                updateConnectionStatus('error', error.message);
-                document.getElementById('loading').classList.add('d-none');
+                updateConnectionStatus('error', 'Failed to connect to ChartMuseum: ' + error.message);
             });
     };
 
     window.fetchCharts = function() {
         console.log("[ChartMuseum] Fetching charts");
-        document.getElementById('loading').classList.remove('d-none');
-        document.getElementById('chart-container').classList.add('d-none');
-        document.getElementById('empty-state').classList.add('d-none');
+        const loading = document.getElementById('loading');
+        const chartContainer = document.getElementById('chart-container');
+        const emptyState = document.getElementById('empty-state');
+        
+        loading.classList.remove('d-none');
+        chartContainer.classList.add('d-none');
+        emptyState.classList.add('d-none');
 
         fetch('/api/charts')
             .then(response => {
@@ -147,19 +165,22 @@
             })
             .then(data => {
                 console.log("[ChartMuseum] Charts data received:", data);
-                document.getElementById('loading').classList.add('d-none');
+                loading.classList.add('d-none');
                 
-                if (Object.keys(data).length === 0) {
+                if (!data || Object.keys(data).length === 0) {
                     console.log("[ChartMuseum] No charts found");
-                    document.getElementById('empty-state').classList.remove('d-none');
+                    emptyState.classList.remove('d-none');
+                    document.querySelector('#empty-state p').textContent = 'There are no Helm charts in the repository';
                 } else {
-                    document.getElementById('chart-container').classList.remove('d-none');
+                    chartContainer.classList.remove('d-none');
                     populateChartList(data);
                 }
             })
             .catch(error => {
                 console.error("[ChartMuseum] Charts fetch error:", error);
-                document.getElementById('loading').classList.add('d-none');
+                loading.classList.add('d-none');
+                emptyState.classList.remove('d-none');
+                document.querySelector('#empty-state p').textContent = 'Error: ' + error.message;
                 showAlert('Error: ' + error.message, 'danger');
             });
     };
