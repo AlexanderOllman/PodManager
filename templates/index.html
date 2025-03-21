@@ -599,19 +599,30 @@ function refreshCharts(retryCount = 0) {
         .then(response => response.json())
         .then(data => {
             if (!data.success) {
-                warning.textContent = data.error;
-                warning.style.display = 'block';
-                
-                // If the error indicates port forwarding was attempted and we haven't exceeded retries
                 if (data.error.includes('Port forwarding was attempted') && retryCount < MAX_RETRIES) {
-                    warning.textContent = `Setting up port forwarding... Attempt ${retryCount + 1} of ${MAX_RETRIES + 1}`;
-                    setTimeout(() => {
+                    // Show port forwarding attempt message
+                    Swal.fire({
+                        title: 'Setting up connection...',
+                        html: `Attempting to connect to ChartMuseum (Attempt ${retryCount + 1} of ${MAX_RETRIES + 1})`,
+                        timer: 3000,
+                        timerProgressBar: true,
+                        didOpen: () => {
+                            Swal.showLoading();
+                        }
+                    }).then(() => {
                         console.log(`Retrying after port forwarding attempt ${retryCount + 1}...`);
                         refreshCharts(retryCount + 1);
-                    }, 3000); // Wait 3 seconds before retrying
+                    });
                 } else if (retryCount >= MAX_RETRIES) {
-                    warning.textContent = 'Failed to establish connection to ChartMuseum after multiple attempts. Please check if ChartMuseum is running in the ez-chartmuseum-ns namespace.';
+                    // Show final error message
+                    Swal.fire({
+                        title: 'Connection Failed',
+                        html: 'Failed to establish connection to ChartMuseum after multiple attempts.<br>Please check if ChartMuseum is running in the ez-chartmuseum-ns namespace.',
+                        icon: 'error'
+                    });
                 }
+                warning.textContent = data.error;
+                warning.style.display = 'block';
                 return;
             }
             
@@ -659,6 +670,11 @@ function refreshCharts(retryCount = 0) {
         })
         .catch(error => {
             console.error('Error fetching charts:', error);
+            Swal.fire({
+                title: 'Error',
+                html: 'Failed to fetch charts. Please try again.',
+                icon: 'error'
+            });
             warning.textContent = 'Failed to fetch charts. Please try again.';
             warning.style.display = 'block';
         })
@@ -670,32 +686,76 @@ function refreshCharts(retryCount = 0) {
 }
 
 function deleteChart(chartName, version) {
-    if (!confirm(`Are you sure you want to delete ${chartName} version ${version}?`)) {
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('chart_name', chartName);
-    if (version) {
-        formData.append('version', version);
-    }
-    
-    fetch('/api/charts/delete', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showActionModal('Success', data.message);
-            refreshCharts();
-        } else {
-            showActionModal('Error', data.error);
+    // Show confirmation dialog
+    Swal.fire({
+        title: 'Delete Chart?',
+        html: version ? 
+            `Are you sure you want to delete version <strong>${version}</strong> of chart <strong>${chartName}</strong>?` :
+            `Are you sure you want to delete all versions of chart <strong>${chartName}</strong>?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel',
+        reverseButtons: true
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Show loading state
+            Swal.fire({
+                title: 'Deleting...',
+                html: 'Please wait while the chart is being deleted.',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            // Prepare form data
+            const formData = new FormData();
+            formData.append('chart_name', chartName);
+            if (version) {
+                formData.append('version', version);
+            }
+
+            // Send delete request
+            fetch('/api/charts/delete', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Show success message
+                    Swal.fire({
+                        title: 'Deleted!',
+                        html: data.message,
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    }).then(() => {
+                        // Refresh the charts list
+                        refreshCharts();
+                    });
+                } else {
+                    // Show error message
+                    Swal.fire({
+                        title: 'Error!',
+                        html: data.error || 'Failed to delete chart',
+                        icon: 'error'
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting chart:', error);
+                Swal.fire({
+                    title: 'Error!',
+                    html: 'Failed to delete chart. Please try again.',
+                    icon: 'error'
+                });
+            });
         }
-    })
-    .catch(error => {
-        console.error('Error deleting chart:', error);
-        showActionModal('Error', 'Failed to delete chart. Please try again.');
     });
 }
 
