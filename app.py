@@ -752,8 +752,8 @@ def list_charts():
         result = subprocess.run(check_command, shell=True, capture_output=True, text=True)
         
         if result.returncode != 0 or not result.stdout:
-            # Get the pod name first
-            pod_cmd = "kubectl get pod -n ez-chartmuseum-ns -l app=chartmuseum -o jsonpath='{.items[0].metadata.name}'"
+            # Get the pod name first - using a more specific command to get the pod name
+            pod_cmd = "kubectl get pods -n ez-chartmuseum-ns -o jsonpath='{.items[0].metadata.name}'"
             pod_result = subprocess.run(pod_cmd, shell=True, capture_output=True, text=True)
             
             if pod_result.returncode != 0:
