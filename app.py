@@ -11,7 +11,6 @@ import time
 import signal
 import atexit
 import psutil
-import requests
 
 # We'll check for git availability at runtime rather than import time
 git_available = False
@@ -41,11 +40,6 @@ socketio = SocketIO(
 
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
-
-# Global variables for port forwarding
-port_forward_process = None
-port_forward_thread = None
-port_forward_active = False
 
 def run_kubectl_command(command):
     try:
@@ -749,37 +743,6 @@ def api_cli_exec():
         app.logger.error(f"Error in api_cli_exec: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/charts')
-def charts():
-    return render_template('charts.html')
-
-@app.route('/api/charts/port-forward', methods=['POST'])
-def toggle_port_forward():
-    action = request.json.get('action')
-    if action == 'start':
-        success, message = start_port_forward()
-    elif action == 'stop':
-        success, message = stop_port_forward()
-    else:
-        return jsonify({'success': False, 'message': 'Invalid action'})
-    
-    return jsonify({'success': success, 'message': message})
-
-@app.route('/api/charts/status', methods=['GET'])
-def get_port_forward_status():
-    return jsonify({'active': port_forward_active})
-
-@app.route('/api/charts/list', methods=['GET'])
-def list_charts():
-    if not port_forward_active:
-        return jsonify({'success': False, 'message': 'Port forwarding not active'})
-    
-    try:
-        response = requests.get('http://127.0.0.1:8855/api/charts')
-        return jsonify({'success': True, 'charts': response.json()})
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Failed to fetch charts: {str(e)}'})
-
 # Add error handlers for Socket.IO
 @socketio.on_error_default
 def default_error_handler(e):
@@ -795,39 +758,6 @@ def handle_connect_error(error):
 def handle_disconnect():
     print('Client disconnected')
     return None
-
-def get_chartmuseum_pod():
-    try:
-        result = run_kubectl_command("kubectl get pod -n ez-chartmuseum-ns -l app=chartmuseum -o jsonpath='{.items[0].metadata.name}'")
-        return result.strip()
-    except Exception as e:
-        return None
-
-def start_port_forward():
-    global port_forward_process, port_forward_active
-    pod_name = get_chartmuseum_pod()
-    if not pod_name:
-        return False, "Could not find ChartMuseum pod"
-    
-    try:
-        port_forward_process = subprocess.Popen(
-            ["kubectl", "port-forward", pod_name, "-n", "ez-chartmuseum-ns", "8855:8080"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-        port_forward_active = True
-        return True, "Port forwarding started successfully"
-    except Exception as e:
-        return False, f"Failed to start port forwarding: {str(e)}"
-
-def stop_port_forward():
-    global port_forward_process, port_forward_active
-    if port_forward_process:
-        port_forward_process.terminate()
-        port_forward_process = None
-        port_forward_active = False
-        return True, "Port forwarding stopped successfully"
-    return False, "No port forwarding process running"
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
