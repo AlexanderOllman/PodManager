@@ -744,63 +744,67 @@ def api_cli_exec():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/charts/list', methods=['GET'])
-def api_charts_list():
-    """Get list of all charts from ChartMuseum."""
+def list_charts():
+    """Get list of all charts from ChartMuseum"""
     try:
-        command = "curl -s 127.0.0.1:8855/api/charts"
-        output = run_kubectl_command(command)
+        # First check if ChartMuseum is accessible
+        check_command = "curl -s http://127.0.0.1:8855/api/charts"
+        result = subprocess.run(check_command, shell=True, capture_output=True, text=True)
         
-        if "Error:" in output:
+        if result.returncode != 0 or not result.stdout:
             return jsonify({
-                "error": "Unable to connect to ChartMuseum. Please ensure the port-forward is running.",
-                "details": output
-            }), 503
+                'success': False,
+                'error': 'ChartMuseum is not accessible. Please ensure the port-forward is running.'
+            })
             
-        try:
-            charts_data = json.loads(output)
-            return jsonify(charts_data)
-        except json.JSONDecodeError:
-            return jsonify({"error": "Invalid JSON response from ChartMuseum"}), 500
-            
+        charts_data = json.loads(result.stdout)
+        return jsonify({
+            'success': True,
+            'charts': charts_data
+        })
     except Exception as e:
-        app.logger.error(f"Error in api_charts_list: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/api/charts/delete', methods=['POST'])
-def api_charts_delete():
-    """Delete a chart or specific version from ChartMuseum."""
+def delete_chart():
+    """Delete a chart or specific version from ChartMuseum"""
     try:
-        data = request.get_json() if request.is_json else request.form
-        chart_name = data.get('chart_name')
-        version = data.get('version')
+        chart_name = request.form.get('chart_name')
+        version = request.form.get('version')
         
         if not chart_name:
-            return jsonify({"error": "Chart name is required"}), 400
+            return jsonify({
+                'success': False,
+                'error': 'Chart name is required'
+            })
             
         if version:
             # Delete specific version
-            command = f"curl -X DELETE 127.0.0.1:8855/api/charts/{chart_name}/{version}"
+            command = f"curl -X DELETE http://127.0.0.1:8855/api/charts/{chart_name}/{version}"
         else:
             # Delete entire chart
-            command = f"curl -X DELETE 127.0.0.1:8855/api/charts/{chart_name}"
+            command = f"curl -X DELETE http://127.0.0.1:8855/api/charts/{chart_name}"
             
-        output = run_kubectl_command(command)
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
         
-        if "Error:" in output:
+        if result.returncode != 0:
             return jsonify({
-                "error": "Unable to connect to ChartMuseum. Please ensure the port-forward is running.",
-                "details": output
-            }), 503
+                'success': False,
+                'error': f'Failed to delete chart: {result.stderr}'
+            })
             
-        return jsonify({"message": "Chart deleted successfully", "output": output})
-        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully deleted chart {chart_name}'
+        })
     except Exception as e:
-        app.logger.error(f"Error in api_charts_delete: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/charts')
-def charts():
-    return render_template('charts.html')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 # Add error handlers for Socket.IO
 @socketio.on_error_default

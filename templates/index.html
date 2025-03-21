@@ -534,10 +534,167 @@
         
         <div id="updateStatus" class="mt-3"></div>
     </div>
+
+    <div class="tab-pane fade" id="charts" role="tabpanel" aria-labelledby="charts-tab">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h1 class="h2">Helm Charts</h1>
+            <div class="btn-toolbar mb-2 mb-md-0">
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshCharts()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+        </div>
+
+        <div class="loading-container" id="chartsLoading">
+            <div class="progress-container">
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="chartsProgressBar"></div>
+                </div>
+                <div class="loading-text">Loading Charts...</div>
+            </div>
+        </div>
+
+        <div class="alert alert-warning" id="chartsWarning" style="display: none;">
+            <i class="fas fa-exclamation-triangle"></i> ChartMuseum is not accessible. Please ensure the port-forward is running.
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover table-striped table-sm border-bottom shadow-sm" id="chartsTable">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="border-0">Chart Name</th>
+                        <th class="border-0">Version</th>
+                        <th class="border-0">Description</th>
+                        <th class="border-0">Created</th>
+                        <th class="border-0">App Version</th>
+                        <th class="border-0 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Table content will be dynamically populated -->
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block page_scripts %}
 
 <script src="{{ url_for('static', filename='js/index.js') }}"></script>
+
+// Chart Management Functions
+function refreshCharts() {
+    const loadingContainer = document.getElementById('chartsLoading');
+    const progressBar = document.getElementById('chartsProgressBar');
+    const warning = document.getElementById('chartsWarning');
+    const table = document.getElementById('chartsTable').getElementsByTagName('tbody')[0];
+    
+    loadingContainer.style.display = 'block';
+    warning.style.display = 'none';
+    progressBar.style.width = '0%';
+    
+    fetch('/api/charts/list')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                warning.textContent = data.error;
+                warning.style.display = 'block';
+                return;
+            }
+            
+            table.innerHTML = '';
+            
+            // Process each chart
+            Object.entries(data.charts).forEach(([chartName, versions]) => {
+                versions.forEach(version => {
+                    const row = table.insertRow();
+                    
+                    // Chart Name
+                    const nameCell = row.insertCell();
+                    nameCell.textContent = chartName;
+                    
+                    // Version
+                    const versionCell = row.insertCell();
+                    versionCell.textContent = version.version;
+                    
+                    // Description
+                    const descCell = row.insertCell();
+                    descCell.textContent = version.description || 'N/A';
+                    
+                    // Created
+                    const createdCell = row.insertCell();
+                    createdCell.textContent = new Date(version.created).toLocaleString();
+                    
+                    // App Version
+                    const appVersionCell = row.insertCell();
+                    appVersionCell.textContent = version.appVersion || 'N/A';
+                    
+                    // Actions
+                    const actionsCell = row.insertCell();
+                    actionsCell.className = 'text-center';
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'btn btn-sm btn-danger';
+                    deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                    deleteBtn.onclick = () => deleteChart(chartName, version.version);
+                    
+                    actionsCell.appendChild(deleteBtn);
+                });
+            });
+            
+            progressBar.style.width = '100%';
+        })
+        .catch(error => {
+            console.error('Error fetching charts:', error);
+            warning.textContent = 'Failed to fetch charts. Please try again.';
+            warning.style.display = 'block';
+        })
+        .finally(() => {
+            setTimeout(() => {
+                loadingContainer.style.display = 'none';
+            }, 500);
+        });
+}
+
+function deleteChart(chartName, version) {
+    if (!confirm(`Are you sure you want to delete ${chartName} version ${version}?`)) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('chart_name', chartName);
+    if (version) {
+        formData.append('version', version);
+    }
+    
+    fetch('/api/charts/delete', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showActionModal('Success', data.message);
+            refreshCharts();
+        } else {
+            showActionModal('Error', data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error deleting chart:', error);
+        showActionModal('Error', 'Failed to delete chart. Please try again.');
+    });
+}
+
+// Initialize charts when the tab is shown
+document.addEventListener('DOMContentLoaded', function() {
+    const chartsTab = document.querySelector('a[data-bs-target="#charts"]');
+    if (chartsTab) {
+        chartsTab.addEventListener('shown.bs.tab', function (e) {
+            refreshCharts();
+        });
+    }
+});
+
 {% endblock %}
