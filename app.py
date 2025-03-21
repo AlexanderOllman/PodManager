@@ -743,6 +743,109 @@ def api_cli_exec():
         app.logger.error(f"Error in api_cli_exec: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/charts/list', methods=['GET'])
+def api_charts_list():
+    """Get list of all charts from ChartMuseum."""
+    try:
+        # First check if ChartMuseum service is running
+        command = "kubectl get svc -n ez-chartmuseum-ns"
+        output = run_kubectl_command(command)
+        
+        if "No resources found" in output:
+            return jsonify({"error": "ChartMuseum service not found"}), 404
+            
+        # Get the ChartMuseum pod name
+        command = "kubectl get pod -n ez-chartmuseum-ns"
+        output = run_kubectl_command(command)
+        
+        # Extract pod name from output
+        pod_name = None
+        for line in output.split('\n'):
+            if 'chartmuseum' in line.lower():
+                pod_name = line.split()[0]
+                break
+                
+        if not pod_name:
+            return jsonify({"error": "ChartMuseum pod not found"}), 404
+            
+        # Set up port forwarding
+        port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
+        port_forward_process = subprocess.Popen(port_forward_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # Wait for port forwarding to be ready
+        time.sleep(2)
+        
+        try:
+            # Get charts list
+            charts_cmd = "curl 127.0.0.1:8855/api/charts"
+            charts_output = run_kubectl_command(charts_cmd)
+            
+            # Parse and return the charts data
+            charts_data = json.loads(charts_output)
+            return jsonify(charts_data)
+            
+        finally:
+            # Clean up port forwarding
+            port_forward_process.terminate()
+            
+    except Exception as e:
+        app.logger.error(f"Error in api_charts_list: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/charts/delete', methods=['POST'])
+def api_charts_delete():
+    """Delete a chart or specific version from ChartMuseum."""
+    try:
+        data = request.get_json() if request.is_json else request.form
+        chart_name = data.get('chart_name')
+        version = data.get('version')
+        
+        if not chart_name:
+            return jsonify({"error": "Chart name is required"}), 400
+            
+        # Get the ChartMuseum pod name
+        command = "kubectl get pod -n ez-chartmuseum-ns"
+        output = run_kubectl_command(command)
+        
+        # Extract pod name from output
+        pod_name = None
+        for line in output.split('\n'):
+            if 'chartmuseum' in line.lower():
+                pod_name = line.split()[0]
+                break
+                
+        if not pod_name:
+            return jsonify({"error": "ChartMuseum pod not found"}), 404
+            
+        # Set up port forwarding
+        port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
+        port_forward_process = subprocess.Popen(port_forward_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # Wait for port forwarding to be ready
+        time.sleep(2)
+        
+        try:
+            # Construct delete command based on whether version is specified
+            if version:
+                delete_cmd = f"curl -X DELETE 127.0.0.1:8855/api/charts/{chart_name}/{version}"
+            else:
+                delete_cmd = f"curl -X DELETE 127.0.0.1:8855/api/charts/{chart_name}"
+                
+            delete_output = run_kubectl_command(delete_cmd)
+            return jsonify({"output": delete_output})
+            
+        finally:
+            # Clean up port forwarding
+            port_forward_process.terminate()
+            
+    except Exception as e:
+        app.logger.error(f"Error in api_charts_delete: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/charts')
+def charts():
+    return render_template('charts.html')
+
 # Add error handlers for Socket.IO
 @socketio.on_error_default
 def default_error_handler(e):
