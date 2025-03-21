@@ -2,21 +2,12 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM content loaded, initializing application...');
     
-    // Check if we're on the Charts page based on URL
-    if (window.location.pathname.includes('/charts')) {
-        console.log('Charts page URL detected, setting isChartsPage flag');
-        window.isChartsPage = true;
-        return; // Skip further initialization
-    } else {
-        window.isChartsPage = false;
-    }
-    
     // Since scripts are loaded in head, we can initialize right away
     initializeApp();
     
     // Add page visibility change detection for better navigation handling
     document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible' && !window.isChartsPage) {
+        if (document.visibilityState === 'visible') {
             console.log('Page is now visible, checking resource loading state...');
             // Check if any tab content is visible but not loaded
             try {
@@ -80,12 +71,6 @@ document.addEventListener('DOMContentLoaded', function() {
 // Main application initialization
 function initializeApp() {
     console.log('Initializing application...');
-    
-    // Check if we're on the Charts page
-    if (window.isChartsPage === true) {
-        console.log('Charts page detected, skipping home page initialization');
-        return;
-    }
     
     // Initialize components that don't require special dependencies
     fetchResourcesForAllTabs();
@@ -356,12 +341,6 @@ function fetchResourcesForAllTabs() {
     }
     
     console.log('Setting up resource tabs and loading initial data...');
-    
-    // Skip this function on the Charts page
-    if (window.isChartsPage === true) {
-        console.log('Charts page detected, skipping resource tab initialization');
-        return;
-    }
     
     // Define supported resource types
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];

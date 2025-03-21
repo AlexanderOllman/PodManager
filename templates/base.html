@@ -65,11 +65,6 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="javascript:void(0);" onclick="navigateToCharts()">
-                                <i class="fas fa-ship"></i> <span class="menu-text">Charts</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
                             <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#settings" onclick="event.preventDefault(); navigateToTab('settings'); return false;">
                                 <i class="fas fa-cog"></i> <span class="menu-text">Settings</span>
                             </a>
@@ -224,7 +219,7 @@
             
             // Set up sidebar navigation
             document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-                if (link.getAttribute('href') === '/' && !link.getAttribute('onclick').includes('navigateToCharts')) {
+                if (link.getAttribute('href') === '/') {
                     link.addEventListener('click', function(e) {
                         e.preventDefault();
                         const tabId = this.getAttribute('onclick').match(/navigateToTab\('([^']+)'\)/)[1];
@@ -296,86 +291,13 @@
                 });
         }
         
-        function navigateToCharts() {
-            console.log("Navigation: Navigating to Charts page...");
-            
-            // Store the current page state in history before navigating away
-            const currentState = document.getElementById('main-content').innerHTML;
-            window.history.pushState({content: currentState, page: 'current'}, '', '/');
-            
-            // Set a custom flag to prevent fetchResourcesForAllTabs from running
-            window.isChartsPage = true;
-            
-            // Set active state for Charts nav item before fetching
-            document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-                link.classList.remove('active');
-            });
-            const chartsLink = document.querySelector('.sidebar .nav-link[onclick*="navigateToCharts"]');
-            if (chartsLink) {
-                chartsLink.classList.add('active');
-            }
-            
-            // Show loading spinner while fetching
-            document.getElementById('main-content').innerHTML = `
-                <div class="d-flex justify-content-center mt-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading charts content...</span>
-                    </div>
-                </div>
-            `;
-            
-            // Load chart content directly from the content endpoint
-            fetch('/charts_content')
-                .then(response => {
-                    console.log("Navigation: Charts content fetched, status:", response.status);
-                    return response.text();
-                })
-                .then(html => {
-                    console.log("Navigation: Processing charts content...");
-                    
-                    // Update the page content
-                    document.getElementById('main-content').innerHTML = html;
-                    
-                    // Execute any scripts in the content
-                    executeScripts(html);
-                    
-                    // Update history
-                    window.history.pushState({content: html, page: 'charts'}, '', '/charts');
-                    
-                    console.log("Navigation: Charts content loaded and scripts executed");
-                    
-                    // Check ChartMuseum status and fetch charts
-                    console.log("Navigation: Checking ChartMuseum status...");
-                    if (typeof window.checkChartMuseumStatus === 'function') {
-                        window.checkChartMuseumStatus();
-                    }
-                })
-                .catch(error => {
-                    console.error('Navigation: Error loading charts content:', error);
-                    document.getElementById('main-content').innerHTML = `
-                        <div class="alert alert-danger m-3">
-                            Error loading charts content: ${error.message}
-                        </div>
-                    `;
-                });
-        }
-        
         window.addEventListener('popstate', function(event) {
             if (event.state) {
                 document.getElementById('main-content').innerHTML = event.state.content;
                 if (event.state.page === 'home' && typeof initializeHomePage === 'function') {
-                    window.isChartsPage = false;
                     initializeHomePage();
                 } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
-                    window.isChartsPage = false;
                     initializeExplorePage();
-                } else if (event.state.page === 'charts') {
-                    window.isChartsPage = true;
-                    // Trigger the DOM content loaded event to initialize charts
-                    const event = new Event('DOMContentLoaded');
-                    document.dispatchEvent(event);
-                } else {
-                    window.isChartsPage = false;
                 }
             }
         });
@@ -590,33 +512,6 @@
                 }
             });
             
-            // Special handling for charts content - manually initialize if we're on the charts page
-            if (window.location.pathname.includes('/charts')) {
-                console.log("Navigation: Manually initializing chart functionality");
-                
-                // Try executing chart initialization with delay to ensure DOM is ready
-                setTimeout(() => {
-                    console.log("Navigation: Delayed initialization of chart functionality");
-                    if (typeof window.checkChartMuseumStatus === 'function') {
-                        console.log("Navigation: Found checkChartMuseumStatus function, calling it");
-                        window.checkChartMuseumStatus();
-                    } else {
-                        console.log("Navigation: checkChartMuseumStatus function not found, trying direct call to API");
-                        // Try making the API call directly
-                        fetch('/api/charts/status')
-                            .then(response => {
-                                console.log("Direct API call status:", response.status);
-                                return response.json();
-                            })
-                            .then(data => {
-                                console.log("Direct API response:", data);
-                            })
-                            .catch(err => {
-                                console.error("Direct API call error:", err);
-                            });
-                    }
-                }, 500);
-            }
             
             return tempDiv.innerHTML;
         }
