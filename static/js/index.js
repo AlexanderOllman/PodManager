@@ -574,257 +574,176 @@ function filterResources(resourceType, searchTerm) {
 // Resource data fetching (for individual tab clicks or refresh button)
 function fetchResourceData(resourceType, namespace) {
     console.log(`Fetching ${resourceType} data...`);
-    
-    // Track start time for performance monitoring
     const startTime = performance.now();
     
-    // If namespace wasn't provided, get it from the selector
-    if (!namespace) {
-        const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
-        if (namespaceSelector) {
-            namespace = namespaceSelector.value;
-        } else {
-            namespace = 'all'; // Default to all namespaces
-        }
-    }
-    
-    console.log(`Using namespace: ${namespace}`);
-    
-    // Save the current search term before refreshing
-    const searchInput = document.getElementById(`${resourceType}Search`);
-    const searchTerm = searchInput ? searchInput.value : '';
-    
+    // Show loading indicator
     showLoading(resourceType);
     
-    // Update progress text based on resource type
-    const loadingText = document.querySelector(`#${resourceType}Loading .loading-text`);
-    if (loadingText) {
-        loadingText.textContent = `Loading ${capitalizeFirstLetter(resourceType)}...`;
+    // Clear existing table content
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (tableBody) {
+        tableBody.innerHTML = '';
     }
     
-    // Update progress bar to indicate request is sent
-    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
-    if (progressBar) {
-        progressBar.style.width = '20%';
+    // Prepare form data
+    const formData = new FormData();
+    formData.append('resource_type', resourceType);
+    if (namespace && namespace !== 'all') {
+        formData.append('namespace', namespace);
     }
     
-    // Update loading info text
-    const loadingInfo = document.getElementById(`${resourceType}LoadingInfo`);
-    if (loadingInfo) {
-        loadingInfo.textContent = `Sending request to server for ${resourceType}${namespace !== 'all' ? ` in ${namespace} namespace` : ' in all namespaces'}...`;
-    }
-    
-    // Log the API request
-    console.log(`API Request: POST /get_resources with resource_type=${resourceType}&namespace=${namespace}`);
+    // Track when we start processing the response
+    let processingStartTime;
     
     fetch('/get_resources', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `resource_type=${resourceType}&namespace=${namespace}`
+        body: formData
     })
     .then(response => {
-        // Update progress bar to indicate response received
-        if (progressBar) {
-            progressBar.style.width = '70%';
-        }
-        
-        // Update loading info text
-        if (loadingInfo) {
-            loadingInfo.textContent = `Server response received, processing data...`;
-        }
-        
-        // Log response received time
-        const responseTime = performance.now();
-        console.log(`Response received in ${Math.round(responseTime - startTime)}ms`);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
-        }
+        processingStartTime = performance.now();
         return response.json();
     })
     .then(data => {
+        if (!data || !data.data || !data.data.items) {
+            throw new Error('Invalid response format');
+        }
+        
         // Update progress bar to indicate processing data
+        const progressBar = document.querySelector(`#${resourceType}Progress .progress-bar`);
         if (progressBar) {
-            progressBar.style.width = '90%';
+            progressBar.style.width = '50%';
         }
         
-        // Update loading info text
-        if (loadingInfo) {
-            const itemCount = data.data.items ? data.data.items.length : 0;
-            loadingInfo.textContent = `Processing ${itemCount} ${resourceType}...`;
-        }
-        
-        // Log data processing start time
-        const processingStartTime = performance.now();
-        console.log(`Starting to process ${resourceType} data...`);
-        
-        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-        if (!tableBody) {
-            console.warn(`Table body for ${resourceType} not found`);
-            hideLoading(resourceType);
-            return;
-        }
-        
-        tableBody.innerHTML = ''; // Clear existing rows
-        
-        if (data.format === 'error') {
-            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}: ${data.message}</td></tr>`;
-            hideLoading(resourceType);
-            return;
-        }
-        
-        // For empty results, show a message
-        if (!data.data.items || data.data.items.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="7" class="text-center">No ${resourceType} found</td></tr>`;
-            hideLoading(resourceType);
-            return;
-        }
-        
-        // Store pods data for later use
-        if (resourceType === 'pods') {
-            window.podsData = data.data.items;
-            updateDashboardMetrics(data.data.items);
-        }
-        
-        // Mark this resource type as loaded, with the current namespace
-        if (!window.loadedResources) {
-            window.loadedResources = {};
-        }
-        window.loadedResources[resourceType] = namespace;
-        
-        // Log information about the number of items
-        console.log(`Processing ${data.data.items.length} ${resourceType} items`);
-        
-        // Render the table rows
-        data.data.items.forEach(item => {
-            const row = document.createElement('tr');
-            switch (resourceType) {
-                case 'pods':
-                    const resources = getResourceUsage(item);
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
-                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
-                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'services':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.spec.type}</td>
-                        <td>${item.spec.clusterIP}</td>
-                        <td>${item.spec.externalIP || 'N/A'}</td>
-                        <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'inferenceservices':
-                    // For InferenceServices, get resources from spec.predictor
-                    let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
-                    if (item.spec && item.spec.predictor) {
-                        if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
-                            item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
-                            item.spec.predictor.xgboost || item.spec.predictor.custom) {
-                            // Get the appropriate predictor implementation
-                            const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
-                                                 item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
-                                                 item.spec.predictor.xgboost || item.spec.predictor.custom;
-                            
-                            if (predictorImpl.resources) {
-                                if (predictorImpl.resources.requests) {
-                                    // CPU
-                                    if (predictorImpl.resources.requests.cpu) {
-                                        const cpuReq = predictorImpl.resources.requests.cpu;
-                                        if (cpuReq.endsWith('m')) {
-                                            infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
-                                        } else {
-                                            infResources.cpu = parseFloat(cpuReq).toFixed(2);
+        // Clear and populate the table
+        if (tableBody) {
+            data.data.items.forEach(item => {
+                const row = document.createElement('tr');
+                switch (resourceType) {
+                    case 'pods':
+                        const resources = getResourceUsage(item);
+                        row.innerHTML = `
+                            <td>${item.metadata.namespace}</td>
+                            <td>${item.metadata.name}</td>
+                            <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                            <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
+                            <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
+                            <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
+                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                        `;
+                        break;
+                    case 'services':
+                        row.innerHTML = `
+                            <td>${item.metadata.namespace}</td>
+                            <td>${item.metadata.name}</td>
+                            <td>${item.spec.type}</td>
+                            <td>${item.spec.clusterIP}</td>
+                            <td>${item.spec.externalIP || 'N/A'}</td>
+                            <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
+                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                        `;
+                        break;
+                    case 'inferenceservices':
+                        // For InferenceServices, get resources from spec.predictor
+                        let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
+                        if (item.spec && item.spec.predictor) {
+                            if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                                item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                                item.spec.predictor.xgboost || item.spec.predictor.custom) {
+                                // Get the appropriate predictor implementation
+                                const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                                                     item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                                                     item.spec.predictor.xgboost || item.spec.predictor.custom;
+                                
+                                if (predictorImpl.resources) {
+                                    if (predictorImpl.resources.requests) {
+                                        // CPU
+                                        if (predictorImpl.resources.requests.cpu) {
+                                            const cpuReq = predictorImpl.resources.requests.cpu;
+                                            if (cpuReq.endsWith('m')) {
+                                                infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
+                                            } else {
+                                                infResources.cpu = parseFloat(cpuReq).toFixed(2);
+                                            }
                                         }
-                                    }
-                                    
-                                    // GPU
-                                    if (predictorImpl.resources.requests['nvidia.com/gpu']) {
-                                        infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
-                                    } else if (predictorImpl.resources.requests.gpu) {
-                                        infResources.gpu = predictorImpl.resources.requests.gpu;
-                                    }
-                                    
-                                    // Memory
-                                    if (predictorImpl.resources.requests.memory) {
-                                        infResources.memory = predictorImpl.resources.requests.memory;
+                                        
+                                        // GPU
+                                        if (predictorImpl.resources.requests['nvidia.com/gpu']) {
+                                            infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
+                                        } else if (predictorImpl.resources.requests.gpu) {
+                                            infResources.gpu = predictorImpl.resources.requests.gpu;
+                                        }
+                                        
+                                        // Memory
+                                        if (predictorImpl.resources.requests.memory) {
+                                            infResources.memory = predictorImpl.resources.requests.memory;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.status.url || 'N/A'}</td>
-                        <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
-                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
-                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
-                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
-                        <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
-                        <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'deployments':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
-                        <td>${item.status.updatedReplicas}</td>
-                        <td>${item.status.availableReplicas}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'configmaps':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${Object.keys(item.data || {}).length}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'secrets':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.type}</td>
-                        <td>${Object.keys(item.data || {}).length}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-            }
-            tableBody.appendChild(row);
-        });
-        
-        hideLoading(resourceType);
-        
-        // Reapply search filter after loading new data
-        if (searchTerm) {
-            filterResources(resourceType, searchTerm);
+                        
+                        row.innerHTML = `
+                            <td>${item.metadata.namespace}</td>
+                            <td>${item.metadata.name}</td>
+                            <td>${item.status.url || 'N/A'}</td>
+                            <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
+                            <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
+                            <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
+                            <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
+                            <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
+                            <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
+                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                        `;
+                        break;
+                    case 'deployments':
+                        row.innerHTML = `
+                            <td>${item.metadata.namespace}</td>
+                            <td>${item.metadata.name}</td>
+                            <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
+                            <td>${item.status.updatedReplicas}</td>
+                            <td>${item.status.availableReplicas}</td>
+                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                        `;
+                        break;
+                    case 'configmaps':
+                        row.innerHTML = `
+                            <td>${item.metadata.namespace}</td>
+                            <td>${item.metadata.name}</td>
+                            <td>${Object.keys(item.data || {}).length}</td>
+                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                        `;
+                        break;
+                    case 'secrets':
+                        row.innerHTML = `
+                            <td>${item.metadata.namespace}</td>
+                            <td>${item.metadata.name}</td>
+                            <td>${item.type}</td>
+                            <td>${Object.keys(item.data || {}).length}</td>
+                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                        `;
+                        break;
+                }
+                tableBody.appendChild(row);
+            });
         }
         
-        // Calculate and log total time
+        // Update progress to 100%
+        if (progressBar) {
+            progressBar.style.width = '100%';
+        }
+        
+        // Mark this resource type as loaded
+        window.app.loadedResources[resourceType] = true;
+        
+        // Calculate and log performance metrics
         const endTime = performance.now();
         const totalTime = Math.round(endTime - startTime);
         const processingTime = Math.round(endTime - processingStartTime);
-        
         console.log(`Completed loading ${resourceType}:`);
         console.log(`- API request/response time: ${Math.round(processingStartTime - startTime)}ms`);
         console.log(`- Data processing time: ${processingTime}ms`);
@@ -832,61 +751,14 @@ function fetchResourceData(resourceType, namespace) {
     })
     .catch(error => {
         console.error(`Error fetching ${resourceType}:`, error);
-        
-        // Update loading status to show error
-        const loadingText = document.querySelector(`#${resourceType}Loading .loading-text`);
-        if (loadingText) {
-            loadingText.textContent = `Error loading ${capitalizeFirstLetter(resourceType)}: ${error.message}`;
-            loadingText.classList.add('text-danger');
+        const errorElement = document.querySelector(`#${resourceType}Error`);
+        if (errorElement) {
+            errorElement.textContent = `Failed to load ${resourceType}. Please try again.`;
+            errorElement.style.display = 'block';
         }
-        
-        // Update progress bar to indicate error
-        if (progressBar) {
-            progressBar.classList.remove('progress-bar');
-            progressBar.classList.add('progress-bar', 'bg-danger');
-            progressBar.style.width = '100%';
-        }
-        
-        // Update loading info
-        if (loadingInfo) {
-            loadingInfo.textContent = `Failed to load data. Try again or check console for details.`;
-            loadingInfo.classList.add('text-danger');
-        }
-        
-        // Show error in table
-        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-        if (tableBody) {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center text-danger">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        Error loading data: ${error.message}
-                    </td>
-                </tr>
-            `;
-        }
-        
-        // Don't hide the loading element completely, as it contains our error message
-        // But do show the table so the error message there is visible
-        const tableElement = document.getElementById(`${resourceType}Table`);
-        if (tableElement) {
-            tableElement.style.display = 'block';
-        }
-        
-        // After a delay, reset the UI to allow retrying
-        setTimeout(() => {
-            if (loadingText) {
-                loadingText.classList.remove('text-danger');
-            }
-            if (progressBar) {
-                progressBar.classList.remove('bg-danger');
-                progressBar.classList.add('bg-primary');
-            }
-            if (loadingInfo) {
-                loadingInfo.classList.remove('text-danger');
-            }
-            hideLoading(resourceType);
-        }, 5000);
+    })
+    .finally(() => {
+        hideLoading(resourceType);
     });
 }
 

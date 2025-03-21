@@ -120,163 +120,98 @@
     
     <!-- Connect Socket.IO directly -->
     <script>
-        // Initialize Socket.IO connection - no need to load the script
-        try {
-            // Configure socket.io with more robust options
-            window.app.socket = io({
-                transports: ['polling', 'websocket'], // Prefer polling as initial transport
-                upgrade: true,                        // Try to upgrade to WebSocket
-                reconnection: true,                   // Enable reconnection
-                reconnectionAttempts: 10,             // Number of reconnection attempts
-                reconnectionDelay: 1000,              // Initial delay between reconnections
-                timeout: 20000,                       // Connection timeout
-                autoConnect: true,                    // Connect automatically
-                forceNew: true,                       // Create a new connection
-                path: '/socket.io/',                  // Ensure correct path
-                upgradeTimeout: 10000,                // Timeout for upgrade attempts
-                rememberUpgrade: true,                // Remember successful upgrades
-                secure: window.location.protocol === 'https:', // Match server protocol
-                rejectUnauthorized: false            // Allow self-signed certificates
+        // Global state management
+        window.app = {
+            socket: null,
+            terminal: null,
+            init: false,
+            loadedResources: {},
+            currentTab: null
+        };
+
+        // Initialize the application
+        function initializeApp() {
+            // Initialize Socket.IO connection
+            const socket = io();
+            window.app.socket = socket;
+
+            // Socket event handlers
+            socket.on('connect', () => {
+                console.log('Socket.IO connected');
             });
-            
-            // Add global error handling for socket
-            window.app.socket.on('connect_error', function(error) {
-                console.error('Socket.IO connection error:', error);
-                // Log additional details about the error
-                if (error.message) {
-                    console.error('Error message:', error.message);
-                }
-                if (error.description) {
-                    console.error('Error description:', error.description);
-                }
-                if (error.type) {
-                    console.error('Error type:', error.type);
-                }
+
+            socket.on('disconnect', () => {
+                console.log('Socket.IO disconnected');
             });
-            
-            // Log transport changes
-            window.app.socket.on('upgrade', function(transport) {
-                console.log('Socket.IO transport upgraded to:', transport.name);
-            });
-            
-            // Log successful connection
-            window.app.socket.on('connect', function() {
-                console.log('Socket.IO connected successfully');
-                console.log('Current transport:', window.app.socket.io.engine.transport.name);
-            });
-            
-            console.log('Socket.IO initialized');
-        } catch (err) {
-            console.error('Failed to connect Socket.IO:', err);
-        }
-        
-        // Hide loading overlay since we're loading scripts directly
-        document.addEventListener('DOMContentLoaded', function() {
+
+            // Hide loading overlay once everything is ready
             document.getElementById('loading-overlay').style.display = 'none';
-        });
-        
-        // Navigation related code
-        document.addEventListener('DOMContentLoaded', function() {
-            // Intercept clicks on pod explore links
-            document.body.addEventListener('click', function(e) {
-                const target = e.target.closest('a[href^="/explore/"]');
-                if (target) {
-                    e.preventDefault();
-                    const href = target.getAttribute('href');
-                    navigateToExplore(href);
-                }
-            });
+            window.app.init = true;
+        }
+
+        // Initialize or reinitialize the home page
+        function initializeHomePage() {
+            console.log('Initializing home page...');
             
-            // Set up sidebar navigation
-            document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-                if (link.getAttribute('href') === '/') {
-                    link.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        const tabId = this.getAttribute('onclick').match(/navigateToTab\('([^']+)'\)/)[1];
-                        navigateToTab(tabId);
-                    });
-                }
+            // Reset the loaded resources state
+            window.app.loadedResources = {};
+            
+            // Initialize resource loading for the active tab
+            const activeTab = document.querySelector('.nav-link.active');
+            if (activeTab) {
+                const tabId = activeTab.getAttribute('data-bs-target').replace('#', '');
+                loadResourcesForTab(tabId);
+            }
+            
+            // Attach tab event listeners
+            document.querySelectorAll('.nav-link[data-bs-toggle="tab"]').forEach(tab => {
+                tab.addEventListener('shown.bs.tab', (event) => {
+                    const tabId = event.target.getAttribute('data-bs-target').replace('#', '');
+                    loadResourcesForTab(tabId);
+                });
             });
-        });
-        
-        function navigateToExplore(url) {
-            fetch(url)
-                .then(response => response.text())
-                .then(html => {
-                    // Extract the content from the explore page
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const content = doc.querySelector('#main-content').innerHTML;
-                    
-                    // Store the current page state in history
-                    const currentState = document.getElementById('main-content').innerHTML;
-                    window.history.pushState({content: currentState, page: 'home'}, '', '/');
-                    
-                    // Update the page content and history
-                    document.getElementById('main-content').innerHTML = content;
-                    window.history.pushState({content: content, page: 'explore'}, '', url);
-                    
-                    // Initialize the explore page components
-                    if (typeof initializeExplorePage === 'function') {
-                        initializeExplorePage();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
         }
-        
-        function navigateToHome() {
-            fetch('/')
-                .then(response => response.text())
-                .then(html => {
-                    // Extract the content from the home page
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const content = doc.querySelector('#main-content').innerHTML;
-                    
-                    // Update the page content and history
-                    document.getElementById('main-content').innerHTML = content;
-                    window.history.pushState({content: content, page: 'home'}, '', '/');
-                    
-                    // Reset the loaded resources state to ensure things get reloaded
-                    window.loadedResources = {};
-                    
-                    // Initialize the home page components and load active tab resources
-                    if (typeof initializeHomePage === 'function') {
-                        initializeHomePage();
-                    }
-                    
-                    // Load the active tab resources
-                    const activeTabId = document.querySelector('.tab-pane.active').id;
-                    if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
-                        fetchResourceData(activeTabId);
-                    } else {
-                        // If no tab is active, load pods as default
-                        fetchResourceData('pods');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
-        }
-        
-        window.addEventListener('popstate', function(event) {
-            if (event.state) {
-                document.getElementById('main-content').innerHTML = event.state.content;
-                if (event.state.page === 'home' && typeof initializeHomePage === 'function') {
-                    initializeHomePage();
-                } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
-                    initializeExplorePage();
+
+        // Load resources based on tab type
+        function loadResourcesForTab(tabId) {
+            console.log(`Loading resources for tab: ${tabId}`);
+            window.app.currentTab = tabId;
+
+            // Clear any existing content
+            const tableBody = document.querySelector(`#${tabId}Table tbody`);
+            if (tableBody) {
+                tableBody.innerHTML = '';
+            }
+
+            // Show loading indicator for the tab
+            const loadingElement = document.getElementById(`${tabId}Loading`);
+            if (loadingElement) {
+                loadingElement.style.display = 'block';
+            }
+
+            // Load resources based on tab type
+            if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
+                if (typeof fetchResourceData === 'function') {
+                    fetchResourceData(tabId);
+                }
+            } else if (tabId === 'namespaces') {
+                if (typeof loadNamespaces === 'function') {
+                    loadNamespaces();
+                }
+            } else if (tabId === 'charts') {
+                if (typeof refreshCharts === 'function') {
+                    refreshCharts();
                 }
             }
-        });
-        
+        }
+
+        // Navigation function
         function navigateToTab(tabId) {
-            // First check if we're already on the home page
+            console.log(`Navigating to tab: ${tabId}`);
             const currentPath = window.location.pathname;
+
             if (currentPath !== '/') {
-                // If not on home page, navigate to home first then activate the tab
+                // If not on home page, navigate to home first
                 fetch('/')
                     .then(response => response.text())
                     .then(html => {
@@ -288,57 +223,30 @@
                         document.getElementById('main-content').innerHTML = content;
                         window.history.pushState({content: content, page: 'home'}, '', '/');
                         
-                        // Now activate the requested tab
+                        // Initialize the home page
+                        initializeHomePage();
+                        
+                        // Activate the requested tab
                         activateTab(tabId);
-                        
-                        // Reset the loaded resources state
-                        window.loadedResources = {};
-                        
-                        // Initialize the home page components
-                        if (typeof initializeHomePage === 'function') {
-                            initializeHomePage();
-                        }
-                        
-                        // Load resources for the active tab
-                        if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
-                            if (typeof fetchResourceData === 'function') {
-                                fetchResourceData(tabId);
-                            }
-                        } else if (tabId === 'namespaces') {
-                            if (typeof loadNamespaces === 'function') {
-                                loadNamespaces();
-                            }
-                        } else if (tabId === 'charts') {
-                            if (typeof refreshCharts === 'function') {
-                                refreshCharts();
-                            }
-                        }
                     })
                     .catch(error => {
                         console.error('Error navigating to home:', error);
+                        Swal.fire({
+                            title: 'Navigation Error',
+                            text: 'Failed to load the home page. Please try again.',
+                            icon: 'error'
+                        });
                     });
             } else {
                 // If already on home page, just activate the tab
                 activateTab(tabId);
-                
-                // Load resources for the active tab
-                if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
-                    if (typeof fetchResourceData === 'function') {
-                        fetchResourceData(tabId);
-                    }
-                } else if (tabId === 'namespaces') {
-                    if (typeof loadNamespaces === 'function') {
-                        loadNamespaces();
-                    }
-                } else if (tabId === 'charts') {
-                    if (typeof refreshCharts === 'function') {
-                        refreshCharts();
-                    }
-                }
             }
         }
-        
+
+        // Tab activation function
         function activateTab(tabId) {
+            console.log(`Activating tab: ${tabId}`);
+            
             // Remove active class from all tabs and panes
             document.querySelectorAll('.nav-link').forEach(tab => {
                 tab.classList.remove('active');
@@ -353,69 +261,21 @@
             
             if (tabElement) {
                 tabElement.classList.add('active');
-                // Create and dispatch a shown.bs.tab event
-                const event = new Event('shown.bs.tab');
-                tabElement.dispatchEvent(event);
             }
             
             if (paneElement) {
                 paneElement.classList.add('show', 'active');
             }
-            
-            // Update the URL hash without triggering a page reload
-            window.history.replaceState(null, null, `#${tabId}`);
-        }
-        
-        function runAction(action, resourceType, namespace, name) {
-            const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
-            actionModal.show();
-            
-            document.getElementById('actionLoading').style.display = 'flex';
-            document.getElementById('actionResult').style.display = 'none';
-            
-            // Add a title to the modal based on the action
-            let actionTitle = '';
-            switch(action) {
-                case 'describe':
-                    actionTitle = `Describing ${resourceType}/${name} in namespace ${namespace}`;
-                    break;
-                case 'logs':
-                    actionTitle = `Logs for ${resourceType}/${name} in namespace ${namespace}`;
-                    break;
-                case 'exec':
-                    actionTitle = `Process list for ${resourceType}/${name} in namespace ${namespace}`;
-                    break;
-                case 'delete':
-                    actionTitle = `Deleting ${resourceType}/${name} in namespace ${namespace}`;
-                    break;
-                default:
-                    actionTitle = `Action: ${action} for ${resourceType}/${name}`;
-            }
-            
-            document.getElementById('actionModalLabel').textContent = actionTitle;
 
-            fetch('/run_action', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                const actionResult = document.getElementById('actionResult');
-                // Use pre element to preserve formatting
-                actionResult.innerHTML = `<pre>${data.output}</pre>`;
-                document.getElementById('actionLoading').style.display = 'none';
-                actionResult.style.display = 'block';
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('actionLoading').style.display = 'none';
-                document.getElementById('actionResult').style.display = 'block';
-                document.getElementById('actionResult').textContent = 'An error occurred while performing the action.';
-            });
+            // Load resources for the activated tab
+            loadResourcesForTab(tabId);
         }
+
+        // Initialize the app when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeApp();
+            initializeHomePage();
+        });
     </script>
     
     <!-- Page-specific scripts -->
