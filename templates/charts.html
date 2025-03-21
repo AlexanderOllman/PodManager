@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">ChartMuseum Charts</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Port Forwarding Toggle -->
+                    <div class="mb-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="portForwardToggle">
+                            <label class="form-check-label" for="portForwardToggle">Enable Port Forwarding</label>
+                        </div>
+                        <small id="portForwardStatus" class="text-muted"></small>
+                    </div>
+
+                    <!-- Charts Table -->
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="chartsTable">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Version</th>
+                                    <th>Description</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const portForwardToggle = document.getElementById('portForwardToggle');
+    const portForwardStatus = document.getElementById('portForwardStatus');
+    const chartsTable = document.getElementById('chartsTable').getElementsByTagName('tbody')[0];
+
+    // Check initial port forwarding status
+    fetch('/api/charts/status')
+        .then(response => response.json())
+        .then(data => {
+            portForwardToggle.checked = data.active;
+            updatePortForwardStatus(data.active);
+        });
+
+    // Handle port forwarding toggle
+    portForwardToggle.addEventListener('change', function() {
+        const action = this.checked ? 'start' : 'stop';
+        fetch('/api/charts/port-forward', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ action: action })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updatePortForwardStatus(this.checked);
+                if (this.checked) {
+                    loadCharts();
+                } else {
+                    clearChartsTable();
+                }
+            } else {
+                this.checked = !this.checked;
+                alert(data.message);
+            }
+        });
+    });
+
+    function updatePortForwardStatus(active) {
+        portForwardStatus.textContent = active ? 
+            'Port forwarding is active' : 
+            'Port forwarding is inactive';
+        portForwardStatus.className = active ? 
+            'text-success' : 
+            'text-muted';
+    }
+
+    function loadCharts() {
+        fetch('/api/charts/list')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    clearChartsTable();
+                    data.charts.forEach(chart => {
+                        const row = chartsTable.insertRow();
+                        row.innerHTML = `
+                            <td>${chart.name}</td>
+                            <td>${chart.version}</td>
+                            <td>${chart.description || 'N/A'}</td>
+                            <td>${new Date(chart.created).toLocaleString()}</td>
+                        `;
+                    });
+                } else {
+                    alert(data.message);
+                }
+            });
+    }
+
+    function clearChartsTable() {
+        chartsTable.innerHTML = '';
+    }
+
+    // Load charts if port forwarding is active
+    if (portForwardToggle.checked) {
+        loadCharts();
+    }
+});
+</script>
+{% endblock %} 
