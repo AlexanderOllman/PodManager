@@ -10,6 +10,7 @@ import sys
 import time
 import signal
 import atexit
+import psutil
 
 # We'll check for git availability at runtime rather than import time
 git_available = False
@@ -51,27 +52,62 @@ def port_forward_worker():
     global chart_museum_process, port_forward_status
     import socket
     import requests
+    import psutil
     from datetime import datetime
+    import subprocess
     
     print("\n=== PORT FORWARD WORKER STARTED ===")
+    app.logger.info("Port forward worker started")
+    
+    def kill_process_on_port(port):
+        """Kill any process using the specified port."""
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'connections']):
+                try:
+                    connections = proc.connections()
+                    for conn in connections:
+                        if conn.laddr.port == port:
+                            print(f"Found process using port {port}: {proc.pid}")
+                            psutil.Process(proc.pid).terminate()
+                            return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception as e:
+            print(f"Error checking processes on port: {str(e)}")
+        return False
+
+    def is_port_in_use(port):
+        """Check if a port is in use."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(('127.0.0.1', port)) == 0
     
     while True:
         try:
-            # Update status
             current_time = datetime.now()
             port_forward_status['last_check'] = current_time
             
             # Check if process is running
             if not chart_museum_process or chart_museum_process.poll() is not None:
-                print("Port forwarding process not running, attempting to start...")
+                print("Port forwarding process not running, checking port status...")
+                app.logger.info("Port forwarding process not running, checking port status")
+                
+                # Check if port is in use
+                if is_port_in_use(8855):
+                    print("Port 8855 is in use, attempting to kill existing process...")
+                    app.logger.warning("Port 8855 is in use, attempting to kill existing process")
+                    if kill_process_on_port(8855):
+                        print("Successfully killed process using port 8855")
+                        app.logger.info("Successfully killed process using port 8855")
+                        time.sleep(2)  # Wait for port to be released
+                
                 port_forward_status.update({
                     'running': False,
                     'message': 'Starting port forwarding...'
                 })
                 
-                # Try to start port forwarding
                 try:
                     # Find ChartMuseum pod
+                    print("Finding ChartMuseum pod...")
                     pod_cmd = "kubectl get pod -n ez-chartmuseum-ns -l app=chartmuseum -o jsonpath='{.items[0].metadata.name}'"
                     pod_result = subprocess.run(pod_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     
@@ -81,7 +117,10 @@ def port_forward_worker():
                         pods_result = subprocess.run(pods_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                         
                         if pods_result.returncode != 0:
-                            raise Exception("Failed to find ChartMuseum pod")
+                            error_msg = f"Failed to find ChartMuseum pod: {pods_result.stderr.decode('utf-8')}"
+                            print(error_msg)
+                            app.logger.error(error_msg)
+                            raise Exception(error_msg)
                             
                         pods_output = pods_result.stdout.decode('utf-8')
                         pod_lines = pods_output.split('\n')
@@ -92,9 +131,13 @@ def port_forward_worker():
                         pod_name = pod_result.stdout.decode('utf-8').strip()
                     
                     print(f"Found ChartMuseum pod: {pod_name}")
+                    app.logger.info(f"Found ChartMuseum pod: {pod_name}")
                     
-                    # Start port forwarding
-                    port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
+                    # Start port forwarding with explicit localhost binding
+                    port_forward_cmd = f"kubectl port-forward --address 127.0.0.1 {pod_name} -n ez-chartmuseum-ns 8855:8080"
+                    print(f"Starting port forwarding with command: {port_forward_cmd}")
+                    app.logger.info(f"Starting port forwarding with command: {port_forward_cmd}")
+                    
                     chart_museum_process = subprocess.Popen(
                         port_forward_cmd,
                         shell=True,
@@ -106,35 +149,47 @@ def port_forward_worker():
                     time.sleep(2)
                     
                 except Exception as e:
-                    print(f"Error starting port forwarding: {str(e)}")
+                    error_msg = f"Error starting port forwarding: {str(e)}"
+                    print(error_msg)
+                    app.logger.error(error_msg)
                     port_forward_status.update({
                         'running': False,
-                        'message': f'Failed to start: {str(e)}'
+                        'message': error_msg
                     })
                     time.sleep(10)  # Wait before retrying
                     continue
             
             # Check if port is accessible
             try:
+                print("Checking ChartMuseum connection...")
                 response = requests.get('http://127.0.0.1:8855/api/charts', timeout=2)
                 if response.status_code == 200:
+                    print("ChartMuseum connection successful")
+                    app.logger.info("ChartMuseum connection successful")
                     port_forward_status.update({
                         'running': True,
                         'message': 'Port forwarding active'
                     })
                 else:
+                    error_msg = f"ChartMuseum returned status {response.status_code}"
+                    print(error_msg)
+                    app.logger.warning(error_msg)
                     port_forward_status.update({
                         'running': False,
-                        'message': f'ChartMuseum returned status {response.status_code}'
+                        'message': error_msg
                     })
             except requests.exceptions.RequestException as e:
-                print(f"Error checking ChartMuseum connection: {str(e)}")
+                error_msg = f"Error checking ChartMuseum connection: {str(e)}"
+                print(error_msg)
+                app.logger.error(error_msg)
                 port_forward_status.update({
                     'running': False,
                     'message': 'Connection failed'
                 })
                 # Kill the process if it's not working
                 if chart_museum_process:
+                    print("Terminating non-responsive port forwarding process")
+                    app.logger.info("Terminating non-responsive port forwarding process")
                     chart_museum_process.terminate()
                     try:
                         chart_museum_process.wait(timeout=5)
@@ -146,10 +201,12 @@ def port_forward_worker():
             time.sleep(5)
             
         except Exception as e:
-            print(f"Error in port forward worker: {str(e)}")
+            error_msg = f"Error in port forward worker: {str(e)}"
+            print(error_msg)
+            app.logger.error(error_msg)
             port_forward_status.update({
                 'running': False,
-                'message': f'Worker error: {str(e)}'
+                'message': error_msg
             })
             time.sleep(10)  # Wait before retrying
 

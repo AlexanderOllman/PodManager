@@ -1,4 +1,5 @@
 flask
 requests
 gitpython
-flask-socketio 
+flask-socketio
+psutil 
