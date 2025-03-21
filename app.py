@@ -747,46 +747,20 @@ def api_cli_exec():
 def api_charts_list():
     """Get list of all charts from ChartMuseum."""
     try:
-        # First check if ChartMuseum service is running
-        command = "kubectl get svc -n ez-chartmuseum-ns"
+        command = "curl -s 127.0.0.1:8855/api/charts"
         output = run_kubectl_command(command)
         
-        if "No resources found" in output:
-            return jsonify({"error": "ChartMuseum service not found"}), 404
+        if "Error:" in output:
+            return jsonify({
+                "error": "Unable to connect to ChartMuseum. Please ensure the port-forward is running.",
+                "details": output
+            }), 503
             
-        # Get the ChartMuseum pod name
-        command = "kubectl get pod -n ez-chartmuseum-ns"
-        output = run_kubectl_command(command)
-        
-        # Extract pod name from output
-        pod_name = None
-        for line in output.split('\n'):
-            if 'chartmuseum' in line.lower():
-                pod_name = line.split()[0]
-                break
-                
-        if not pod_name:
-            return jsonify({"error": "ChartMuseum pod not found"}), 404
-            
-        # Set up port forwarding
-        port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
-        port_forward_process = subprocess.Popen(port_forward_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        # Wait for port forwarding to be ready
-        time.sleep(2)
-        
         try:
-            # Get charts list
-            charts_cmd = "curl 127.0.0.1:8855/api/charts"
-            charts_output = run_kubectl_command(charts_cmd)
-            
-            # Parse and return the charts data
-            charts_data = json.loads(charts_output)
+            charts_data = json.loads(output)
             return jsonify(charts_data)
-            
-        finally:
-            # Clean up port forwarding
-            port_forward_process.terminate()
+        except json.JSONDecodeError:
+            return jsonify({"error": "Invalid JSON response from ChartMuseum"}), 500
             
     except Exception as e:
         app.logger.error(f"Error in api_charts_list: {str(e)}")
@@ -803,41 +777,23 @@ def api_charts_delete():
         if not chart_name:
             return jsonify({"error": "Chart name is required"}), 400
             
-        # Get the ChartMuseum pod name
-        command = "kubectl get pod -n ez-chartmuseum-ns"
+        if version:
+            # Delete specific version
+            command = f"curl -X DELETE 127.0.0.1:8855/api/charts/{chart_name}/{version}"
+        else:
+            # Delete entire chart
+            command = f"curl -X DELETE 127.0.0.1:8855/api/charts/{chart_name}"
+            
         output = run_kubectl_command(command)
         
-        # Extract pod name from output
-        pod_name = None
-        for line in output.split('\n'):
-            if 'chartmuseum' in line.lower():
-                pod_name = line.split()[0]
-                break
-                
-        if not pod_name:
-            return jsonify({"error": "ChartMuseum pod not found"}), 404
+        if "Error:" in output:
+            return jsonify({
+                "error": "Unable to connect to ChartMuseum. Please ensure the port-forward is running.",
+                "details": output
+            }), 503
             
-        # Set up port forwarding
-        port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
-        port_forward_process = subprocess.Popen(port_forward_cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return jsonify({"message": "Chart deleted successfully", "output": output})
         
-        # Wait for port forwarding to be ready
-        time.sleep(2)
-        
-        try:
-            # Construct delete command based on whether version is specified
-            if version:
-                delete_cmd = f"curl -X DELETE 127.0.0.1:8855/api/charts/{chart_name}/{version}"
-            else:
-                delete_cmd = f"curl -X DELETE 127.0.0.1:8855/api/charts/{chart_name}"
-                
-            delete_output = run_kubectl_command(delete_cmd)
-            return jsonify({"output": delete_output})
-            
-        finally:
-            # Clean up port forwarding
-            port_forward_process.terminate()
-            
     except Exception as e:
         app.logger.error(f"Error in api_charts_delete: {str(e)}")
         return jsonify({"error": str(e)}), 500

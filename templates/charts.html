@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid">
+<div class="container-fluid mt-4">
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -9,21 +9,12 @@
                     <h3 class="card-title">Helm Charts</h3>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-hover" id="chartsTable">
-                            <thead>
-                                <tr>
-                                    <th>Chart Name</th>
-                                    <th>Version</th>
-                                    <th>Description</th>
-                                    <th>Created</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Charts will be populated here -->
-                            </tbody>
-                        </table>
+                    <div id="charts-container">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -32,24 +23,34 @@
 </div>
 
 <!-- Delete Confirmation Modal -->
-<div class="modal fade" id="deleteModal" tabindex="-1" role="dialog" aria-labelledby="deleteModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="deleteModalLabel">Delete Chart</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                Are you sure you want to delete this chart?
-                <p id="deleteChartName"></p>
-                <p id="deleteChartVersion"></p>
+                <p>Are you sure you want to delete this chart?</p>
+                <p id="deleteChartName" class="fw-bold"></p>
+                <p id="deleteChartVersion" class="text-muted"></p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-danger" id="confirmDelete">Delete</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Error Alert -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+    <div id="errorAlert" class="toast align-items-center text-white bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body">
+                <span id="errorMessage"></span>
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>
     </div>
 </div>
@@ -58,8 +59,15 @@
 {% block scripts %}
 <script>
 let chartsData = {};
-let currentDeleteChart = null;
-let currentDeleteVersion = null;
+let deleteModal;
+let errorToast;
+
+document.addEventListener('DOMContentLoaded', function() {
+    deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    errorToast = new bootstrap.Toast(document.getElementById('errorAlert'));
+    
+    loadCharts();
+});
 
 function loadCharts() {
     fetch('/api/charts/list')
@@ -71,53 +79,95 @@ function loadCharts() {
             }
             
             chartsData = data;
-            const tbody = document.querySelector('#chartsTable tbody');
-            tbody.innerHTML = '';
-            
-            Object.entries(data).forEach(([chartName, versions]) => {
-                versions.forEach(version => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${chartName}</td>
-                        <td>${version.version}</td>
-                        <td>${version.description || 'N/A'}</td>
-                        <td>${new Date(version.created).toLocaleString()}</td>
-                        <td>
-                            <button class="btn btn-danger btn-sm" onclick="showDeleteModal('${chartName}', '${version.version}')">
-                                Delete
-                            </button>
-                        </td>
-                    `;
-                    tbody.appendChild(row);
-                });
-            });
+            displayCharts(data);
         })
         .catch(error => {
-            console.error('Error:', error);
-            showError('Failed to load charts');
+            showError('Failed to load charts: ' + error.message);
         });
 }
 
-function showDeleteModal(chartName, version) {
-    currentDeleteChart = chartName;
-    currentDeleteVersion = version;
-    document.getElementById('deleteChartName').textContent = `Chart: ${chartName}`;
-    document.getElementById('deleteChartVersion').textContent = `Version: ${version}`;
-    $('#deleteModal').modal('show');
+function displayCharts(data) {
+    const container = document.getElementById('charts-container');
+    container.innerHTML = '';
+    
+    Object.entries(data).forEach(([chartName, versions]) => {
+        const chartCard = document.createElement('div');
+        chartCard.className = 'card mb-3';
+        
+        const cardHeader = document.createElement('div');
+        cardHeader.className = 'card-header d-flex justify-content-between align-items-center';
+        
+        const title = document.createElement('h5');
+        title.className = 'mb-0';
+        title.textContent = chartName;
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn btn-danger btn-sm';
+        deleteBtn.textContent = 'Delete All Versions';
+        deleteBtn.onclick = () => showDeleteConfirmation(chartName);
+        
+        cardHeader.appendChild(title);
+        cardHeader.appendChild(deleteBtn);
+        
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body';
+        
+        const versionsList = document.createElement('div');
+        versionsList.className = 'list-group';
+        
+        versions.forEach(version => {
+            const versionItem = document.createElement('div');
+            versionItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+            
+            const versionInfo = document.createElement('div');
+            versionInfo.innerHTML = `
+                <h6 class="mb-1">Version ${version.version}</h6>
+                <small class="text-muted">Created: ${new Date(version.created).toLocaleString()}</small>
+                ${version.description ? `<p class="mb-1">${version.description}</p>` : ''}
+            `;
+            
+            const deleteVersionBtn = document.createElement('button');
+            deleteVersionBtn.className = 'btn btn-outline-danger btn-sm';
+            deleteVersionBtn.textContent = 'Delete Version';
+            deleteVersionBtn.onclick = () => showDeleteConfirmation(chartName, version.version);
+            
+            versionItem.appendChild(versionInfo);
+            versionItem.appendChild(deleteVersionBtn);
+            versionsList.appendChild(versionItem);
+        });
+        
+        cardBody.appendChild(versionsList);
+        chartCard.appendChild(cardHeader);
+        chartCard.appendChild(cardBody);
+        container.appendChild(chartCard);
+    });
 }
 
-function deleteChart() {
-    if (!currentDeleteChart) return;
+function showDeleteConfirmation(chartName, version = null) {
+    const modal = document.getElementById('deleteModal');
+    const chartNameEl = document.getElementById('deleteChartName');
+    const chartVersionEl = document.getElementById('deleteChartVersion');
     
+    chartNameEl.textContent = chartName;
+    chartVersionEl.textContent = version ? `Version: ${version}` : 'All versions';
+    
+    document.getElementById('confirmDelete').onclick = () => {
+        deleteChart(chartName, version);
+    };
+    
+    deleteModal.show();
+}
+
+function deleteChart(chartName, version = null) {
     const data = {
-        chart_name: currentDeleteChart,
-        version: currentDeleteVersion
+        chart_name: chartName,
+        ...(version && { version: version })
     };
     
     fetch('/api/charts/delete', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
     })
@@ -128,32 +178,17 @@ function deleteChart() {
             return;
         }
         
-        $('#deleteModal').modal('hide');
-        showSuccess('Chart deleted successfully');
+        deleteModal.hide();
         loadCharts(); // Reload the charts list
     })
     .catch(error => {
-        console.error('Error:', error);
-        showError('Failed to delete chart');
+        showError('Failed to delete chart: ' + error.message);
     });
 }
 
 function showError(message) {
-    // You can implement this based on your UI framework
-    alert(message);
+    document.getElementById('errorMessage').textContent = message;
+    errorToast.show();
 }
-
-function showSuccess(message) {
-    // You can implement this based on your UI framework
-    alert(message);
-}
-
-// Initialize the page
-document.addEventListener('DOMContentLoaded', function() {
-    loadCharts();
-    
-    // Set up delete confirmation handler
-    document.getElementById('confirmDelete').addEventListener('click', deleteChart);
-});
 </script>
 {% endblock %} 
