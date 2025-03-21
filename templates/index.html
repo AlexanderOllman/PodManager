@@ -580,9 +580,9 @@
 {% endblock %}
 
 {% block page_scripts %}
-
 <script src="{{ url_for('static', filename='js/index.js') }}"></script>
 
+<script>
 // Chart Management Functions
 function refreshCharts() {
     const loadingContainer = document.getElementById('chartsLoading');
@@ -696,5 +696,5 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-
+</script>
 {% endblock %}

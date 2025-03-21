@@ -333,6 +333,21 @@
                         if (typeof initializeHomePage === 'function') {
                             initializeHomePage();
                         }
+                        
+                        // Load resources for the active tab
+                        if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
+                            if (typeof fetchResourceData === 'function') {
+                                fetchResourceData(tabId);
+                            }
+                        } else if (tabId === 'namespaces') {
+                            if (typeof loadNamespaces === 'function') {
+                                loadNamespaces();
+                            }
+                        } else if (tabId === 'charts') {
+                            if (typeof refreshCharts === 'function') {
+                                refreshCharts();
+                            }
+                        }
                     })
                     .catch(error => {
                         console.error('Error navigating to home:', error);
@@ -340,12 +355,27 @@
             } else {
                 // If already on home page, just activate the tab
                 activateTab(tabId);
+                
+                // Load resources for the active tab
+                if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
+                    if (typeof fetchResourceData === 'function') {
+                        fetchResourceData(tabId);
+                    }
+                } else if (tabId === 'namespaces') {
+                    if (typeof loadNamespaces === 'function') {
+                        loadNamespaces();
+                    }
+                } else if (tabId === 'charts') {
+                    if (typeof refreshCharts === 'function') {
+                        refreshCharts();
+                    }
+                }
             }
         }
         
         function activateTab(tabId) {
             // Remove active class from all tabs and panes
-            document.querySelectorAll('.nav-link[data-bs-toggle="tab"]').forEach(tab => {
+            document.querySelectorAll('.nav-link').forEach(tab => {
                 tab.classList.remove('active');
             });
             document.querySelectorAll('.tab-pane').forEach(pane => {
@@ -353,30 +383,22 @@
             });
             
             // Add active class to selected tab and pane
-            const tabElement = document.querySelector(`.nav-link[data-bs-target="#${tabId}"]`) || 
-                              document.querySelector(`.nav-link[href="#${tabId}"]`);
+            const tabElement = document.querySelector(`.nav-link[data-bs-target="#${tabId}"]`);
             const paneElement = document.getElementById(tabId);
             
             if (tabElement) {
                 tabElement.classList.add('active');
+                // Create and dispatch a shown.bs.tab event
+                const event = new Event('shown.bs.tab');
+                tabElement.dispatchEvent(event);
             }
             
             if (paneElement) {
                 paneElement.classList.add('show', 'active');
             }
             
-            // Load resources if needed
-            if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
-                // Load the specific resource
-                if (typeof fetchResourceData === 'function') {
-                    fetchResourceData(tabId);
-                }
-            } else if (tabId === 'namespaces') {
-                // Load namespaces
-                if (typeof loadNamespaces === 'function') {
-                    loadNamespaces();
-                }
-            }
+            // Update the URL hash without triggering a page reload
+            window.history.replaceState(null, null, `#${tabId}`);
         }
         
         function runAction(action, resourceType, namespace, name) {
