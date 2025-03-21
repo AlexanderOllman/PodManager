@@ -600,6 +600,14 @@ function refreshCharts() {
             if (!data.success) {
                 warning.textContent = data.error;
                 warning.style.display = 'block';
+                
+                // If the error indicates port forwarding was attempted, retry after a delay
+                if (data.error.includes('Port forwarding was attempted')) {
+                    setTimeout(() => {
+                        console.log('Retrying after port forwarding attempt...');
+                        refreshCharts();
+                    }, 3000); // Wait 3 seconds before retrying
+                }
                 return;
             }
             

@@ -752,10 +752,27 @@ def list_charts():
         result = subprocess.run(check_command, shell=True, capture_output=True, text=True)
         
         if result.returncode != 0 or not result.stdout:
-            return jsonify({
-                'success': False,
-                'error': 'ChartMuseum is not accessible. Please ensure the port-forward is running.'
-            })
+            # Try to set up port forwarding in a new thread
+            def setup_port_forward():
+                port_forward_cmd = "kubectl port-forward svc/chartmuseum 8855:8855 -n chartmuseum"
+                subprocess.run(port_forward_cmd, shell=True)
+            
+            # Start port forwarding in background
+            import threading
+            port_forward_thread = threading.Thread(target=setup_port_forward, daemon=True)
+            port_forward_thread.start()
+            
+            # Wait a moment for port forwarding to establish
+            import time
+            time.sleep(2)
+            
+            # Try the check again
+            result = subprocess.run(check_command, shell=True, capture_output=True, text=True)
+            if result.returncode != 0 or not result.stdout:
+                return jsonify({
+                    'success': False,
+                    'error': 'ChartMuseum is not accessible. Port forwarding was attempted but failed.'
+                })
             
         charts_data = json.loads(result.stdout)
         return jsonify({
