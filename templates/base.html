@@ -117,17 +117,8 @@
             socket: null,
             terminal: null,
             init: false,
-            state: {
-                resources: {},
-                lastFetch: {},
-                errors: {},
-                activeRequests: new Map(),
-                currentTab: null,
-                scrollPositions: {}
-            },
-            CACHE_TIMEOUT: 5 * 60 * 1000, // 5 minutes cache timeout
-            RETRY_COUNT: 3,
-            RETRY_DELAY: 1000
+            loadedResources: {},
+            currentTab: null
         };
 
         // Initialize the application
@@ -145,22 +136,6 @@
                 console.log('Socket.IO disconnected');
             });
 
-            // Add popstate handler for browser navigation
-            window.addEventListener('popstate', (event) => {
-                if (event.state) {
-                    document.getElementById('main-content').innerHTML = event.state.content;
-                    if (event.state.scroll) {
-                        window.scrollTo(0, event.state.scroll);
-                    }
-                    if (event.state.page === 'home') {
-                        initializeHomePage();
-                        if (event.state.activeTab) {
-                            activateTab(event.state.activeTab);
-                        }
-                    }
-                }
-            });
-
             window.app.init = true;
         }
 
@@ -169,7 +144,7 @@
             console.log('Initializing home page...');
             
             // Reset the loaded resources state
-            window.app.state.resources = {};
+            window.app.loadedResources = {};
             
             // Initialize resource loading for the active tab
             const activeTab = document.querySelector('.nav-link.active');
@@ -190,185 +165,43 @@
         // Load resources based on tab type
         function loadResourcesForTab(tabId) {
             console.log(`Loading resources for tab: ${tabId}`);
-            window.app.state.currentTab = tabId;
+            window.app.currentTab = tabId;
 
-            // Cancel any pending requests for other tabs
-            for (let [activeTab, controller] of window.app.state.activeRequests) {
-                if (activeTab !== tabId) {
-                    controller.abort();
-                    window.app.state.activeRequests.delete(activeTab);
-                }
-            }
-
-            // Check cache first
-            const cachedData = window.app.state.resources[tabId];
-            const lastFetch = window.app.state.lastFetch[tabId];
-            if (cachedData && lastFetch && (Date.now() - lastFetch < window.app.CACHE_TIMEOUT)) {
-                console.log(`Using cached data for ${tabId}`);
-                updateTableWithData(tabId, cachedData);
-                return;
-            }
-
-            // Show loading state
-            showLoading(tabId);
-
-            // Create abort controller for this request
-            const controller = new AbortController();
-            window.app.state.activeRequests.set(tabId, controller);
-
-            // Fetch the data
-            fetchResourceData(tabId, controller.signal);
-        }
-
-        // Enhanced data fetching with retry logic
-        function fetchResourceData(resourceType, signal) {
-            console.log(`Fetching ${resourceType} data...`);
-            const startTime = performance.now();
-
-            function fetchWithRetry(attempt = 0) {
-                showLoadingProgress(resourceType, attempt);
-
-                const formData = new FormData();
-                formData.append('resource_type', resourceType);
-
-                return fetch('/get_resources', {
-                    method: 'POST',
-                    body: formData,
-                    signal: signal
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (!data || !data.data || !data.data.items) {
-                        throw new Error('Invalid response format');
-                    }
-
-                    // Cache the data
-                    window.app.state.resources[resourceType] = data;
-                    window.app.state.lastFetch[resourceType] = Date.now();
-                    
-                    // Clear any error state
-                    delete window.app.state.errors[resourceType];
-
-                    // Update the table
-                    updateTableWithData(resourceType, data);
-
-                    // Log performance metrics
-                    const endTime = performance.now();
-                    console.log(`${resourceType} data loaded in ${Math.round(endTime - startTime)}ms`);
-                })
-                .catch(error => {
-                    if (error.name === 'AbortError') {
-                        console.log(`${resourceType} request aborted`);
-                        throw error;
-                    }
-
-                    if (attempt < window.app.RETRY_COUNT) {
-                        console.log(`Retrying ${resourceType} fetch, attempt ${attempt + 1}`);
-                        return new Promise(resolve => {
-                            setTimeout(() => {
-                                resolve(fetchWithRetry(attempt + 1));
-                            }, window.app.RETRY_DELAY * Math.pow(2, attempt));
-                        });
-                    }
-
-                    // Store error state
-                    window.app.state.errors[resourceType] = error;
-                    showError(resourceType, error);
-                    throw error;
-                })
-                .finally(() => {
-                    window.app.state.activeRequests.delete(resourceType);
-                    hideLoading(resourceType);
-                });
-            }
-
-            return fetchWithRetry();
-        }
-
-        // Helper function to update table with data
-        function updateTableWithData(resourceType, data) {
-            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-            if (!tableBody) return;
-
-            tableBody.innerHTML = '';
-            
-            data.data.items.forEach(item => {
-                const row = document.createElement('tr');
-                switch (resourceType) {
-                    case 'pods':
-                        const resources = getResourceUsage(item);
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                            <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
-                            <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
-                            <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    // ... other resource types ...
-                }
-                tableBody.appendChild(row);
-            });
-
-            // Update any related metrics or counters
-            updateResourceMetrics(resourceType, data);
-        }
-
-        // Helper function to show loading progress
-        function showLoadingProgress(resourceType, attempt) {
-            const loadingElement = document.getElementById(`${resourceType}Loading`);
-            const progressBar = document.getElementById(`${resourceType}ProgressBar`);
-            const loadingInfo = document.getElementById(`${resourceType}LoadingInfo`);
-            
-            if (loadingElement) loadingElement.style.display = 'flex';
-            if (progressBar) progressBar.style.width = `${(attempt + 1) * 25}%`;
-            if (loadingInfo) {
-                loadingInfo.textContent = attempt > 0 ? 
-                    `Retry attempt ${attempt + 1} of ${window.app.RETRY_COUNT}...` : 
-                    'Loading...';
-            }
-        }
-
-        // Helper function to show error state
-        function showError(resourceType, error) {
-            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+            // Clear any existing content
+            const tableBody = document.querySelector(`#${tabId}Table tbody`);
             if (tableBody) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="7" class="text-center text-danger">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            Failed to load ${resourceType}. ${error.message}
-                            <button class="btn btn-sm btn-outline-primary ms-3" onclick="retryLoad('${resourceType}')">
-                                <i class="fas fa-sync-alt me-1"></i>Retry
-                            </button>
-                        </td>
-                    </tr>
-                `;
+                tableBody.innerHTML = '';
             }
-        }
 
-        // Helper function to retry loading
-        function retryLoad(resourceType) {
-            delete window.app.state.errors[resourceType];
-            loadResourcesForTab(resourceType);
+            // Show loading indicator for the tab
+            const loadingElement = document.getElementById(`${tabId}Loading`);
+            if (loadingElement) {
+                loadingElement.style.display = 'block';
+            }
+
+            // Load resources based on tab type
+            if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
+                if (typeof fetchResourceData === 'function') {
+                    fetchResourceData(tabId);
+                }
+            } else if (tabId === 'namespaces') {
+                if (typeof loadNamespaces === 'function') {
+                    loadNamespaces();
+                }
+            } else if (tabId === 'charts') {
+                if (typeof refreshCharts === 'function') {
+                    refreshCharts();
+                }
+            }
         }
 
         // Navigation function
         function navigateToTab(tabId) {
             console.log(`Navigating to tab: ${tabId}`);
             const currentPath = window.location.pathname;
-            
-            // Save scroll position
-            window.app.state.scrollPositions[currentPath] = window.scrollY;
 
             if (currentPath !== '/') {
-                // Use smooth transition
-                const mainContent = document.getElementById('main-content');
-                mainContent.style.transition = 'opacity 0.2s ease-in-out';
-                mainContent.style.opacity = '0';
-
+                // If not on home page, navigate to home first
                 fetch('/')
                     .then(response => response.text())
                     .then(html => {
@@ -376,23 +209,15 @@
                         const doc = parser.parseFromString(html, 'text/html');
                         const content = doc.querySelector('#main-content').innerHTML;
                         
-                        // Update the page content with transition
-                        requestAnimationFrame(() => {
-                            mainContent.innerHTML = content;
-                            mainContent.style.opacity = '1';
-                            
-                            // Push state with all necessary information
-                            window.history.pushState({
-                                content: content,
-                                page: 'home',
-                                scroll: window.app.state.scrollPositions[currentPath],
-                                activeTab: tabId
-                            }, '', '/');
-                            
-                            // Initialize home page and activate tab
-                            initializeHomePage();
-                            activateTab(tabId);
-                        });
+                        // Update the page content
+                        document.getElementById('main-content').innerHTML = content;
+                        window.history.pushState({content: content, page: 'home'}, '', '/');
+                        
+                        // Initialize the home page
+                        initializeHomePage();
+                        
+                        // Activate the requested tab
+                        activateTab(tabId);
                     })
                     .catch(error => {
                         console.error('Error navigating to home:', error);
@@ -403,6 +228,7 @@
                         });
                     });
             } else {
+                // If already on home page, just activate the tab
                 activateTab(tabId);
             }
         }

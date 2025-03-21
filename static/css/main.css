@@ -615,14 +615,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 2rem;
-  background: rgba(255, 255, 255, 0.8);
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  backdrop-filter: blur(2px);
+  padding: 2rem 0;
 }
 
 .spinner-border.text-primary {
@@ -800,26 +793,27 @@ body {
 
 /* Custom Loader */
 .progress-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  max-width: 500px;
+  margin: 0 auto;
 }
 
 .progress {
+  height: 6px;
+  border-radius: 3px;
   background-color: var(--hpe-light-gray);
-  border-radius: 2px;
   overflow: hidden;
 }
 
 .progress-bar {
-  background-color: var(--hpe-primary);
-  transition: width 0.3s ease-in-out;
+  background: var(--hpe-gradient);
 }
 
 .loading-text {
-  color: var(--hpe-dark);
-  font-size: 0.875rem;
-  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--hpe-gray);
+  text-align: center;
+  margin-top: 10px;
+  font-weight: 500;
 }
 
 /* Status Badge Styling */
@@ -965,123 +959,4 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 12px;
-}
-
-/* Loading and Error States */
-.loading-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 2rem;
-    background: rgba(255, 255, 255, 0.8);
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 1000;
-    backdrop-filter: blur(2px);
-}
-
-.progress-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.loading-text {
-    color: var(--hpe-dark);
-    font-size: 0.875rem;
-    margin-top: 0.5rem;
-}
-
-.error-container {
-    margin: 1rem 0;
-}
-
-.error-container .alert {
-    margin-bottom: 0;
-}
-
-/* Fade Transitions */
-.fade-transition {
-    transition: opacity 0.2s ease-in-out;
-}
-
-/* Table Loading State */
-.table-loading {
-    position: relative;
-}
-
-.table-loading::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(2px);
-}
-
-/* Resource Metrics Loading */
-.metric-card-loading {
-    position: relative;
-}
-
-.metric-card-loading::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(255, 255, 255, 0.8);
-    border-radius: inherit;
-    backdrop-filter: blur(2px);
-}
-
-/* Progress Bar Customization */
-.progress {
-    background-color: var(--hpe-light-gray);
-    border-radius: 2px;
-    overflow: hidden;
-}
-
-.progress-bar {
-    background-color: var(--hpe-primary);
-    transition: width 0.3s ease-in-out;
-}
-
-/* Retry Button Hover State */
-.btn-outline-danger:hover {
-    background-color: var(--hpe-danger-light);
-    border-color: var(--hpe-danger);
-    color: var(--hpe-danger);
-}
-
-/* Loading Spinner Animation */
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.loading-spinner {
-    display: inline-block;
-    width: 1.5rem;
-    height: 1.5rem;
-    border: 2px solid var(--hpe-primary);
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.75s linear infinite;
-}
-
-/* Error Icon Pulse Animation */
-@keyframes pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.2); }
-    100% { transform: scale(1); }
-}
-
-.error-container .fa-exclamation-triangle {
-    animation: pulse 2s infinite;
-    color: var(--hpe-danger);
 } 
