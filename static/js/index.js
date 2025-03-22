@@ -573,108 +573,103 @@ function filterResources(resourceType, searchTerm) {
 
 // Resource data fetching (for individual tab clicks or refresh button)
 function fetchResourceData(resourceType, namespace, criticalOnly = false) {
-    console.log(`Fetching ${resourceType} data (${criticalOnly ? 'critical' : 'full'})...`);
     const startTime = performance.now();
+    const currentTime = Date.now();
     
+    // Check if we have cached data and it's not too old
+    if (window.app.state.cache.data[resourceType]) {
+        const timeSinceLastFetch = currentTime - window.app.state.cache.timestamps[resourceType];
+        
+        if (timeSinceLastFetch < window.app.state.cache.duration) {
+            // Use cached data if it's fresh enough
+            console.log(`Using cached data for ${resourceType}`);
+            processResourceData(resourceType, window.app.state.cache.data[resourceType], startTime);
+            return;
+        } else if (!window.app.state.cache.warningShown[resourceType]) {
+            // Show warning for stale data
+            const warningDiv = document.createElement('div');
+            warningDiv.className = 'alert alert-warning alert-dismissible fade show';
+            warningDiv.innerHTML = `
+                <strong>Notice:</strong> The ${resourceType} data may be out of date. 
+                <button type="button" class="btn btn-sm btn-warning ms-2" onclick="fetchResourceData('${resourceType}')">
+                    Refresh Now
+                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            const tableContainer = document.querySelector(`#${resourceType}Table`).parentElement;
+            tableContainer.insertBefore(warningDiv, tableContainer.firstChild);
+            
+            window.app.state.cache.warningShown[resourceType] = true;
+            
+            // Still show the cached data
+            processResourceData(resourceType, window.app.state.cache.data[resourceType], startTime);
+            return;
+        }
+    }
+
     // Cancel any existing request for this resource type
     if (window.app.state.activeRequests.has(resourceType)) {
         window.app.state.activeRequests.get(resourceType).abort();
-        window.app.state.activeRequests.delete(resourceType);
     }
-    
-    // For critical-only loads, don't use cache
-    if (!criticalOnly) {
-        // Check cache first
-        const cachedData = window.app.state.resources[resourceType];
-        const lastFetch = window.app.state.lastFetch[resourceType];
-        if (cachedData && lastFetch && (Date.now() - lastFetch < window.app.CACHE_TIMEOUT)) {
-            console.log(`Using cached data for ${resourceType}`);
-            return Promise.resolve(processResourceData(resourceType, cachedData, startTime));
-        }
-    }
-    
-    // Show loading indicator
-    showLoading(resourceType);
-    
-    // Create new abort controller
+
+    // Create new AbortController for this request
     const controller = new AbortController();
     window.app.state.activeRequests.set(resourceType, controller);
-    
-    // Prepare form data
+
+    // Show loading state
+    showLoading(resourceType);
+
+    // Prepare the form data
     const formData = new FormData();
     formData.append('resource_type', resourceType);
+    formData.append('namespace', namespace || 'all');
     formData.append('critical_only', criticalOnly);
-    if (namespace && namespace !== 'all') {
-        formData.append('namespace', namespace);
-    }
-    
-    // Track when we start processing the response
-    let processingStartTime;
-    
-    function fetchWithRetry(attempt = 0) {
-        const MAX_RETRIES = 3;
-        const RETRY_DELAY = 1000;
+
+    // Make the fetch request
+    fetch('/get_resources', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Cache the successful response
+        window.app.state.cache.data[resourceType] = data;
+        window.app.state.cache.timestamps[resourceType] = Date.now();
+        window.app.state.cache.warningShown[resourceType] = false;
         
-        return fetch('/get_resources', {
-            method: 'POST',
-            body: formData,
-            signal: controller.signal
-        })
-        .then(response => {
-            processingStartTime = performance.now();
-            return response.json();
-        })
-        .then(data => {
-            if (!data || !data.data || !data.data.items) {
-                throw new Error('Invalid response format');
-            }
+        // Process and display the data
+        processResourceData(resourceType, data, startTime);
+        
+        // Clean up the request reference
+        window.app.state.activeRequests.delete(resourceType);
+        
+        // Mark resource as loaded
+        window.app.loadedResources[resourceType] = true;
+    })
+    .catch(error => {
+        if (error.name === 'AbortError') {
+            console.log(`Request for ${resourceType} was cancelled`);
+        } else {
+            console.error(`Error fetching ${resourceType}:`, error);
+            hideLoading(resourceType);
             
-            // Cache the successful response
-            window.app.state.resources[resourceType] = data;
-            window.app.state.lastFetch[resourceType] = Date.now();
+            // Show error message
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'alert alert-danger alert-dismissible fade show';
+            errorDiv.innerHTML = `
+                <strong>Error:</strong> Failed to fetch ${resourceType}. 
+                <button type="button" class="btn btn-sm btn-danger ms-2" onclick="fetchResourceData('${resourceType}')">
+                    Retry
+                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
             
-            // Process the data
-            processResourceData(resourceType, data, startTime, processingStartTime);
-        })
-        .catch(error => {
-            if (error.name === 'AbortError') {
-                console.log(`Request for ${resourceType} was cancelled`);
-                return;
-            }
-            
-            // Store error state
-            window.app.state.errors[resourceType] = error;
-            
-            // Retry logic
-            if (attempt < MAX_RETRIES) {
-                console.log(`Retrying ${resourceType} fetch attempt ${attempt + 1}...`);
-                return new Promise(resolve => {
-                    setTimeout(() => {
-                        resolve(fetchWithRetry(attempt + 1));
-                    }, RETRY_DELAY * Math.pow(2, attempt));
-                });
-            }
-            
-            // Show error in UI after all retries failed
-            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-            if (tableBody) {
-                tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
-                    <i class="fas fa-exclamation-circle me-2"></i>
-                    Failed to load ${resourceType} after multiple attempts. 
-                    <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
-                        <i class="fas fa-sync-alt me-1"></i> Retry
-                    </button>
-                </td></tr>`;
-            }
-            
-            throw error;
-        })
-        .finally(() => {
-            window.app.state.activeRequests.delete(resourceType);
-        });
-    }
-    
-    return fetchWithRetry();
+            const tableContainer = document.querySelector(`#${resourceType}Table`).parentElement;
+            tableContainer.insertBefore(errorDiv, tableContainer.firstChild);
+        }
+    });
 }
 
 // Helper function to process resource data

@@ -125,11 +125,16 @@
                 filters: {
                     gpu: false,
                     namespace: 'all'
+                },
+                cache: {
+                    data: {},
+                    timestamps: {},
+                    duration: 5 * 60 * 1000, // 5 minutes in milliseconds
+                    warningShown: {}
                 }
             },
             loadedResources: {},
-            currentTab: null,
-            CACHE_TIMEOUT: 5 * 60 * 1000  // 5 minutes
+            currentTab: null
         };
 
         // Initialize the application
@@ -178,10 +183,11 @@
             console.log(`Loading resources for tab: ${tabId}`);
             window.app.currentTab = tabId;
 
-            // Clear any existing content
-            const tableBody = document.querySelector(`#${tabId}Table tbody`);
-            if (tableBody) {
-                tableBody.innerHTML = '';
+            // Clear any existing alerts
+            const tableContainer = document.querySelector(`#${tabId}Table`);
+            if (tableContainer) {
+                const existingAlerts = tableContainer.parentElement.querySelectorAll('.alert');
+                existingAlerts.forEach(alert => alert.remove());
             }
 
             // Show loading indicator for the tab
@@ -192,6 +198,26 @@
 
             // Load resources based on tab type
             if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
+                // Check if we have cached data that's not too old
+                const cachedData = window.app.state.cache.data[tabId];
+                const lastFetchTime = window.app.state.cache.timestamps[tabId];
+                
+                if (cachedData && lastFetchTime) {
+                    const timeSinceLastFetch = Date.now() - lastFetchTime;
+                    if (timeSinceLastFetch < window.app.state.cache.duration) {
+                        // Use cached data
+                        console.log(`Using cached data for ${tabId}`);
+                        if (typeof processResourceData === 'function') {
+                            processResourceData(tabId, cachedData, performance.now());
+                        }
+                        if (loadingElement) {
+                            loadingElement.style.display = 'none';
+                        }
+                        return;
+                    }
+                }
+                
+                // Fetch fresh data if cache is expired or doesn't exist
                 if (typeof fetchResourceData === 'function') {
                     fetchResourceData(tabId);
                 }
