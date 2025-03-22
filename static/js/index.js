@@ -572,45 +572,27 @@ function filterResources(resourceType, searchTerm) {
 }
 
 // Resource data fetching (for individual tab clicks or refresh button)
-function fetchResourceData(resourceType, namespace, criticalOnly = false) {
-    const startTime = performance.now();
-    const currentTime = Date.now();
-    
-    // Check if we have cached data and it's not too old
-    if (window.app.state.cache.data[resourceType]) {
-        const timeSinceLastFetch = currentTime - window.app.state.cache.timestamps[resourceType];
+function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false) {
+    // Check if we have cached data that's still fresh
+    const cachedData = window.app.state.resources[resourceType];
+    const lastFetch = window.app.state.lastFetch[resourceType];
+    const now = Date.now();
+
+    if (cachedData && lastFetch && (now - lastFetch) < window.app.config.CACHE_TIMEOUT) {
+        console.log(`Using cached data for ${resourceType}`);
+        processResourceData(resourceType, cachedData);
         
-        if (timeSinceLastFetch < window.app.state.cache.duration) {
-            // Use cached data if it's fresh enough
-            console.log(`Using cached data for ${resourceType}`);
-            processResourceData(resourceType, window.app.state.cache.data[resourceType], startTime);
-            return;
-        } else if (!window.app.state.cache.warningShown[resourceType]) {
-            // Show warning for stale data
-            const warningDiv = document.createElement('div');
-            warningDiv.className = 'alert alert-warning alert-dismissible fade show';
-            warningDiv.innerHTML = `
-                <strong>Notice:</strong> The ${resourceType} data may be out of date. 
-                <button type="button" class="btn btn-sm btn-warning ms-2" onclick="fetchResourceData('${resourceType}')">
-                    Refresh Now
-                </button>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            `;
-            
-            const tableContainer = document.querySelector(`#${resourceType}Table`).parentElement;
-            tableContainer.insertBefore(warningDiv, tableContainer.firstChild);
-            
-            window.app.state.cache.warningShown[resourceType] = true;
-            
-            // Still show the cached data
-            processResourceData(resourceType, window.app.state.cache.data[resourceType], startTime);
-            return;
+        // Check if data is getting stale
+        if (isDataStale(resourceType)) {
+            showStaleDataWarning(resourceType);
         }
+        return;
     }
 
     // Cancel any existing request for this resource type
-    if (window.app.state.activeRequests.has(resourceType)) {
-        window.app.state.activeRequests.get(resourceType).abort();
+    const existingRequest = window.app.state.activeRequests.get(resourceType);
+    if (existingRequest) {
+        existingRequest.abort();
     }
 
     // Create new AbortController for this request
@@ -619,11 +601,12 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
 
     // Show loading state
     showLoading(resourceType);
+    hideStaleDataWarning(resourceType);
 
     // Prepare the form data
     const formData = new FormData();
     formData.append('resource_type', resourceType);
-    formData.append('namespace', namespace || 'all');
+    formData.append('namespace', namespace);
     formData.append('critical_only', criticalOnly);
 
     // Make the fetch request
@@ -634,41 +617,32 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
     })
     .then(response => response.json())
     .then(data => {
-        // Cache the successful response
-        window.app.state.cache.data[resourceType] = data;
-        window.app.state.cache.timestamps[resourceType] = Date.now();
-        window.app.state.cache.warningShown[resourceType] = false;
-        
-        // Process and display the data
-        processResourceData(resourceType, data, startTime);
-        
-        // Clean up the request reference
-        window.app.state.activeRequests.delete(resourceType);
-        
-        // Mark resource as loaded
+        // Store the data in cache
+        window.app.state.resources[resourceType] = data;
+        window.app.state.lastFetch[resourceType] = now;
         window.app.loadedResources[resourceType] = true;
+
+        // Process and display the data
+        processResourceData(resourceType, data);
+        hideLoading(resourceType);
+
+        // Clean up the active request
+        window.app.state.activeRequests.delete(resourceType);
+
+        // Update dashboard metrics if this is pods data
+        if (resourceType === 'pods' && data.data && data.data.items) {
+            updateDashboardMetrics(data.data.items);
+        }
     })
     .catch(error => {
         if (error.name === 'AbortError') {
             console.log(`Request for ${resourceType} was cancelled`);
         } else {
             console.error(`Error fetching ${resourceType}:`, error);
+            window.app.state.errors[resourceType] = error.message;
             hideLoading(resourceType);
-            
-            // Show error message
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'alert alert-danger alert-dismissible fade show';
-            errorDiv.innerHTML = `
-                <strong>Error:</strong> Failed to fetch ${resourceType}. 
-                <button type="button" class="btn btn-sm btn-danger ms-2" onclick="fetchResourceData('${resourceType}')">
-                    Retry
-                </button>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            `;
-            
-            const tableContainer = document.querySelector(`#${resourceType}Table`).parentElement;
-            tableContainer.insertBefore(errorDiv, tableContainer.firstChild);
         }
+        window.app.state.activeRequests.delete(resourceType);
     });
 }
 
@@ -2421,17 +2395,23 @@ function loadResourcesForTab(tabId) {
 
     // Load resources based on tab type
     if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
-        // First load critical data (status and basic info)
-        fetchResourceData(tabId, 'all', true)
-            .then(() => {
-                // Then load full details in background
-                if (window.app.currentTab === tabId) {  // Only if still on same tab
-                    return fetchResourceData(tabId, 'all', false);
-                }
-            })
-            .catch(error => {
-                console.error(`Error loading ${tabId}:`, error);
-            });
+        // Check if we have cached data
+        const cachedData = window.app.state.resources[tabId];
+        const lastFetch = window.app.state.lastFetch[tabId];
+        const now = Date.now();
+
+        if (cachedData && lastFetch && (now - lastFetch) < window.app.config.CACHE_TIMEOUT) {
+            console.log(`Using cached data for ${tabId}`);
+            processResourceData(tabId, cachedData);
+            if (isDataStale(tabId)) {
+                showStaleDataWarning(tabId);
+            }
+            if (loadingElement) {
+                loadingElement.style.display = 'none';
+            }
+        } else {
+            fetchResourceData(tabId);
+        }
     } else if (tabId === 'namespaces') {
         if (typeof loadNamespaces === 'function') {
             loadNamespaces();
