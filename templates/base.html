@@ -154,23 +154,33 @@
         function initializeHomePage() {
             console.log('Initializing home page...');
             
-            // Reset the loaded resources state
-            window.app.loadedResources = {};
+            // Only reset loadedResources if coming from a different page
+            if (window.location.pathname !== '/') {
+                console.log('Resetting loaded resources state');
+                window.app.loadedResources = {};
+            }
             
             // Initialize resource loading for the active tab
             const activeTab = document.querySelector('.nav-link.active');
             if (activeTab) {
                 const tabId = activeTab.getAttribute('data-bs-target').replace('#', '');
+                console.log('Loading resources for active tab:', tabId);
                 loadResourcesForTab(tabId);
             }
             
-            // Attach tab event listeners
+            // Re-attach tab event listeners
             document.querySelectorAll('.nav-link[data-bs-toggle="tab"]').forEach(tab => {
-                tab.addEventListener('shown.bs.tab', (event) => {
-                    const tabId = event.target.getAttribute('data-bs-target').replace('#', '');
-                    loadResourcesForTab(tabId);
-                });
+                // Remove existing listeners first
+                tab.removeEventListener('shown.bs.tab', tabChangeHandler);
+                // Add new listener
+                tab.addEventListener('shown.bs.tab', tabChangeHandler);
             });
+        }
+
+        // Tab change event handler
+        function tabChangeHandler(event) {
+            const tabId = event.target.getAttribute('data-bs-target').replace('#', '');
+            loadResourcesForTab(tabId);
         }
 
         // Load resources based on tab type
@@ -178,21 +188,24 @@
             console.log(`Loading resources for tab: ${tabId}`);
             window.app.currentTab = tabId;
 
-            // Clear any existing content
-            const tableBody = document.querySelector(`#${tabId}Table tbody`);
-            if (tableBody) {
-                tableBody.innerHTML = '';
-            }
-
             // Show loading indicator for the tab
             const loadingElement = document.getElementById(`${tabId}Loading`);
             if (loadingElement) {
                 loadingElement.style.display = 'block';
             }
 
+            // Clear table only if it hasn't been loaded yet
+            if (!window.app.loadedResources[tabId]) {
+                const tableBody = document.querySelector(`#${tabId}Table tbody`);
+                if (tableBody) {
+                    tableBody.innerHTML = '';
+                }
+            }
+
             // Load resources based on tab type
             if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
                 if (typeof fetchResourceData === 'function') {
+                    console.log(`Fetching data for ${tabId}`);
                     fetchResourceData(tabId);
                 }
             } else if (tabId === 'namespaces') {
@@ -221,54 +234,70 @@
                     .then(html => {
                         const parser = new DOMParser();
                         const doc = parser.parseFromString(html, 'text/html');
+                        
+                        // Get all scripts from the fetched content
+                        const fetchedScripts = Array.from(doc.querySelectorAll('script')).map(script => {
+                            return {
+                                src: script.src,
+                                content: script.textContent,
+                                attributes: Array.from(script.attributes)
+                            };
+                        });
+                        
+                        // Get the main content
                         const content = doc.querySelector('#main-content').innerHTML;
                         
                         // Update the page content with transition
                         requestAnimationFrame(() => {
                             const mainContent = document.getElementById('main-content');
+                            mainContent.innerHTML = content;
                             
-                            // First, remove all existing event listeners by cloning and replacing
-                            const newMainContent = mainContent.cloneNode(false);
-                            mainContent.parentNode.replaceChild(newMainContent, mainContent);
-                            
-                            // Now set the content
-                            newMainContent.innerHTML = content;
-                            
-                            // Execute any scripts in the content
-                            const scripts = newMainContent.getElementsByTagName('script');
-                            Array.from(scripts).forEach(script => {
+                            // Re-execute all scripts in order
+                            fetchedScripts.forEach(scriptData => {
                                 const newScript = document.createElement('script');
-                                Array.from(script.attributes).forEach(attr => {
-                                    newScript.setAttribute(attr.name, attr.value);
+                                scriptData.attributes.forEach(attr => {
+                                    if (attr.name !== 'src') {
+                                        newScript.setAttribute(attr.name, attr.value);
+                                    }
                                 });
-                                newScript.textContent = script.textContent;
-                                script.parentNode.replaceChild(newScript, script);
+                                
+                                if (scriptData.src) {
+                                    newScript.src = scriptData.src;
+                                    newScript.onload = () => {
+                                        console.log(`Script loaded: ${scriptData.src}`);
+                                    };
+                                } else {
+                                    newScript.textContent = scriptData.content;
+                                }
+                                
+                                document.body.appendChild(newScript);
                             });
                             
-                            newMainContent.style.opacity = '1';
-                            // Restore scroll position
+                            mainContent.style.opacity = '1';
                             window.scrollTo(0, scrollPos);
+                            
+                            // Initialize after scripts are loaded
+                            setTimeout(() => {
+                                console.log('Initializing after navigation');
+                                initializeHomePage();
+                                activateTab(tabId);
+                                
+                                // Force a refresh of the current tab's data
+                                if (window.app.currentTab) {
+                                    console.log('Forcing refresh of current tab:', window.app.currentTab);
+                                    loadResourcesForTab(window.app.currentTab);
+                                }
+                            }, 100);
                         });
                         
-                        // Update history with scroll position
+                        // Update history
                         window.history.pushState({
                             content: content,
                             page: 'home',
                             scroll: scrollPos,
-                            tabId: tabId
+                            tabId: tabId,
+                            scripts: fetchedScripts
                         }, '', '/');
-                        
-                        // Initialize the home page
-                        initializeHomePage();
-                        
-                        // Activate the requested tab
-                        activateTab(tabId);
-                        
-                        // Force a refresh of the current tab's data
-                        if (window.app.currentTab) {
-                            console.log('Forcing refresh of current tab:', window.app.currentTab);
-                            loadResourcesForTab(window.app.currentTab);
-                        }
                     })
                     .catch(error => {
                         console.error('Error navigating to home:', error);
@@ -282,7 +311,7 @@
                 // If already on home page, just activate the tab
                 activateTab(tabId);
                 
-                // Update history state with current scroll position
+                // Update history state
                 const currentState = window.history.state || {};
                 window.history.replaceState({
                     ...currentState,
