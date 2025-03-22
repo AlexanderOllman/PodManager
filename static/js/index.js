@@ -572,78 +572,109 @@ function filterResources(resourceType, searchTerm) {
 }
 
 // Resource data fetching (for individual tab clicks or refresh button)
-function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false) {
-    // Check if we have cached data that's still fresh
-    const cachedData = window.app.state.resources[resourceType];
-    const lastFetch = window.app.state.lastFetch[resourceType];
-    const now = Date.now();
-
-    if (cachedData && lastFetch && (now - lastFetch) < window.app.config.CACHE_TIMEOUT) {
-        console.log(`Using cached data for ${resourceType}`);
-        processResourceData(resourceType, cachedData);
-        
-        // Check if data is getting stale
-        if (isDataStale(resourceType)) {
-            showStaleDataWarning(resourceType);
-        }
-        return;
-    }
-
+function fetchResourceData(resourceType, namespace, criticalOnly = false) {
+    console.log(`Fetching ${resourceType} data (${criticalOnly ? 'critical' : 'full'})...`);
+    const startTime = performance.now();
+    
     // Cancel any existing request for this resource type
-    const existingRequest = window.app.state.activeRequests.get(resourceType);
-    if (existingRequest) {
-        existingRequest.abort();
+    if (window.app.state.activeRequests.has(resourceType)) {
+        window.app.state.activeRequests.get(resourceType).abort();
+        window.app.state.activeRequests.delete(resourceType);
     }
-
-    // Create new AbortController for this request
+    
+    // For critical-only loads, don't use cache
+    if (!criticalOnly) {
+        // Check cache first
+        const cachedData = window.app.state.resources[resourceType];
+        const lastFetch = window.app.state.lastFetch[resourceType];
+        if (cachedData && lastFetch && (Date.now() - lastFetch < window.app.CACHE_TIMEOUT)) {
+            console.log(`Using cached data for ${resourceType}`);
+            return Promise.resolve(processResourceData(resourceType, cachedData, startTime));
+        }
+    }
+    
+    // Show loading indicator
+    showLoading(resourceType);
+    
+    // Create new abort controller
     const controller = new AbortController();
     window.app.state.activeRequests.set(resourceType, controller);
-
-    // Show loading state
-    showLoading(resourceType);
-    hideStaleDataWarning(resourceType);
-
-    // Prepare the form data
+    
+    // Prepare form data
     const formData = new FormData();
     formData.append('resource_type', resourceType);
-    formData.append('namespace', namespace);
     formData.append('critical_only', criticalOnly);
-
-    // Make the fetch request
-    fetch('/get_resources', {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal
-    })
-    .then(response => response.json())
-    .then(data => {
-        // Store the data in cache
-        window.app.state.resources[resourceType] = data;
-        window.app.state.lastFetch[resourceType] = now;
-        window.app.loadedResources[resourceType] = true;
-
-        // Process and display the data
-        processResourceData(resourceType, data);
-        hideLoading(resourceType);
-
-        // Clean up the active request
-        window.app.state.activeRequests.delete(resourceType);
-
-        // Update dashboard metrics if this is pods data
-        if (resourceType === 'pods' && data.data && data.data.items) {
-            updateDashboardMetrics(data.data.items);
-        }
-    })
-    .catch(error => {
-        if (error.name === 'AbortError') {
-            console.log(`Request for ${resourceType} was cancelled`);
-        } else {
-            console.error(`Error fetching ${resourceType}:`, error);
-            window.app.state.errors[resourceType] = error.message;
-            hideLoading(resourceType);
-        }
-        window.app.state.activeRequests.delete(resourceType);
-    });
+    if (namespace && namespace !== 'all') {
+        formData.append('namespace', namespace);
+    }
+    
+    // Track when we start processing the response
+    let processingStartTime;
+    
+    function fetchWithRetry(attempt = 0) {
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY = 1000;
+        
+        return fetch('/get_resources', {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal
+        })
+        .then(response => {
+            processingStartTime = performance.now();
+            return response.json();
+        })
+        .then(data => {
+            if (!data || !data.data || !data.data.items) {
+                throw new Error('Invalid response format');
+            }
+            
+            // Cache the successful response
+            window.app.state.resources[resourceType] = data;
+            window.app.state.lastFetch[resourceType] = Date.now();
+            
+            // Process the data
+            processResourceData(resourceType, data, startTime, processingStartTime);
+        })
+        .catch(error => {
+            if (error.name === 'AbortError') {
+                console.log(`Request for ${resourceType} was cancelled`);
+                return;
+            }
+            
+            // Store error state
+            window.app.state.errors[resourceType] = error;
+            
+            // Retry logic
+            if (attempt < MAX_RETRIES) {
+                console.log(`Retrying ${resourceType} fetch attempt ${attempt + 1}...`);
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve(fetchWithRetry(attempt + 1));
+                    }, RETRY_DELAY * Math.pow(2, attempt));
+                });
+            }
+            
+            // Show error in UI after all retries failed
+            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+            if (tableBody) {
+                tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    Failed to load ${resourceType} after multiple attempts. 
+                    <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
+                        <i class="fas fa-sync-alt me-1"></i> Retry
+                    </button>
+                </td></tr>`;
+            }
+            
+            throw error;
+        })
+        .finally(() => {
+            window.app.state.activeRequests.delete(resourceType);
+        });
+    }
+    
+    return fetchWithRetry();
 }
 
 // Helper function to process resource data
@@ -2377,23 +2408,17 @@ function namespaceChanged(resourceType) {
     fetchResourceData(resourceType, selectedNamespace);
 }
 
+// Add this at the top of the file with other global state
+const CACHE_TIMEOUT = 5 * 60 * 1000; // 5 minutes in milliseconds
+
 function loadResourcesForTab(tabId) {
     console.log(`Loading resources for tab: ${tabId}`);
     window.app.currentTab = tabId;
 
-    // Get references to table elements
-    const tableContainer = document.querySelector(`#${tabId} .table-responsive`);
-    const tableBody = document.querySelector(`#${tabId}Table tbody`);
-    
-    // Ensure table container is visible
-    if (tableContainer) {
-        tableContainer.style.display = 'block';
-    }
-
-    // Clear any existing content
-    if (tableBody) {
-        tableBody.innerHTML = '';
-    }
+    // Check if we have cached data and when it was last fetched
+    const cachedData = window.app.state.resources[tabId];
+    const lastFetch = window.app.state.lastFetch[tabId];
+    const now = Date.now();
 
     // Show loading indicator for the tab
     const loadingElement = document.getElementById(`${tabId}Loading`);
@@ -2401,33 +2426,25 @@ function loadResourcesForTab(tabId) {
         loadingElement.style.display = 'block';
     }
 
-    // Load resources based on tab type
-    if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
-        // Check if we have cached data
-        const cachedData = window.app.state.resources[tabId];
-        const lastFetch = window.app.state.lastFetch[tabId];
-        const now = Date.now();
-
-        if (cachedData && lastFetch && (now - lastFetch) < window.app.config.CACHE_TIMEOUT) {
-            console.log(`Using cached data for ${tabId}`);
-            // Ensure table is visible before processing data
-            if (tableContainer) {
-                tableContainer.style.display = 'block';
+    // If we have cached data, show it immediately
+    if (cachedData) {
+        console.log(`Using cached data for ${tabId}`);
+        processResourceData(tabId, cachedData, now, true);
+        
+        // If data is stale (older than 5 minutes), show warning and fetch new data
+        if (!lastFetch || (now - lastFetch > CACHE_TIMEOUT)) {
+            showStaleDataWarning(tabId);
+            // Fetch fresh data in the background
+            if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
+                fetchResourceData(tabId, 'all', false);
             }
-            processResourceData(tabId, cachedData);
-            if (isDataStale(tabId)) {
-                showStaleDataWarning(tabId);
-            }
-            if (loadingElement) {
-                loadingElement.style.display = 'none';
-            }
-        } else {
-            // Ensure table container is visible before fetching
-            if (tableContainer) {
-                tableContainer.style.display = 'block';
-            }
-            fetchResourceData(tabId);
         }
+        return;
+    }
+
+    // If no cached data, load resources based on tab type
+    if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
+        fetchResourceData(tabId, 'all', false);
     } else if (tabId === 'namespaces') {
         if (typeof loadNamespaces === 'function') {
             loadNamespaces();
@@ -2437,12 +2454,181 @@ function loadResourcesForTab(tabId) {
             refreshCharts();
         }
     }
+}
 
-    // Double-check table visibility after a short delay
-    setTimeout(() => {
-        if (tableContainer && tableContainer.style.display !== 'block') {
-            console.log(`Ensuring table visibility for ${tabId}`);
-            tableContainer.style.display = 'block';
-        }
-    }, 100);
+function processResourceData(resourceType, data, startTime, isFromCache = false) {
+    // Update progress bar to indicate processing data
+    const progressBar = document.querySelector(`#${resourceType}Progress .progress-bar`);
+    if (progressBar) {
+        progressBar.style.width = '50%';
+    }
+    
+    // Clear and populate the table
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (tableBody) {
+        tableBody.innerHTML = '';
+        data.data.items.forEach(item => {
+            const row = document.createElement('tr');
+            switch (resourceType) {
+                case 'pods':
+                    const resources = getResourceUsage(item);
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
+                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
+                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'services':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.spec.type}</td>
+                        <td>${item.spec.clusterIP}</td>
+                        <td>${item.spec.externalIP || 'N/A'}</td>
+                        <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'inferenceservices':
+                    // For InferenceServices, get resources from spec.predictor
+                    let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
+                    if (item.spec && item.spec.predictor) {
+                        if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                            item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                            item.spec.predictor.xgboost || item.spec.predictor.custom) {
+                            // Get the appropriate predictor implementation
+                            const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                                                 item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                                                 item.spec.predictor.xgboost || item.spec.predictor.custom;
+                            
+                            if (predictorImpl.resources) {
+                                if (predictorImpl.resources.requests) {
+                                    // CPU
+                                    if (predictorImpl.resources.requests.cpu) {
+                                        const cpuReq = predictorImpl.resources.requests.cpu;
+                                        if (cpuReq.endsWith('m')) {
+                                            infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
+                                        } else {
+                                            infResources.cpu = parseFloat(cpuReq).toFixed(2);
+                                        }
+                                    }
+                                    
+                                    // GPU
+                                    if (predictorImpl.resources.requests['nvidia.com/gpu']) {
+                                        infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
+                                    } else if (predictorImpl.resources.requests.gpu) {
+                                        infResources.gpu = predictorImpl.resources.requests.gpu;
+                                    }
+                                    
+                                    // Memory
+                                    if (predictorImpl.resources.requests.memory) {
+                                        infResources.memory = predictorImpl.resources.requests.memory;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.url || 'N/A'}</td>
+                        <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
+                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
+                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
+                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
+                        <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
+                        <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'deployments':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
+                        <td>${item.status.updatedReplicas}</td>
+                        <td>${item.status.availableReplicas}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'configmaps':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${Object.keys(item.data || {}).length}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'secrets':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.type}</td>
+                        <td>${Object.keys(item.data || {}).length}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+            }
+            tableBody.appendChild(row);
+        });
+    }
+    
+    // Update progress to 100%
+    if (progressBar) {
+        progressBar.style.width = '100%';
+    }
+    
+    // Store in cache if not already from cache
+    if (!isFromCache) {
+        window.app.state.resources[resourceType] = data;
+        window.app.state.lastFetch[resourceType] = Date.now();
+    }
+    
+    // Mark this resource type as loaded
+    window.app.loadedResources[resourceType] = true;
+    
+    // Store pods data and update dashboard metrics if this is pods data
+    if (resourceType === 'pods') {
+        window.podsData = data.data.items;
+        updateDashboardMetrics(data.data.items);
+    }
+    
+    // Hide loading indicator
+    hideLoading(resourceType);
+    
+    // Calculate and log performance metrics
+    const endTime = performance.now();
+    const totalTime = Math.round(endTime - startTime);
+    console.log(`Completed loading ${resourceType}:`);
+    console.log(`- Total time: ${totalTime}ms`);
+}
+
+function showStaleDataWarning(resourceType) {
+    // Create or update warning message
+    let warningDiv = document.querySelector(`#${resourceType}StaleWarning`);
+    if (!warningDiv) {
+        warningDiv = document.createElement('div');
+        warningDiv.id = `${resourceType}StaleWarning`;
+        warningDiv.className = 'alert alert-warning alert-dismissible fade show mt-2';
+        warningDiv.role = 'alert';
+        
+        const tableContainer = document.querySelector(`#${resourceType}Table`).parentElement;
+        tableContainer.insertBefore(warningDiv, tableContainer.firstChild);
+    }
+    
+    warningDiv.innerHTML = `
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        This information may be outdated. Fetching fresh data...
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
 }

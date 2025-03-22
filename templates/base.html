@@ -129,53 +129,8 @@
             },
             loadedResources: {},
             currentTab: null,
-            config: {
-                CACHE_TIMEOUT: 5 * 60 * 1000,  // 5 minutes
-                STALE_WARNING_TIMEOUT: 4.5 * 60 * 1000  // 4.5 minutes - show warning 30 seconds before cache expires
-            }
+            CACHE_TIMEOUT: 5 * 60 * 1000  // 5 minutes
         };
-
-        // Helper function to check data freshness
-        function isDataStale(resourceType) {
-            const lastFetch = window.app.state.lastFetch[resourceType];
-            if (!lastFetch) return true;
-            
-            const age = Date.now() - lastFetch;
-            return age > window.app.config.STALE_WARNING_TIMEOUT;
-        }
-
-        // Helper function to show stale data warning
-        function showStaleDataWarning(resourceType) {
-            const warningId = `${resourceType}StaleWarning`;
-            let warningElement = document.getElementById(warningId);
-            
-            if (!warningElement) {
-                warningElement = document.createElement('div');
-                warningElement.id = warningId;
-                warningElement.className = 'alert alert-warning alert-dismissible fade show mt-2';
-                warningElement.innerHTML = `
-                    <i class="fas fa-clock me-2"></i>
-                    This data may be out of date. 
-                    <button type="button" class="btn btn-sm btn-warning ms-2" onclick="fetchResourceData('${resourceType}')">
-                        <i class="fas fa-sync-alt me-1"></i> Refresh Now
-                    </button>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                `;
-                
-                const tableContainer = document.querySelector(`#${resourceType}Table`);
-                if (tableContainer) {
-                    tableContainer.parentNode.insertBefore(warningElement, tableContainer);
-                }
-            }
-        }
-
-        // Helper function to hide stale data warning
-        function hideStaleDataWarning(resourceType) {
-            const warningElement = document.getElementById(`${resourceType}StaleWarning`);
-            if (warningElement) {
-                warningElement.remove();
-            }
-        }
 
         // Initialize the application
         function initializeApp() {
@@ -268,35 +223,27 @@
                         const doc = parser.parseFromString(html, 'text/html');
                         const content = doc.querySelector('#main-content').innerHTML;
                         
-                        return new Promise(resolve => {
-                            // Update the page content with transition
-                            requestAnimationFrame(() => {
-                                document.getElementById('main-content').innerHTML = content;
-                                
-                                // Wait for next frame to ensure DOM is updated
-                                requestAnimationFrame(() => {
-                                    // Now initialize components
-                                    initializeHomePage();
-                                    
-                                    // Activate the requested tab after initialization
-                                    activateTab(tabId);
-                                    
-                                    // Restore scroll position and show content
-                                    window.scrollTo(0, scrollPos);
-                                    document.getElementById('main-content').style.opacity = '1';
-                                    
-                                    resolve();
-                                });
-                            });
+                        // Update the page content with transition
+                        requestAnimationFrame(() => {
+                            document.getElementById('main-content').innerHTML = content;
+                            document.getElementById('main-content').style.opacity = '1';
+                            // Restore scroll position
+                            window.scrollTo(0, scrollPos);
                         });
-                    })
-                    .then(() => {
+                        
                         // Update history with scroll position
                         window.history.pushState({
+                            content: content,
                             page: 'home',
                             scroll: scrollPos,
                             tabId: tabId
                         }, '', '/');
+                        
+                        // Initialize the home page
+                        initializeHomePage();
+                        
+                        // Activate the requested tab
+                        activateTab(tabId);
                     })
                     .catch(error => {
                         console.error('Error navigating to home:', error);
