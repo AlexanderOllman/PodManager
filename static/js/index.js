@@ -1467,7 +1467,7 @@ function setupTabClickHandlers() {
                     if (isGPUFilterActive) {
                         filterPodsWithGPUs();
                     }
-                }, 10);
+                }, 100);
             }
         });
     });
@@ -2381,8 +2381,16 @@ function loadResourcesForTab(tabId) {
     console.log(`Loading resources for tab: ${tabId}`);
     window.app.currentTab = tabId;
 
-    // Clear any existing content
+    // Get references to table elements
+    const tableContainer = document.querySelector(`#${tabId} .table-responsive`);
     const tableBody = document.querySelector(`#${tabId}Table tbody`);
+    
+    // Ensure table container is visible
+    if (tableContainer) {
+        tableContainer.style.display = 'block';
+    }
+
+    // Clear any existing content
     if (tableBody) {
         tableBody.innerHTML = '';
     }
@@ -2402,6 +2410,10 @@ function loadResourcesForTab(tabId) {
 
         if (cachedData && lastFetch && (now - lastFetch) < window.app.config.CACHE_TIMEOUT) {
             console.log(`Using cached data for ${tabId}`);
+            // Ensure table is visible before processing data
+            if (tableContainer) {
+                tableContainer.style.display = 'block';
+            }
             processResourceData(tabId, cachedData);
             if (isDataStale(tabId)) {
                 showStaleDataWarning(tabId);
@@ -2410,6 +2422,10 @@ function loadResourcesForTab(tabId) {
                 loadingElement.style.display = 'none';
             }
         } else {
+            // Ensure table container is visible before fetching
+            if (tableContainer) {
+                tableContainer.style.display = 'block';
+            }
             fetchResourceData(tabId);
         }
     } else if (tabId === 'namespaces') {
@@ -2421,146 +2437,12 @@ function loadResourcesForTab(tabId) {
             refreshCharts();
         }
     }
-}
 
-function navigateToTab(tabId) {
-    console.log(`Navigating to tab: ${tabId}`);
-    const currentPath = window.location.pathname;
-    const scrollPos = window.scrollY;
-
-    if (currentPath !== '/') {
-        // If not on home page, navigate to home first
-        document.getElementById('main-content').style.opacity = '0';
-        
-        fetch('/')
-            .then(response => response.text())
-            .then(html => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const content = doc.querySelector('#main-content').innerHTML;
-                
-                // Update the page content with transition
-                requestAnimationFrame(() => {
-                    document.getElementById('main-content').innerHTML = content;
-                    document.getElementById('main-content').style.opacity = '1';
-                    
-                    // Initialize the home page first
-                    initializeHomePage();
-                    
-                    // Then activate the requested tab
-                    activateTab(tabId);
-                    
-                    // Restore scroll position
-                    window.scrollTo(0, scrollPos);
-                });
-                
-                // Update history with scroll position
-                window.history.pushState({
-                    content: content,
-                    page: 'home',
-                    scroll: scrollPos,
-                    tabId: tabId
-                }, '', '/');
-            })
-            .catch(error => {
-                console.error('Error navigating to home:', error);
-                Swal.fire({
-                    title: 'Navigation Error',
-                    text: 'Failed to load the home page. Please try again.',
-                    icon: 'error'
-                });
-            });
-    } else {
-        // If already on home page, activate the tab and ensure resources are loaded
-        activateTab(tabId);
-        
-        // Force reload resources for the active tab
-        if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
-            // Clear cached state for this resource type
-            if (window.app.state.resources) {
-                delete window.app.state.resources[tabId];
-            }
-            if (window.app.loadedResources) {
-                delete window.app.loadedResources[tabId];
-            }
-            
-            // Get current namespace selection
-            const namespaceSelector = document.getElementById(`${tabId}Namespace`);
-            const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
-            
-            // Fetch fresh data
-            fetchResourceData(tabId, currentNamespace);
+    // Double-check table visibility after a short delay
+    setTimeout(() => {
+        if (tableContainer && tableContainer.style.display !== 'block') {
+            console.log(`Ensuring table visibility for ${tabId}`);
+            tableContainer.style.display = 'block';
         }
-        
-        // Update history state with current scroll position
-        const currentState = window.history.state || {};
-        window.history.replaceState({
-            ...currentState,
-            scroll: scrollPos,
-            tabId: tabId
-        }, '', '/');
-    }
-}
-
-// Tab activation function
-function activateTab(tabId) {
-    console.log(`Activating tab: ${tabId}`);
-    
-    // Remove active class from all tabs and panes
-    document.querySelectorAll('.nav-link').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    document.querySelectorAll('.tab-pane').forEach(pane => {
-        pane.classList.remove('show', 'active');
-    });
-    
-    // Add active class to selected tab and pane
-    const tabElement = document.querySelector(`.nav-link[data-bs-target="#${tabId}"]`);
-    const paneElement = document.getElementById(tabId);
-    
-    if (tabElement) {
-        tabElement.classList.add('active');
-    }
-    
-    if (paneElement) {
-        paneElement.classList.add('show', 'active');
-    }
-
-    // Load resources for the activated tab
-    loadResourcesForTab(tabId);
-}
-
-function loadResourcesForTab(tabId) {
-    console.log(`Loading resources for tab: ${tabId}`);
-    window.app.currentTab = tabId;
-
-    // Clear any existing content
-    const tableBody = document.querySelector(`#${tabId}Table tbody`);
-    if (tableBody) {
-        tableBody.innerHTML = '';
-    }
-
-    // Show loading indicator for the tab
-    const loadingElement = document.getElementById(`${tabId}Loading`);
-    if (loadingElement) {
-        loadingElement.style.display = 'block';
-    }
-
-    // Load resources based on tab type
-    if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
-        // Get current namespace selection
-        const namespaceSelector = document.getElementById(`${tabId}Namespace`);
-        const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
-        
-        // Always fetch fresh data when explicitly loading a tab
-        fetchResourceData(tabId, currentNamespace);
-    } else if (tabId === 'namespaces') {
-        if (typeof loadNamespaces === 'function') {
-            loadNamespaces();
-        }
-    } else if (tabId === 'charts') {
-        if (typeof refreshCharts === 'function') {
-            refreshCharts();
-        }
-    }
+    }, 100);
 }

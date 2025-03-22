@@ -268,27 +268,35 @@
                         const doc = parser.parseFromString(html, 'text/html');
                         const content = doc.querySelector('#main-content').innerHTML;
                         
-                        // Update the page content with transition
-                        requestAnimationFrame(() => {
-                            document.getElementById('main-content').innerHTML = content;
-                            document.getElementById('main-content').style.opacity = '1';
-                            // Restore scroll position
-                            window.scrollTo(0, scrollPos);
+                        return new Promise(resolve => {
+                            // Update the page content with transition
+                            requestAnimationFrame(() => {
+                                document.getElementById('main-content').innerHTML = content;
+                                
+                                // Wait for next frame to ensure DOM is updated
+                                requestAnimationFrame(() => {
+                                    // Now initialize components
+                                    initializeHomePage();
+                                    
+                                    // Activate the requested tab after initialization
+                                    activateTab(tabId);
+                                    
+                                    // Restore scroll position and show content
+                                    window.scrollTo(0, scrollPos);
+                                    document.getElementById('main-content').style.opacity = '1';
+                                    
+                                    resolve();
+                                });
+                            });
                         });
-                        
+                    })
+                    .then(() => {
                         // Update history with scroll position
                         window.history.pushState({
-                            content: content,
                             page: 'home',
                             scroll: scrollPos,
                             tabId: tabId
                         }, '', '/');
-                        
-                        // Initialize the home page
-                        initializeHomePage();
-                        
-                        // Activate the requested tab
-                        activateTab(tabId);
                     })
                     .catch(error => {
                         console.error('Error navigating to home:', error);
