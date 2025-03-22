@@ -117,8 +117,19 @@
             socket: null,
             terminal: null,
             init: false,
+            state: {
+                resources: {},
+                lastFetch: {},
+                errors: {},
+                activeRequests: new Map(),
+                filters: {
+                    gpu: false,
+                    namespace: 'all'
+                }
+            },
             loadedResources: {},
-            currentTab: null
+            currentTab: null,
+            CACHE_TIMEOUT: 5 * 60 * 1000  // 5 minutes
         };
 
         // Initialize the application
@@ -199,9 +210,12 @@
         function navigateToTab(tabId) {
             console.log(`Navigating to tab: ${tabId}`);
             const currentPath = window.location.pathname;
+            const scrollPos = window.scrollY;
 
             if (currentPath !== '/') {
                 // If not on home page, navigate to home first
+                document.getElementById('main-content').style.opacity = '0';
+                
                 fetch('/')
                     .then(response => response.text())
                     .then(html => {
@@ -209,9 +223,21 @@
                         const doc = parser.parseFromString(html, 'text/html');
                         const content = doc.querySelector('#main-content').innerHTML;
                         
-                        // Update the page content
-                        document.getElementById('main-content').innerHTML = content;
-                        window.history.pushState({content: content, page: 'home'}, '', '/');
+                        // Update the page content with transition
+                        requestAnimationFrame(() => {
+                            document.getElementById('main-content').innerHTML = content;
+                            document.getElementById('main-content').style.opacity = '1';
+                            // Restore scroll position
+                            window.scrollTo(0, scrollPos);
+                        });
+                        
+                        // Update history with scroll position
+                        window.history.pushState({
+                            content: content,
+                            page: 'home',
+                            scroll: scrollPos,
+                            tabId: tabId
+                        }, '', '/');
                         
                         // Initialize the home page
                         initializeHomePage();
@@ -230,8 +256,45 @@
             } else {
                 // If already on home page, just activate the tab
                 activateTab(tabId);
+                
+                // Update history state with current scroll position
+                const currentState = window.history.state || {};
+                window.history.replaceState({
+                    ...currentState,
+                    scroll: scrollPos,
+                    tabId: tabId
+                }, '', '/');
             }
         }
+
+        // Handle browser navigation (back/forward)
+        window.onpopstate = function(event) {
+            console.log('Navigation state change detected', event.state);
+            
+            if (event.state) {
+                // Restore content if available
+                if (event.state.content) {
+                    document.getElementById('main-content').innerHTML = event.state.content;
+                }
+                
+                // Re-initialize components based on page
+                if (event.state.page === 'home') {
+                    initializeHomePage();
+                    
+                    // Activate the correct tab
+                    if (event.state.tabId) {
+                        activateTab(event.state.tabId);
+                    }
+                    
+                    // Restore scroll position
+                    if (event.state.scroll !== undefined) {
+                        window.scrollTo(0, event.state.scroll);
+                    }
+                } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
+                    initializeExplorePage();
+                }
+            }
+        };
 
         // Tab activation function
         function activateTab(tabId) {
