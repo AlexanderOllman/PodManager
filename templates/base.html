@@ -225,8 +225,27 @@
                         
                         // Update the page content with transition
                         requestAnimationFrame(() => {
-                            document.getElementById('main-content').innerHTML = content;
-                            document.getElementById('main-content').style.opacity = '1';
+                            const mainContent = document.getElementById('main-content');
+                            
+                            // First, remove all existing event listeners by cloning and replacing
+                            const newMainContent = mainContent.cloneNode(false);
+                            mainContent.parentNode.replaceChild(newMainContent, mainContent);
+                            
+                            // Now set the content
+                            newMainContent.innerHTML = content;
+                            
+                            // Execute any scripts in the content
+                            const scripts = newMainContent.getElementsByTagName('script');
+                            Array.from(scripts).forEach(script => {
+                                const newScript = document.createElement('script');
+                                Array.from(script.attributes).forEach(attr => {
+                                    newScript.setAttribute(attr.name, attr.value);
+                                });
+                                newScript.textContent = script.textContent;
+                                script.parentNode.replaceChild(newScript, script);
+                            });
+                            
+                            newMainContent.style.opacity = '1';
                             // Restore scroll position
                             window.scrollTo(0, scrollPos);
                         });
@@ -244,6 +263,12 @@
                         
                         // Activate the requested tab
                         activateTab(tabId);
+                        
+                        // Force a refresh of the current tab's data
+                        if (window.app.currentTab) {
+                            console.log('Forcing refresh of current tab:', window.app.currentTab);
+                            loadResourcesForTab(window.app.currentTab);
+                        }
                     })
                     .catch(error => {
                         console.error('Error navigating to home:', error);
