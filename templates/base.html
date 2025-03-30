@@ -331,6 +331,38 @@
                                 return fetchResourceData(tabId, 'all', false);
                             }
                         })
+                        .then(() => {
+                            // Add data attributes to table rows
+                            const tableRows = document.querySelectorAll(`#${tabId}Table tbody tr`);
+                            tableRows.forEach(row => {
+                                const cells = row.querySelectorAll('td');
+                                if (cells.length >= 2) {
+                                    const namespace = cells[0].textContent.trim();
+                                    const name = cells[1].textContent.trim();
+                                    row.setAttribute('data-namespace', namespace);
+                                    row.setAttribute('data-name', name);
+                                }
+                            });
+                            
+                            // Re-initialize event handlers for interactive elements
+                            if (typeof initializeTableInteractions === 'function') {
+                                setTimeout(() => initializeTableInteractions(tabId), 200);
+                            } else {
+                                console.log('initializeTableInteractions function not found, adding default event handlers');
+                                // Add default event handlers for action buttons
+                                document.querySelectorAll(`#${tabId}Table .action-btn`).forEach(btn => {
+                                    btn.addEventListener('click', function(e) {
+                                        e.stopPropagation();
+                                        const action = this.dataset.action;
+                                        const resourceName = this.closest('tr').dataset.name;
+                                        const namespace = this.closest('tr').dataset.namespace;
+                                        if (typeof performAction === 'function') {
+                                            performAction(tabId, action, resourceName, namespace);
+                                        }
+                                    });
+                                });
+                            }
+                        })
                         .catch(error => {
                             console.error(`Error loading ${tabId}:`, error);
                         });
@@ -346,6 +378,204 @@
             }
         }
 
+        // Initialize table interactive elements
+        function initializeTableInteractions(tabId) {
+            console.log(`Initializing interactions for ${tabId} table`);
+            
+            // Initialize search functionality
+            const searchInput = document.getElementById(`${tabId}Search`);
+            if (searchInput) {
+                // Clear any existing event handlers
+                const newSearchInput = searchInput.cloneNode(true);
+                searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+                
+                // Add the event handler
+                newSearchInput.addEventListener('keyup', function() {
+                    filterResources(tabId, this.value);
+                });
+                
+                // Also initialize clear button
+                const clearBtn = newSearchInput.nextElementSibling;
+                if (clearBtn) {
+                    clearBtn.addEventListener('click', function() {
+                        newSearchInput.value = '';
+                        filterResources(tabId, '');
+                    });
+                }
+            }
+            
+            // Initialize namespace filter
+            const namespaceSelect = document.getElementById(`${tabId}Namespace`);
+            if (namespaceSelect) {
+                // Clear any existing event handlers
+                const newNamespaceSelect = namespaceSelect.cloneNode(true);
+                namespaceSelect.parentNode.replaceChild(newNamespaceSelect, namespaceSelect);
+                
+                // Add the event handler
+                newNamespaceSelect.addEventListener('change', function() {
+                    if (typeof namespaceChanged === 'function') {
+                        namespaceChanged(tabId);
+                    } else {
+                        fetchResourceData(tabId, this.value);
+                    }
+                });
+            }
+            
+            // Re-initialize Bootstrap dropdowns
+            const dropdownToggles = document.querySelectorAll(`#${tabId}Table .dropdown-toggle`);
+            dropdownToggles.forEach(toggle => {
+                // Make sure click events propagate correctly
+                toggle.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                });
+
+                // Manually create Bootstrap dropdown for each toggle
+                try {
+                    // Create new Bootstrap dropdown instance for this toggle
+                    new bootstrap.Dropdown(toggle);
+                } catch (err) {
+                    console.error('Error initializing Bootstrap dropdown:', err);
+                }
+            });
+            
+            // Initialize action buttons
+            document.querySelectorAll(`#${tabId}Table .dropdown-item.action-btn`).forEach(btn => {
+                // Clear any existing handlers
+                const newBtn = btn.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
+                
+                // Add click handler
+                newBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const action = this.dataset.action;
+                    const tr = this.closest('tr');
+                    const resourceName = tr.dataset.name;
+                    const namespace = tr.dataset.namespace;
+                    
+                    console.log(`Action clicked: ${action} for ${resourceName} in ${namespace}`);
+                    
+                    if (typeof performAction === 'function') {
+                        performAction(tabId, action, resourceName, namespace);
+                    }
+                });
+            });
+            
+            // Ensure table rows have click handlers if needed
+            document.querySelectorAll(`#${tabId}Table tbody tr`).forEach(row => {
+                row.style.cursor = 'pointer';
+                row.addEventListener('click', function() {
+                    const resourceName = this.dataset.name;
+                    const namespace = this.dataset.namespace;
+                    if (resourceName && namespace) {
+                        if (typeof showResourceDetails === 'function') {
+                            showResourceDetails(tabId, resourceName, namespace);
+                        } else {
+                            console.log(`Show details for ${resourceName} in namespace ${namespace}`);
+                        }
+                    }
+                });
+            });
+            
+            console.log(`Table interactions for ${tabId} initialized`);
+        }
+
+        // Filter table resources based on search text
+        function filterResources(resourceType, searchText) {
+            console.log(`Filtering ${resourceType} with search: ${searchText}`);
+            const table = document.getElementById(`${resourceType}Table`);
+            if (!table) return;
+            
+            const rows = table.querySelectorAll('tbody tr');
+            const searchLower = searchText.toLowerCase();
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (searchText === '' || text.includes(searchLower)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+        
+        // Clear search input
+        function clearSearch(resourceType) {
+            const searchInput = document.getElementById(`${resourceType}Search`);
+            if (searchInput) {
+                searchInput.value = '';
+                filterResources(resourceType, '');
+            }
+        }
+        
+        // Handle namespace selection change
+        function namespaceChanged(resourceType) {
+            const select = document.getElementById(`${resourceType}Namespace`);
+            if (select) {
+                const namespace = select.value;
+                console.log(`Namespace changed to ${namespace} for ${resourceType}`);
+                fetchResourceData(resourceType, namespace);
+            }
+        }
+        
+        // Create action buttons for resource
+        function createActionButton(resourceType, namespace, name) {
+            return `
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-light dropdown-toggle" type="button" id="${name.replace(/[^a-zA-Z0-9]/g, '')}-actions" 
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="${name.replace(/[^a-zA-Z0-9]/g, '')}-actions">
+                        <li><a class="dropdown-item action-btn" href="#" data-action="describe">Describe</a></li>
+                        <li><a class="dropdown-item action-btn" href="#" data-action="logs">Logs</a></li>
+                        <li><a class="dropdown-item action-btn" href="#" data-action="edit">Edit</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item action-btn text-danger" href="#" data-action="delete">Delete</a></li>
+                    </ul>
+                </div>
+            `;
+        }
+        
+        // Perform action on resource
+        function performAction(resourceType, action, name, namespace) {
+            console.log(`Performing ${action} on ${resourceType} ${name} in namespace ${namespace}`);
+            
+            // Show loading state
+            const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
+            document.getElementById('actionModalLabel').textContent = `${action.charAt(0).toUpperCase() + action.slice(1)} ${resourceType.slice(0, -1)}: ${name}`;
+            document.getElementById('actionResult').textContent = '';
+            document.getElementById('actionLoading').style.display = 'block';
+            actionModal.show();
+            
+            // Build form data
+            const formData = new FormData();
+            formData.append('action', action);
+            formData.append('resource_type', resourceType.slice(0, -1)); // Remove 's' from end
+            formData.append('resource_name', name);
+            formData.append('namespace', namespace);
+            
+            // Send request
+            fetch('/run_action', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('actionLoading').style.display = 'none';
+                if (data.format === 'text') {
+                    document.getElementById('actionResult').textContent = data.output;
+                } else if (data.format === 'error') {
+                    document.getElementById('actionResult').innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('actionLoading').style.display = 'none';
+                document.getElementById('actionResult').innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            });
+        }
+        
         // Initialize the app when the page loads
         document.addEventListener('DOMContentLoaded', () => {
             initializeApp();
