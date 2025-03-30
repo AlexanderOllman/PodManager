@@ -268,50 +268,38 @@
 
         // Load resources for tab
         function loadResourcesForTab(tabId) {
-            console.log(`Loading resources for tab: ${tabId}`);
+            console.log(`Base: Delegating loadResourcesForTab for ${tabId} to index.js implementation`);
             
-            // Clear any existing content
-            const tableBody = document.querySelector(`#${tabId}Table tbody`);
-            if (tableBody) {
-                tableBody.innerHTML = '';
-            }
-
-            // Show loading indicator
-            const loadingElement = document.getElementById(`${tabId}Loading`);
-            if (loadingElement) {
-                loadingElement.style.display = 'block';
-            }
-
-            // Load resources based on tab type
-            if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
-                if (typeof fetchResourceData === 'function') {
-                    // First load critical data
-                    fetchResourceData(tabId, 'all', true)
-                        .then(() => {
-                            // Then load full details in background
-                            if (window.app.state.navigation.activeTab === tabId) {
-                                return fetchResourceData(tabId, 'all', false);
-                            }
-                        })
-                        .catch(error => {
-                            console.error(`Error loading ${tabId}:`, error);
-                        });
-                }
-            } else if (tabId === 'namespaces') {
-                if (typeof loadNamespaces === 'function') {
-                    loadNamespaces();
-                }
-            } else if (tabId === 'charts') {
-                if (typeof refreshCharts === 'function') {
-                    refreshCharts();
-                }
+            // Call the implementation in index.js if available
+            if (typeof window.loadResourcesForTab === 'function') {
+                window.loadResourcesForTab(tabId);
+            } else {
+                console.warn('index.js loadResourcesForTab implementation not found');
             }
         }
 
         // Initialize the app when the page loads
         document.addEventListener('DOMContentLoaded', () => {
             initializeApp();
-            initializeHomePage();
+            
+            // Set up navigation events to ensure content is loaded
+            const mainNavLinks = document.querySelectorAll('a[data-bs-toggle="tab"]');
+            mainNavLinks.forEach(link => {
+                link.addEventListener('shown.bs.tab', (event) => {
+                    const targetTabId = event.target.getAttribute('data-bs-target').substring(1);
+                    console.log(`Main navigation to: ${targetTabId}`);
+                    
+                    // If navigating to home, ensure we initialize the home page
+                    if (targetTabId === 'home' && typeof initializeHomePage === 'function') {
+                        initializeHomePage();
+                    }
+                });
+            });
+            
+            // Initialize the home page if it's the active tab
+            if (document.querySelector('#home.active') && typeof initializeHomePage === 'function') {
+                initializeHomePage();
+            }
         });
     </script>
     
