@@ -161,6 +161,12 @@
                     window.app.state.resources = {};
                 }
                 window.app.state.navigation.isNavigating = false;
+                
+                // Ensure cluster capacity is fetched after navigation
+                if (typeof fetchClusterCapacity === 'function') {
+                    console.log('Fetching cluster capacity after navigation');
+                    fetchClusterCapacity();
+                }
             }
             
             // Get active tab from navigation state
@@ -169,12 +175,6 @@
             
             // Activate the tab
             activateTab(activeTab, false); // false means don't trigger a load yet
-            
-            // Force refresh of dashboard metrics - this will update the cards
-            if (typeof fetchClusterCapacity === 'function') {
-                console.log('Refreshing cluster capacity metrics');
-                fetchClusterCapacity();
-            }
             
             // Delay resource loading to ensure DOM is ready
             setTimeout(() => {
@@ -254,15 +254,6 @@
                                     }
                                 }
                                 
-                                // If this is the home tab, ensure dashboard metrics are refreshed
-                                if (tabId === 'home') {
-                                    // Explicitly refresh cluster capacity data for the metric cards
-                                    if (typeof fetchClusterCapacity === 'function') {
-                                        console.log('Navigation: Refreshing cluster capacity metrics');
-                                        fetchClusterCapacity();
-                                    }
-                                }
-                                
                                 initializeHomePage();
                             }, 200);
                         });
@@ -287,14 +278,6 @@
             } else {
                 // If already on home page, just activate the tab
                 activateTab(tabId, true); // true means trigger a load
-                
-                // If navigating to home tab while already on home page, refresh metrics
-                if (tabId === 'home') {
-                    if (typeof fetchClusterCapacity === 'function') {
-                        console.log('Navigation (same page): Refreshing cluster capacity metrics');
-                        fetchClusterCapacity();
-                    }
-                }
                 
                 // Update history state with current scroll position
                 const currentState = window.history.state || {};

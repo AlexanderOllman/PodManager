@@ -34,15 +34,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (event.state && event.state.tabId) {
                 console.log(`History state has tab: ${event.state.tabId}`);
                 
-                // If home tab is the destination, refresh dashboard metrics
-                if (event.state.tabId === 'home') {
-                    // Refresh cluster capacity metrics immediately
-                    if (typeof fetchClusterCapacity === 'function') {
-                        console.log('History navigation: Refreshing cluster capacity metrics');
-                        fetchClusterCapacity();
-                    }
-                }
-                
                 // If returning to home dashboard with an active resource tab
                 if (event.state.tabId === 'home' && event.state.activeResourceTab) {
                     console.log(`History navigation to home with active resource tab: ${event.state.activeResourceTab}`);
@@ -84,16 +75,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Load the active resource tab data
                     fetchResourceData(event.state.activeResourceTab);
-                    
-                    // If this is a pods tab, it will update the dashboard metrics automatically
-                    // If not, we need to ensure dashboard metrics are refreshed
-                    if (event.state.activeResourceTab !== 'pods') {
-                        // Force a pods data fetch to update the metrics
-                        if (typeof updateDashboardMetrics === 'function' && window.app.state.resources && window.app.state.resources.pods) {
-                            console.log('Updating dashboard metrics from cached pods data');
-                            updateDashboardMetrics(window.app.state.resources.pods.data.items);
-                        }
-                    }
                     
                     return;
                 }
@@ -722,12 +703,6 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
         const lastFetch = window.app.state.lastFetch[resourceType];
         if (cachedData && lastFetch && (Date.now() - lastFetch < window.app.CACHE_TIMEOUT)) {
             console.log(`Using cached data for ${resourceType}`);
-            
-            // If using pods data from cache, make sure to update dashboard metrics
-            if (resourceType === 'pods' && !criticalOnly) {
-                updateDashboardMetrics(cachedData.data.items);
-            }
-            
             return Promise.resolve(processResourceData(resourceType, cachedData, startTime));
         }
     }
@@ -780,20 +755,6 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
             
             // Process the data
             processResourceData(resourceType, data, startTime, processingStartTime);
-            
-            // Update dashboard metrics if this is pods data and not a critical-only load
-            if (resourceType === 'pods' && !criticalOnly) {
-                console.log('Updating dashboard metrics from pods data');
-                updateDashboardMetrics(data.data.items);
-            }
-            
-            // If we loaded pods data, also refresh the cluster capacity metrics
-            if (resourceType === 'pods') {
-                if (typeof fetchClusterCapacity === 'function') {
-                    console.log('Refreshing cluster capacity metrics after pods load');
-                    fetchClusterCapacity();
-                }
-            }
             
             return data;
         })
@@ -971,47 +932,36 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
         });
     }
     
-    // Update progress to 100%
+    // After all table rows are added, update dashboard metrics if this is pods data
+    if (resourceType === 'pods') {
+        console.log('Updating dashboard metrics from processed pods data');
+        updateDashboardMetrics(data.data.items);
+    }
+    
+    // Complete the loading progress
     if (progressBar) {
         progressBar.style.width = '100%';
     }
     
-    // Mark this resource type as loaded
+    // Hide loading indicator after a small delay
+    setTimeout(() => {
+        hideLoading(resourceType);
+    }, 200);
+    
+    // Mark as loaded in the app state
+    if (!window.app.loadedResources) {
+        window.app.loadedResources = {};
+    }
     window.app.loadedResources[resourceType] = true;
     
-    // Store pods data and update dashboard metrics if this is pods data
-    if (resourceType === 'pods') {
-        window.podsData = data.data.items;
-        updateDashboardMetrics(data.data.items);
-    }
-    
-    // Calculate and log performance metrics
+    // Log performance info
     const endTime = performance.now();
-    const totalTime = Math.round(endTime - startTime);
-    const processingTime = Math.round(endTime - processingStartTime);
-    console.log(`Completed loading ${resourceType}:`);
-    console.log(`- API request/response time: ${Math.round(processingStartTime - startTime)}ms`);
-    console.log(`- Data processing time: ${processingTime}ms`);
-    console.log(`- Total time: ${totalTime}ms`);
+    const fetchTime = processingStartTime - startTime;
+    const processTime = endTime - processingStartTime;
+    const totalTime = endTime - startTime;
+    console.log(`${resourceType} loaded in ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, process: ${processTime.toFixed(0)}ms)`);
     
-    console.log(`${resourceType} data processed in ${processingTime.toFixed(2)}ms (total: ${totalTime.toFixed(2)}ms)`);
-    
-    // Hide loading indicator
-    hideLoading(resourceType);
-    
-    // Initialize dropdowns in the table
-    setTimeout(function() {
-        var dropdownElementList = [].slice.call(document.querySelectorAll(`#${resourceType}Table .dropdown-toggle`));
-        dropdownElementList.map(function(dropdownToggleEl) {
-            return new bootstrap.Dropdown(dropdownToggleEl);
-        });
-    }, 100);
-    
-    // Flag resource as loaded
-    if (!window.loadedResources) {
-        window.loadedResources = {};
-    }
-    window.loadedResources[resourceType] = true;
+    return data;
 }
 
 // Show loading indicator for resource type
@@ -1804,16 +1754,18 @@ function getStatusIcon(phase) {
     }
 }
 
-// Add this new function to fetch cluster capacity
+// Fetch cluster capacity information
 function fetchClusterCapacity() {
-    console.log('Fetching cluster capacity metrics...');
+    console.log('Fetching cluster capacity information...');
     
-    // Store default values in case API call fails
-    window.clusterCapacity = {
-        cpu: 256, // Default fallback value
-        memory: 1024, // in Gi
-        gpu: 0
-    };
+    // Initialize capacity object if it doesn't exist
+    if (!window.clusterCapacity) {
+        window.clusterCapacity = {
+            cpu: 256, // Default values
+            memory: 1024,
+            gpu: 8
+        };
+    }
     
     fetch('/get_cluster_capacity')
         .then(response => {
@@ -1823,34 +1775,46 @@ function fetchClusterCapacity() {
             return response.json();
         })
         .then(data => {
-            if (data.cpu) {
-                window.clusterCapacity.cpu = data.cpu;
+            // Update values only if they exist in the response and are valid numbers
+            if (data.cpu && !isNaN(parseFloat(data.cpu))) {
+                window.clusterCapacity.cpu = parseFloat(data.cpu);
             }
-            if (data.memory) {
-                window.clusterCapacity.memory = data.memory;
+            if (data.memory && !isNaN(parseFloat(data.memory))) {
+                window.clusterCapacity.memory = parseFloat(data.memory);
             }
-            if (data.gpu !== undefined) {
-                window.clusterCapacity.gpu = data.gpu;
+            if (data.gpu !== undefined && !isNaN(parseInt(data.gpu))) {
+                window.clusterCapacity.gpu = parseInt(data.gpu);
             }
             
             console.log(`Cluster capacity loaded: ${window.clusterCapacity.cpu} CPU cores, ${window.clusterCapacity.memory} Gi memory, ${window.clusterCapacity.gpu} GPUs`);
             
             // Update capacity display in the UI
-            document.getElementById('totalCPUCapacity').textContent = window.clusterCapacity.cpu;
+            const cpuCapacityElement = document.getElementById('totalCPUCapacity');
+            if (cpuCapacityElement) {
+                cpuCapacityElement.textContent = window.clusterCapacity.cpu;
+            }
             
             // If we already have pod data, recalculate the metrics with the new capacity
-            if (window.loadedResources && window.loadedResources.pods) {
-                const tableBody = document.querySelector('#podsTable tbody');
-                if (tableBody) {
-                    const pods = window.podsData || [];
-                    if (pods.length > 0) {
-                        updateDashboardMetrics(pods);
-                    }
-                }
+            if (window.app.state && window.app.state.resources && window.app.state.resources.pods) {
+                console.log('Recalculating metrics with updated capacity');
+                updateDashboardMetrics(window.app.state.resources.pods.data.items);
             }
         })
         .catch(error => {
             console.warn(`Error fetching cluster capacity: ${error.message}. Using default values.`);
+            
+            // Make sure default values are set
+            window.clusterCapacity = window.clusterCapacity || {
+                cpu: 256,
+                memory: 1024,
+                gpu: 8
+            };
+            
+            // Update capacity display in the UI with defaults
+            const cpuCapacityElement = document.getElementById('totalCPUCapacity');
+            if (cpuCapacityElement) {
+                cpuCapacityElement.textContent = window.clusterCapacity.cpu;
+            }
         });
 }
 
@@ -2417,7 +2381,11 @@ function updateDashboardMetrics(pods) {
         return total;
     }, 0);
     
-    document.getElementById('totalGPUCount').textContent = totalGPURequest.toFixed(0);
+    // Set GPU count in the dashboard
+    const gpuCountElement = document.getElementById('totalGPUCount');
+    if (gpuCountElement) {
+        gpuCountElement.textContent = totalGPURequest.toFixed(0);
+    }
     
     // Store pods with GPU for filtering
     window.gpuPodNames = gpuPods.map(pod => `${pod.metadata.namespace}/${pod.metadata.name}`);
