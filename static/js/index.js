@@ -71,29 +71,6 @@ document.addEventListener('DOMContentLoaded', function() {
 // Main application initialization
 function initializeApp() {
     console.log('Initializing application...');
-    // Initialize app state
-    window.app = window.app || {};
-    window.app.CACHE_TIMEOUT = 30000;  // 30 seconds for cache timeout
-    window.app.currentTab = null;
-    window.app.state = {
-        resources: {},        // Cache of resource data
-        errors: {},           // Tracking errors
-        lastFetch: {},        // Last fetch timestamp by resource type
-        activeRequests: new Map(), // Track active fetch requests
-        navigation: {
-            activeTab: null   // Current active tab
-        }
-    };
-    
-    // Set up navigation tracking
-    const tabs = document.querySelectorAll('[data-bs-toggle="tab"]');
-    tabs.forEach(tab => {
-        tab.addEventListener('shown.bs.tab', function(event) {
-            const targetId = event.target.getAttribute('data-bs-target').substring(1);
-            window.app.state.navigation.activeTab = targetId;
-            console.log(`Navigation state updated: ${targetId}`);
-        });
-    });
     
     // Initialize components that don't require special dependencies
     fetchResourcesForAllTabs();
@@ -116,40 +93,49 @@ function initializeApp() {
 
 // Home page specific initialization
 function initializeHomePage() {
-    console.log('Initializing Home page...');
+    console.log('Initializing home page components...');
     
-    // Reset filters
-    document.querySelectorAll('.filter-active').forEach(el => el.classList.remove('filter-active'));
-    
-    // Set up Fetch button
-    const fetchButton = document.getElementById('fetchResourcesButton');
-    if (fetchButton) {
-        fetchButton.addEventListener('click', fetchResourcesForAllTabs);
-    }
-    
-    // Set up GPU filter
+    // Initialize GPU filter card
     initializeGPUFilter();
     
-    // Set up tab click handlers
-    setupTabClickHandlers();
+    // Add controls to each resource tab
+    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+    resourceTypes.forEach(resourceType => {
+        addResourceControls(resourceType);
+        
+        // Set up tab click handlers to load data on demand
+        const tabElement = document.querySelector(`#${resourceType}-tab`);
+        if (tabElement) {
+            tabElement.addEventListener('click', () => {
+                // Always fetch fresh data when tab is clicked
+                console.log(`Tab ${resourceType} clicked, fetching fresh data...`);
+                
+                // Get current namespace selection
+                const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
+                const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+                
+                // Force fetch by clearing the cached state
+                if (window.loadedResources) {
+                    delete window.loadedResources[resourceType];
+                }
+                
+                fetchResourceData(resourceType, currentNamespace);
+            });
+        }
+    });
     
-    // Set up namespace filtering functionality
-    initializeNamespaceFunctionality();
-    
-    // Add YAML upload functionality if on home page
-    if (document.getElementById('uploadForm')) {
-        setupDropZone();
+    // Load the active tab content
+    const activeTabId = document.querySelector('.tab-pane.active')?.id;
+    if (activeTabId && resourceTypes.includes(activeTabId)) {
+        // Get the namespace for this tab
+        const namespaceSelector = document.getElementById(`${activeTabId}Namespace`);
+        const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+        
+        fetchResourceData(activeTabId, currentNamespace);
+    } else {
+        // If no tab is active, load pods as default
+        fetchResourceData('pods', 'all');
     }
-    
-    // Load resource info for the current active resource tab
-    const activeResourceTab = document.querySelector('#resourceTabs .nav-link.active');
-    if (activeResourceTab) {
-        const tabId = activeResourceTab.id.replace('-tab', '');
-        loadResourcesForTab(tabId);
-    }
-    
-    // Fetch cluster capacity data
-    fetchClusterCapacity();
 }
 
 // Terminal initialization - already loaded in head
@@ -1498,34 +1484,21 @@ document.addEventListener('click', function(e) {
 
 // Set up tab click handlers for GPU filter persistence
 function setupTabClickHandlers() {
-    // Handle main tabs (pods, services, deployments, etc.)
-    document.querySelectorAll('#resourceTabs .nav-link').forEach(tab => {
-        tab.addEventListener('click', function() {
-            const tabId = this.id.replace('-tab', '');
-            loadResourcesForTab(tabId);
-        });
-    });
+    const resourceTabs = document.querySelectorAll('#resourceTabs .nav-link');
     
-    // Setup tab content navigation for main content areas
-    document.querySelectorAll('.nav-link[data-bs-toggle="tab"]').forEach(tab => {
-        tab.addEventListener('shown.bs.tab', function(event) {
-            const tabId = event.target.getAttribute('data-bs-target').substring(1);
+    resourceTabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-bs-target').substring(1); // Remove the # prefix
             
-            // When we switch away from home, load resources for the active tab
-            if (tabId !== 'home') {
-                // Find the active sub-tab within this section
-                const activeTabLink = document.querySelector(`#${tabId} .nav-link.active`);
-                if (activeTabLink) {
-                    const activeSubTabId = activeTabLink.id.replace('-tab', '');
-                    loadResourcesForTab(activeSubTabId);
-                } else {
-                    // If no active tab is found, try to find the default tab for this section
-                    const firstTab = document.querySelector(`#${tabId} .nav-link`);
-                    if (firstTab) {
-                        const firstTabId = firstTab.id.replace('-tab', '');
-                        loadResourcesForTab(firstTabId);
+            // If we're switching to pods tab and GPU filter was active, reapply filter
+            if (targetId === 'pods') {
+                // Check in a small timeout to allow the tab to become active
+                setTimeout(() => {
+                    const isGPUFilterActive = document.getElementById('gpuCard')?.classList.contains('filter-active');
+                    if (isGPUFilterActive) {
+                        filterPodsWithGPUs();
                     }
-                }
+                }, 100);
             }
         });
     });
@@ -2474,6 +2447,3 @@ function loadResourcesForTab(tabId) {
         }
     }
 }
-
-// Make loadResourcesForTab globally accessible
-window.loadResourcesForTab = loadResourcesForTab;

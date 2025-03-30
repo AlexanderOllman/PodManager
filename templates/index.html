@@ -123,6 +123,24 @@
                         <div class="loading-text">Loading Pods...</div>
                     </div>
                 </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="fetchResourceData('pods', 'all')">
+                            <i class="fas fa-sync-alt"></i> Refresh Data
+                        </button>
+                    </div>
+                    <div class="d-flex">
+                        <select class="form-select form-select-sm me-2" id="podsNamespace" onchange="namespaceChanged('pods')">
+                            <option value="all">All Namespaces</option>
+                        </select>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="podsSearch" placeholder="Filter pods..." onkeyup="filterResources('pods', this.value)">
+                            <button class="btn btn-outline-secondary" type="button" onclick="clearSearch('pods')">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
                 <div class="table-responsive">
                     <table class="table table-hover table-striped table-sm border-bottom shadow-sm" id="podsTable">
                         <thead class="bg-light">
@@ -149,6 +167,24 @@
                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="servicesProgressBar"></div>
                         </div>
                         <div class="loading-text">Loading Services...</div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="fetchResourceData('services', 'all')">
+                            <i class="fas fa-sync-alt"></i> Refresh Data
+                        </button>
+                    </div>
+                    <div class="d-flex">
+                        <select class="form-select form-select-sm me-2" id="servicesNamespace" onchange="namespaceChanged('services')">
+                            <option value="all">All Namespaces</option>
+                        </select>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="servicesSearch" placeholder="Filter services..." onkeyup="filterResources('services', this.value)">
+                            <button class="btn btn-outline-secondary" type="button" onclick="clearSearch('services')">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="table-responsive">
@@ -178,6 +214,24 @@
                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="inferenceProgressBar"></div>
                         </div>
                         <div class="loading-text">Loading Inference Services...</div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="fetchResourceData('inferenceservices', 'all')">
+                            <i class="fas fa-sync-alt"></i> Refresh Data
+                        </button>
+                    </div>
+                    <div class="d-flex">
+                        <select class="form-select form-select-sm me-2" id="inferenceservicesNamespace" onchange="namespaceChanged('inferenceservices')">
+                            <option value="all">All Namespaces</option>
+                        </select>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="inferenceservicesSearch" placeholder="Filter inference services..." onkeyup="filterResources('inferenceservices', this.value)">
+                            <button class="btn btn-outline-secondary" type="button" onclick="clearSearch('inferenceservices')">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="table-responsive">
