@@ -26,40 +26,98 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Handle browser navigation (back/forward) events
     window.onpopstate = function(event) {
-        console.log('Navigation state change detected');
+        console.log('Navigation state change detected', event.state);
         
         // If we're back on the home page
         if (window.location.pathname === '/' || window.location.pathname === '') {
-            const activeTabId = document.querySelector('.tab-pane.active')?.id;
-            
-            // Check if the active tab is a resource tab that should load data
-            if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
-                console.log(`Navigation returned to home page, loading ${activeTabId} data`);
+            // Check event state for active tab info
+            if (event.state && event.state.tabId) {
+                console.log(`History state has tab: ${event.state.tabId}`);
                 
-                // Force reload for the active tab
-                if (window.loadedResources) {
-                    window.loadedResources[activeTabId] = false;
+                // If returning to home dashboard with an active resource tab
+                if (event.state.tabId === 'home' && event.state.activeResourceTab) {
+                    console.log(`History navigation to home with active resource tab: ${event.state.activeResourceTab}`);
+                    
+                    // Set as active resource tab in app state
+                    if (!window.app.state) window.app.state = {};
+                    window.app.state.activeResourceTab = event.state.activeResourceTab;
+                    
+                    // Ensure home tab is active
+                    const homeTab = document.getElementById('home');
+                    if (homeTab) {
+                        homeTab.classList.add('show', 'active');
+                    }
+                    
+                    // Clear existing active classes from resource tabs
+                    ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].forEach(tab => {
+                        const tabElement = document.getElementById(tab);
+                        const tabButton = document.getElementById(`${tab}-tab`);
+                        if (tabElement) tabElement.classList.remove('show', 'active');
+                        if (tabButton) tabButton.classList.remove('active');
+                    });
+                    
+                    // Set the active resource tab
+                    const resourceTab = document.getElementById(event.state.activeResourceTab);
+                    const resourceTabButton = document.getElementById(`${event.state.activeResourceTab}-tab`);
+                    
+                    if (resourceTab) {
+                        resourceTab.classList.add('show', 'active');
+                    }
+                    
+                    if (resourceTabButton) {
+                        resourceTabButton.classList.add('active');
+                    }
+                    
+                    // Force reload for the active resource tab
+                    if (window.app.loadedResources) {
+                        window.app.loadedResources[event.state.activeResourceTab] = false;
+                    }
+                    
+                    // Load the active resource tab data
+                    fetchResourceData(event.state.activeResourceTab);
+                    
+                    return;
                 }
                 
-                // Load the active tab data
-                fetchResourceData(activeTabId);
+                // Otherwise check for normal resource tab
+                if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(event.state.tabId)) {
+                    console.log(`History navigation to resource tab: ${event.state.tabId}`);
+                    
+                    // Force reload for this tab
+                    if (window.app.loadedResources) {
+                        window.app.loadedResources[event.state.tabId] = false;
+                    }
+                    
+                    // Load the active tab data
+                    fetchResourceData(event.state.tabId);
+                }
+            } else {
+                // If no state, try to find the active tab in the DOM
+                const activeTabId = document.querySelector('.tab-pane.active')?.id;
+                
+                // Check if the active tab is a resource tab that should load data
+                if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
+                    console.log(`Navigation returned to home page, loading ${activeTabId} data`);
+                    
+                    // Force reload for the active tab
+                    if (window.app.loadedResources) {
+                        window.app.loadedResources[activeTabId] = false;
+                    }
+                    
+                    // Load the active tab data
+                    fetchResourceData(activeTabId);
+                }
             }
         }
         
         // Apply state if it exists
-        if (event.state) {
+        if (event.state && event.state.content) {
             document.getElementById('main-content').innerHTML = event.state.content;
             
             // Re-initialize components if needed
             if (event.state.page === 'home') {
                 if (typeof initializeHomePage === 'function') {
                     initializeHomePage();
-                }
-                
-                // Make sure the active tab data is loaded
-                const activeTabId = document.querySelector('.tab-pane.active')?.id;
-                if (activeTabId && ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(activeTabId)) {
-                    fetchResourceData(activeTabId);
                 }
             } else if (event.state.page === 'explore' && typeof initializeExplorePage === 'function') {
                 initializeExplorePage();
@@ -2519,9 +2577,44 @@ function namespaceChanged(resourceType) {
 }
 
 function loadResourcesForTab(tabId) {
-    console.log(`Loading resources for tab: ${tabId}`);
+    console.log(`Loading resources for tab from index.js: ${tabId}`);
     window.app.currentTab = tabId;
 
+    // Special handling for 'home' tab - need to load the active resource tab
+    if (tabId === 'home') {
+        console.log("Home tab detected in index.js, finding active resource tab to load");
+        // Find the first active resource tab
+        const resourceTabs = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+        
+        // First check if any tab is already active
+        let activeResourceTab = null;
+        for (const tab of resourceTabs) {
+            const tabElement = document.getElementById(tab);
+            if (tabElement && tabElement.classList.contains('active')) {
+                activeResourceTab = tab;
+                console.log(`Found active resource tab in index.js: ${activeResourceTab}`);
+                break;
+            }
+        }
+        
+        // If no active tab found, default to 'pods'
+        if (!activeResourceTab) {
+            activeResourceTab = 'pods';
+            // Activate the pods tab
+            const podsTab = document.getElementById('pods');
+            const podsTabButton = document.getElementById('pods-tab');
+            if (podsTab && podsTabButton) {
+                podsTab.classList.add('show', 'active');
+                podsTabButton.classList.add('active');
+                console.log("No active resource tab found in index.js, defaulting to pods");
+            }
+        }
+        
+        // Load the active resource tab's data
+        loadResourcesForTab(activeResourceTab);
+        return;
+    }
+    
     // Clear any existing content
     const tableBody = document.querySelector(`#${tabId}Table tbody`);
     if (tableBody) {

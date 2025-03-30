@@ -154,7 +154,7 @@
         function initializeHomePage() {
             console.log('Initializing home page...');
             
-            // Only reset resources if we're coming from a different page
+            // Reset resources if we're coming from a different page
             if (window.app.state.navigation.isNavigating) {
                 window.app.loadedResources = {};
                 if (window.app.state.resources) {
@@ -163,41 +163,18 @@
                 window.app.state.navigation.isNavigating = false;
             }
             
-            // Initialize resource loading for the active tab
+            // Get active tab from navigation state
             const activeTab = window.app.state.navigation.activeTab || 'home';
             console.log(`Active tab from navigation state: ${activeTab}`);
             
-            // If active tab is 'home', check for a resource tab that might be active
-            if (activeTab === 'home') {
-                const visibleResourceTab = document.querySelector('.tab-pane.active[id]');
-                if (visibleResourceTab && visibleResourceTab.id) {
-                    console.log(`Found visible resource tab: ${visibleResourceTab.id}`);
-                    activateTab(visibleResourceTab.id, true); // true means trigger a load
-                    return;
-                }
-            }
+            // Activate the tab
+            activateTab(activeTab, false); // false means don't trigger a load yet
             
-            // Activate the tab before loading resources
-            activateTab(activeTab, false); // false means don't trigger a load
-            
-            // Load resources after a delay to ensure DOM is ready
+            // Delay resource loading to ensure DOM is ready
             setTimeout(() => {
+                // Home tab is a special case - it contains resource tabs
                 if (activeTab === 'home') {
-                    // If we're on the home dashboard, make sure the pods tab is loaded
-                    const podsTab = document.getElementById('pods');
-                    if (podsTab && podsTab.classList.contains('active')) {
-                        loadResourcesForTab('pods');
-                    } else {
-                        // Find the first active resource tab
-                        const resourceTabs = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
-                        for (const tab of resourceTabs) {
-                            const tabElement = document.getElementById(tab);
-                            if (tabElement && tabElement.classList.contains('active')) {
-                                loadResourcesForTab(tab);
-                                break;
-                            }
-                        }
-                    }
+                    loadResourcesForTab('home'); // This will handle finding the active resource tab
                 } else {
                     loadResourcesForTab(activeTab);
                 }
@@ -212,6 +189,20 @@
 
             // Update navigation state
             window.app.state.navigation.activeTab = tabId;
+            
+            // If navigating to home, store the active resource tab if any
+            if (tabId === 'home') {
+                // Check for any active resource tab
+                const resourceTabs = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+                for (const tab of resourceTabs) {
+                    const tabElement = document.getElementById(tab);
+                    if (tabElement && tabElement.classList.contains('active')) {
+                        console.log(`Storing active resource tab before navigation: ${tab}`);
+                        window.app.state.activeResourceTab = tab;
+                        break;
+                    }
+                }
+            }
             
             if (currentPath !== '/') {
                 // If not on home page, navigate to home first
@@ -241,6 +232,22 @@
                             
                             // Initialize after content update with a delay to ensure DOM is ready
                             setTimeout(() => {
+                                // If returning to home and we had an active resource tab, restore it
+                                if (tabId === 'home' && window.app.state.activeResourceTab) {
+                                    console.log(`Restoring active resource tab: ${window.app.state.activeResourceTab}`);
+                                    // Activate the resource tab button
+                                    const resourceTabButton = document.getElementById(`${window.app.state.activeResourceTab}-tab`);
+                                    if (resourceTabButton) {
+                                        resourceTabButton.classList.add('active');
+                                    }
+                                    
+                                    // Activate the resource tab content
+                                    const resourceTabContent = document.getElementById(window.app.state.activeResourceTab);
+                                    if (resourceTabContent) {
+                                        resourceTabContent.classList.add('show', 'active');
+                                    }
+                                }
+                                
                                 initializeHomePage();
                             }, 200);
                         });
@@ -250,7 +257,8 @@
                             content: content,
                             page: 'home',
                             scroll: scrollPos,
-                            tabId: tabId
+                            tabId: tabId,
+                            activeResourceTab: window.app.state.activeResourceTab // Store this in history state
                         }, '', '/');
                     })
                     .catch(error => {
@@ -270,7 +278,8 @@
                 window.history.replaceState({
                     ...currentState,
                     scroll: scrollPos,
-                    tabId: tabId
+                    tabId: tabId,
+                    activeResourceTab: window.app.state.activeResourceTab // Store this in history state
                 }, '', '/');
             }
         }
@@ -279,24 +288,42 @@
         function activateTab(tabId, shouldLoad = true) {
             console.log(`Activating tab: ${tabId}, shouldLoad: ${shouldLoad}`);
             
-            // Remove active class from all tabs and panes
+            // Remove active class from all main tabs
             document.querySelectorAll('.nav-link').forEach(tab => {
                 tab.classList.remove('active');
             });
-            document.querySelectorAll('.tab-pane').forEach(pane => {
-                pane.classList.remove('show', 'active');
-            });
             
-            // Add active class to selected tab and pane
+            // Special case for home tab - don't remove active class from resource tabs
+            if (tabId !== 'home') {
+                // Remove active class from all content panes except resource tabs within home
+                document.querySelectorAll('.tab-pane:not([id^="pods"]):not([id^="services"]):not([id^="inferenceservices"]):not([id^="deployments"]):not([id^="configmaps"]):not([id^="secrets"])').forEach(pane => {
+                    pane.classList.remove('show', 'active');
+                });
+            } else {
+                // For home tab, just remove active class from non-home panes
+                document.querySelectorAll('.tab-pane:not([id="home"]):not([id^="pods"]):not([id^="services"]):not([id^="inferenceservices"]):not([id^="deployments"]):not([id^="configmaps"]):not([id^="secrets"])').forEach(pane => {
+                    pane.classList.remove('show', 'active');
+                });
+                
+                // Make sure home tab is active
+                const homePane = document.getElementById('home');
+                if (homePane) {
+                    homePane.classList.add('show', 'active');
+                }
+            }
+            
+            // Add active class to selected tab
             const tabElement = document.querySelector(`.nav-link[data-bs-target="#${tabId}"]`);
-            const paneElement = document.getElementById(tabId);
-            
             if (tabElement) {
                 tabElement.classList.add('active');
             }
             
-            if (paneElement) {
-                paneElement.classList.add('show', 'active');
+            // Add active class to selected pane - but not for resource tabs if we're activating home
+            if (tabId !== 'home') {
+                const paneElement = document.getElementById(tabId);
+                if (paneElement) {
+                    paneElement.classList.add('show', 'active');
+                }
             }
 
             // Update navigation state
@@ -311,6 +338,41 @@
         // Load resources for tab
         function loadResourcesForTab(tabId) {
             console.log(`Loading resources for tab: ${tabId}`);
+            
+            // Special handling for 'home' tab - need to load the active resource tab
+            if (tabId === 'home') {
+                console.log("Home tab detected, finding active resource tab to load");
+                // Find the first active resource tab
+                const resourceTabs = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+                
+                // First check if any tab is already active
+                let activeResourceTab = null;
+                for (const tab of resourceTabs) {
+                    const tabElement = document.getElementById(tab);
+                    if (tabElement && tabElement.classList.contains('active')) {
+                        activeResourceTab = tab;
+                        console.log(`Found active resource tab: ${activeResourceTab}`);
+                        break;
+                    }
+                }
+                
+                // If no active tab found, default to 'pods'
+                if (!activeResourceTab) {
+                    activeResourceTab = 'pods';
+                    // Activate the pods tab
+                    const podsTab = document.getElementById('pods');
+                    const podsTabButton = document.getElementById('pods-tab');
+                    if (podsTab && podsTabButton) {
+                        podsTab.classList.add('show', 'active');
+                        podsTabButton.classList.add('active');
+                        console.log("No active resource tab found, defaulting to pods");
+                    }
+                }
+                
+                // Load the active resource tab's data
+                loadResourcesForTab(activeResourceTab);
+                return;
+            }
             
             // Clear any existing content
             const tableBody = document.querySelector(`#${tabId}Table tbody`);
