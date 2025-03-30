@@ -72,6 +72,9 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeApp() {
     console.log('Initializing application...');
     
+    // Initialize Bootstrap components
+    initializeBootstrapComponents();
+    
     // Initialize components that don't require special dependencies
     fetchResourcesForAllTabs();
     fetchClusterCapacity(); // Add this line to fetch cluster capacity on initialization
@@ -89,6 +92,27 @@ function initializeApp() {
     setupTabClickHandlers();
     
     console.log('Application initialized');
+}
+
+// Initialize Bootstrap components
+function initializeBootstrapComponents() {
+    console.log('Initializing Bootstrap components...');
+    
+    // Initialize all dropdowns on the page
+    var dropdownElementList = [].slice.call(document.querySelectorAll('[data-bs-toggle="dropdown"]'));
+    dropdownElementList.map(function(dropdownToggleEl) {
+        return new bootstrap.Dropdown(dropdownToggleEl);
+    });
+    
+    // Re-initialize dropdowns when namespaces are loaded
+    document.addEventListener('namespacesLoaded', function() {
+        setTimeout(function() {
+            var dropdownElementList = [].slice.call(document.querySelectorAll('[data-bs-toggle="dropdown"]'));
+            dropdownElementList.map(function(dropdownToggleEl) {
+                return new bootstrap.Dropdown(dropdownToggleEl);
+            });
+        }, 100);
+    });
 }
 
 // Home page specific initialization
@@ -827,6 +851,25 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
     console.log(`- API request/response time: ${Math.round(processingStartTime - startTime)}ms`);
     console.log(`- Data processing time: ${processingTime}ms`);
     console.log(`- Total time: ${totalTime}ms`);
+    
+    console.log(`${resourceType} data processed in ${processingTime.toFixed(2)}ms (total: ${totalTime.toFixed(2)}ms)`);
+    
+    // Hide loading indicator
+    hideLoading(resourceType);
+    
+    // Initialize dropdowns in the table
+    setTimeout(function() {
+        var dropdownElementList = [].slice.call(document.querySelectorAll(`#${resourceType}Table .dropdown-toggle`));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }, 100);
+    
+    // Flag resource as loaded
+    if (!window.loadedResources) {
+        window.loadedResources = {};
+    }
+    window.loadedResources[resourceType] = true;
 }
 
 // Show loading indicator
@@ -916,24 +959,23 @@ function createActionButton(resourceType, namespace, name) {
                 </ul>
             </div>
         `;
-    } else {
-        return `
-            <div class="action-dropdown dropdown text-center">
-                <button class="dropdown-toggle" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="fas fa-ellipsis-v"></i>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
-                    <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">
-                        <i class="fas fa-info-circle text-info"></i> Describe
-                    </a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
-                        <i class="fas fa-trash-alt text-danger"></i> Delete
-                    </a></li>
-                </ul>
-            </div>
-        `;
     }
+    return `
+        <div class="action-dropdown dropdown text-center">
+            <button class="dropdown-toggle" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-ellipsis-v"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
+                <li><a class="dropdown-item" href="#" onclick="runAction('describe', '${resourceType}', '${namespace}', '${name}')">
+                    <i class="fas fa-info-circle text-info"></i> Describe
+                </a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
+                    <i class="fas fa-trash-alt text-danger"></i> Delete
+                </a></li>
+            </ul>
+        </div>
+    `;
 }
 
 // CLI command execution - no longer needed as we type directly in terminal
@@ -1819,10 +1861,10 @@ function renderNamespaces(namespaces) {
         // Actions column
         row.append(`<td class="text-center">
             <div class="dropdown action-dropdown">
-                <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <button class="btn dropdown-toggle" type="button" id="namespace-dropdown-${ns.name}" data-bs-toggle="dropdown" aria-expanded="false">
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end">
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="namespace-dropdown-${ns.name}">
                     <li><a class="dropdown-item namespace-action" href="#" data-action="events" data-namespace="${ns.name}">
                         <i class="fas fa-clock text-info"></i> Events
                     </a></li>
@@ -1844,6 +1886,14 @@ function renderNamespaces(namespaces) {
     });
 
     $('#namespacesTableCard').show();
+    
+    // Reinitialize dropdowns
+    setTimeout(function() {
+        var dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }, 100);
 }
 
 // Filter namespaces based on search input
@@ -2354,6 +2404,9 @@ function loadNamespacesForSelector(resourceType) {
                 // Cache namespaces globally
                 window.namespaces = data.namespaces;
                 populateNamespaceSelector(resourceType, data.namespaces);
+                
+                // Dispatch custom event when namespaces are loaded
+                document.dispatchEvent(new CustomEvent('namespacesLoaded'));
             } else {
                 console.error('Failed to load namespaces:', data.error);
             }
