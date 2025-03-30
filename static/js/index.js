@@ -893,7 +893,7 @@ function createActionButton(resourceType, namespace, name) {
     if (resourceType === 'pods') {
         return `
             <div class="action-dropdown dropdown text-center">
-                <button class="dropdown-toggle btn btn-sm btn-secondary" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
+                <button class="dropdown-toggle" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
@@ -919,7 +919,7 @@ function createActionButton(resourceType, namespace, name) {
     } else {
         return `
             <div class="action-dropdown dropdown text-center">
-                <button class="dropdown-toggle btn btn-sm btn-secondary" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
+                <button class="dropdown-toggle" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
