@@ -572,22 +572,38 @@ function filterResources(resourceType, searchTerm) {
 }
 
 // Resource data fetching (for individual tab clicks or refresh button)
-function fetchResourceData(resourceType, namespace) {
-    console.log(`Fetching ${resourceType} data...`);
+function fetchResourceData(resourceType, namespace, criticalOnly = false) {
+    console.log(`Fetching ${resourceType} data (${criticalOnly ? 'critical' : 'full'})...`);
     const startTime = performance.now();
+    
+    // Cancel any existing request for this resource type
+    if (window.app.state.activeRequests.has(resourceType)) {
+        window.app.state.activeRequests.get(resourceType).abort();
+        window.app.state.activeRequests.delete(resourceType);
+    }
+    
+    // For critical-only loads, don't use cache
+    if (!criticalOnly) {
+        // Check cache first
+        const cachedData = window.app.state.resources[resourceType];
+        const lastFetch = window.app.state.lastFetch[resourceType];
+        if (cachedData && lastFetch && (Date.now() - lastFetch < window.app.CACHE_TIMEOUT)) {
+            console.log(`Using cached data for ${resourceType}`);
+            return Promise.resolve(processResourceData(resourceType, cachedData, startTime));
+        }
+    }
     
     // Show loading indicator
     showLoading(resourceType);
     
-    // Clear existing table content
-    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-    if (tableBody) {
-        tableBody.innerHTML = '';
-    }
+    // Create new abort controller
+    const controller = new AbortController();
+    window.app.state.activeRequests.set(resourceType, controller);
     
     // Prepare form data
     const formData = new FormData();
     formData.append('resource_type', resourceType);
+    formData.append('critical_only', criticalOnly);
     if (namespace && namespace !== 'all') {
         formData.append('namespace', namespace);
     }
@@ -595,171 +611,222 @@ function fetchResourceData(resourceType, namespace) {
     // Track when we start processing the response
     let processingStartTime;
     
-    fetch('/get_resources', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        processingStartTime = performance.now();
-        return response.json();
-    })
-    .then(data => {
-        if (!data || !data.data || !data.data.items) {
-            throw new Error('Invalid response format');
-        }
+    function fetchWithRetry(attempt = 0) {
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY = 1000;
         
-        // Update progress bar to indicate processing data
-        const progressBar = document.querySelector(`#${resourceType}Progress .progress-bar`);
-        if (progressBar) {
-            progressBar.style.width = '50%';
-        }
-        
-        // Clear and populate the table
-        if (tableBody) {
-            data.data.items.forEach(item => {
-                const row = document.createElement('tr');
-                switch (resourceType) {
-                    case 'pods':
-                        const resources = getResourceUsage(item);
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                            <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
-                            <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
-                            <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'services':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.spec.type}</td>
-                            <td>${item.spec.clusterIP}</td>
-                            <td>${item.spec.externalIP || 'N/A'}</td>
-                            <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'inferenceservices':
-                        // For InferenceServices, get resources from spec.predictor
-                        let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
-                        if (item.spec && item.spec.predictor) {
-                            if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
-                                item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
-                                item.spec.predictor.xgboost || item.spec.predictor.custom) {
-                                // Get the appropriate predictor implementation
-                                const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
-                                                     item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
-                                                     item.spec.predictor.xgboost || item.spec.predictor.custom;
-                                
-                                if (predictorImpl.resources) {
-                                    if (predictorImpl.resources.requests) {
-                                        // CPU
-                                        if (predictorImpl.resources.requests.cpu) {
-                                            const cpuReq = predictorImpl.resources.requests.cpu;
-                                            if (cpuReq.endsWith('m')) {
-                                                infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
-                                            } else {
-                                                infResources.cpu = parseFloat(cpuReq).toFixed(2);
-                                            }
+        return fetch('/get_resources', {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal
+        })
+        .then(response => {
+            processingStartTime = performance.now();
+            return response.json();
+        })
+        .then(data => {
+            if (!data || !data.data || !data.data.items) {
+                throw new Error('Invalid response format');
+            }
+            
+            // Cache the successful response
+            window.app.state.resources[resourceType] = data;
+            window.app.state.lastFetch[resourceType] = Date.now();
+            
+            // Process the data
+            processResourceData(resourceType, data, startTime, processingStartTime);
+        })
+        .catch(error => {
+            if (error.name === 'AbortError') {
+                console.log(`Request for ${resourceType} was cancelled`);
+                return;
+            }
+            
+            // Store error state
+            window.app.state.errors[resourceType] = error;
+            
+            // Retry logic
+            if (attempt < MAX_RETRIES) {
+                console.log(`Retrying ${resourceType} fetch attempt ${attempt + 1}...`);
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve(fetchWithRetry(attempt + 1));
+                    }, RETRY_DELAY * Math.pow(2, attempt));
+                });
+            }
+            
+            // Show error in UI after all retries failed
+            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+            if (tableBody) {
+                tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    Failed to load ${resourceType} after multiple attempts. 
+                    <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
+                        <i class="fas fa-sync-alt me-1"></i> Retry
+                    </button>
+                </td></tr>`;
+            }
+            
+            throw error;
+        })
+        .finally(() => {
+            window.app.state.activeRequests.delete(resourceType);
+        });
+    }
+    
+    return fetchWithRetry();
+}
+
+// Helper function to process resource data
+function processResourceData(resourceType, data, startTime, processingStartTime = performance.now()) {
+    // Update progress bar to indicate processing data
+    const progressBar = document.querySelector(`#${resourceType}Progress .progress-bar`);
+    if (progressBar) {
+        progressBar.style.width = '50%';
+    }
+    
+    // Clear and populate the table
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (tableBody) {
+        tableBody.innerHTML = '';
+        data.data.items.forEach(item => {
+            const row = document.createElement('tr');
+            switch (resourceType) {
+                case 'pods':
+                    const resources = getResourceUsage(item);
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
+                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
+                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'services':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.spec.type}</td>
+                        <td>${item.spec.clusterIP}</td>
+                        <td>${item.spec.externalIP || 'N/A'}</td>
+                        <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'inferenceservices':
+                    // For InferenceServices, get resources from spec.predictor
+                    let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
+                    if (item.spec && item.spec.predictor) {
+                        if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                            item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                            item.spec.predictor.xgboost || item.spec.predictor.custom) {
+                            // Get the appropriate predictor implementation
+                            const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                                                 item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                                                 item.spec.predictor.xgboost || item.spec.predictor.custom;
+                            
+                            if (predictorImpl.resources) {
+                                if (predictorImpl.resources.requests) {
+                                    // CPU
+                                    if (predictorImpl.resources.requests.cpu) {
+                                        const cpuReq = predictorImpl.resources.requests.cpu;
+                                        if (cpuReq.endsWith('m')) {
+                                            infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
+                                        } else {
+                                            infResources.cpu = parseFloat(cpuReq).toFixed(2);
                                         }
-                                        
-                                        // GPU
-                                        if (predictorImpl.resources.requests['nvidia.com/gpu']) {
-                                            infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
-                                        } else if (predictorImpl.resources.requests.gpu) {
-                                            infResources.gpu = predictorImpl.resources.requests.gpu;
-                                        }
-                                        
-                                        // Memory
-                                        if (predictorImpl.resources.requests.memory) {
-                                            infResources.memory = predictorImpl.resources.requests.memory;
-                                        }
+                                    }
+                                    
+                                    // GPU
+                                    if (predictorImpl.resources.requests['nvidia.com/gpu']) {
+                                        infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
+                                    } else if (predictorImpl.resources.requests.gpu) {
+                                        infResources.gpu = predictorImpl.resources.requests.gpu;
+                                    }
+                                    
+                                    // Memory
+                                    if (predictorImpl.resources.requests.memory) {
+                                        infResources.memory = predictorImpl.resources.requests.memory;
                                     }
                                 }
                             }
                         }
-                        
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.status.url || 'N/A'}</td>
-                            <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
-                            <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
-                            <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
-                            <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
-                            <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
-                            <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'deployments':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
-                            <td>${item.status.updatedReplicas}</td>
-                            <td>${item.status.availableReplicas}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'configmaps':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${Object.keys(item.data || {}).length}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'secrets':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.type}</td>
-                            <td>${Object.keys(item.data || {}).length}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                }
-                tableBody.appendChild(row);
-            });
-        }
-        
-        // Update progress to 100%
-        if (progressBar) {
-            progressBar.style.width = '100%';
-        }
-        
-        // Mark this resource type as loaded
-        window.app.loadedResources[resourceType] = true;
-        
-        // Calculate and log performance metrics
-        const endTime = performance.now();
-        const totalTime = Math.round(endTime - startTime);
-        const processingTime = Math.round(endTime - processingStartTime);
-        console.log(`Completed loading ${resourceType}:`);
-        console.log(`- API request/response time: ${Math.round(processingStartTime - startTime)}ms`);
-        console.log(`- Data processing time: ${processingTime}ms`);
-        console.log(`- Total time: ${totalTime}ms`);
-    })
-    .catch(error => {
-        console.error(`Error fetching ${resourceType}:`, error);
-        const errorElement = document.querySelector(`#${resourceType}Error`);
-        if (errorElement) {
-            errorElement.textContent = `Failed to load ${resourceType}. Please try again.`;
-            errorElement.style.display = 'block';
-        }
-    })
-    .finally(() => {
-        hideLoading(resourceType);
-    });
+                    }
+                    
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.url || 'N/A'}</td>
+                        <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
+                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
+                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
+                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
+                        <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
+                        <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'deployments':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
+                        <td>${item.status.updatedReplicas}</td>
+                        <td>${item.status.availableReplicas}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'configmaps':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${Object.keys(item.data || {}).length}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'secrets':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.type}</td>
+                        <td>${Object.keys(item.data || {}).length}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+            }
+            tableBody.appendChild(row);
+        });
+    }
+    
+    // Update progress to 100%
+    if (progressBar) {
+        progressBar.style.width = '100%';
+    }
+    
+    // Mark this resource type as loaded
+    window.app.loadedResources[resourceType] = true;
+    
+    // Store pods data and update dashboard metrics if this is pods data
+    if (resourceType === 'pods') {
+        window.podsData = data.data.items;
+        updateDashboardMetrics(data.data.items);
+    }
+    
+    // Calculate and log performance metrics
+    const endTime = performance.now();
+    const totalTime = Math.round(endTime - startTime);
+    const processingTime = Math.round(endTime - processingStartTime);
+    console.log(`Completed loading ${resourceType}:`);
+    console.log(`- API request/response time: ${Math.round(processingStartTime - startTime)}ms`);
+    console.log(`- Data processing time: ${processingTime}ms`);
+    console.log(`- Total time: ${totalTime}ms`);
 }
 
 // Show loading indicator
@@ -826,7 +893,7 @@ function createActionButton(resourceType, namespace, name) {
     if (resourceType === 'pods') {
         return `
             <div class="action-dropdown dropdown text-center">
-                <button class="dropdown-toggle" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
+                <button class="dropdown-toggle btn btn-sm btn-secondary" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
@@ -852,7 +919,7 @@ function createActionButton(resourceType, namespace, name) {
     } else {
         return `
             <div class="action-dropdown dropdown text-center">
-                <button class="dropdown-toggle" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
+                <button class="dropdown-toggle btn btn-sm btn-secondary" type="button" id="dropdown-${namespace}-${name}" data-bs-toggle="dropdown" aria-expanded="false">
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
@@ -2339,4 +2406,44 @@ function namespaceChanged(resourceType) {
     }
     
     fetchResourceData(resourceType, selectedNamespace);
+}
+
+function loadResourcesForTab(tabId) {
+    console.log(`Loading resources for tab: ${tabId}`);
+    window.app.currentTab = tabId;
+
+    // Clear any existing content
+    const tableBody = document.querySelector(`#${tabId}Table tbody`);
+    if (tableBody) {
+        tableBody.innerHTML = '';
+    }
+
+    // Show loading indicator for the tab
+    const loadingElement = document.getElementById(`${tabId}Loading`);
+    if (loadingElement) {
+        loadingElement.style.display = 'block';
+    }
+
+    // Load resources based on tab type
+    if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
+        // First load critical data (status and basic info)
+        fetchResourceData(tabId, 'all', true)
+            .then(() => {
+                // Then load full details in background
+                if (window.app.currentTab === tabId) {  // Only if still on same tab
+                    return fetchResourceData(tabId, 'all', false);
+                }
+            })
+            .catch(error => {
+                console.error(`Error loading ${tabId}:`, error);
+            });
+    } else if (tabId === 'namespaces') {
+        if (typeof loadNamespaces === 'function') {
+            loadNamespaces();
+        }
+    } else if (tabId === 'charts') {
+        if (typeof refreshCharts === 'function') {
+            refreshCharts();
+        }
+    }
 }

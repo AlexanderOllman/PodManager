@@ -54,75 +54,67 @@ def index():
 
 @app.route('/get_resources', methods=['POST'])
 def get_resources():
-    resource_type = request.form['resource_type']
-    namespace = request.form.get('namespace', '')
+    """Get Kubernetes resources based on type."""
+    resource_type = request.form.get('resource_type')
+    namespace = request.form.get('namespace', 'all')
+    critical_only = request.form.get('critical_only', 'false').lower() == 'true'
     
-    # If namespace is provided, fetch resources only from that namespace
+    if not resource_type:
+        return jsonify(error="Resource type is required")
+    
+    # Build kubectl command based on resource type and namespace
     if namespace and namespace != 'all':
         command = f"kubectl get {resource_type} -n {namespace} -o json"
     else:
-        command = f"kubectl get {resource_type} -A -o json"
-    
-    output = run_kubectl_command(command)
+        command = f"kubectl get {resource_type} --all-namespaces -o json"
     
     try:
-        # Parse the full JSON response
-        resources = json.loads(output)
+        output = run_kubectl_command(command)
+        data = json.loads(output)
         
-        # For large responses, optimize by filtering fields based on resource type
-        if resource_type in ['pods', 'services', 'deployments', 'inferenceservices', 'configmaps', 'secrets']:
-            # Keep only necessary fields to reduce response size
-            optimized_items = []
-            for item in resources.get('items', []):
-                # Always include core metadata
-                optimized_item = {
-                    'metadata': {
-                        'name': item.get('metadata', {}).get('name', ''),
-                        'namespace': item.get('metadata', {}).get('namespace', ''),
-                        'creationTimestamp': item.get('metadata', {}).get('creationTimestamp', '')
+        # For critical-only loads, strip out non-essential data
+        if critical_only:
+            if 'items' in data:
+                for item in data['items']:
+                    # Keep only essential metadata and status
+                    minimal_item = {
+                        'metadata': {
+                            'name': item['metadata'].get('name'),
+                            'namespace': item['metadata'].get('namespace'),
+                            'creationTimestamp': item['metadata'].get('creationTimestamp')
+                        },
+                        'status': {}
                     }
-                }
-                
-                # Add resource-specific fields
-                if resource_type == 'pods':
-                    optimized_item['status'] = {
-                        'phase': item.get('status', {}).get('phase', ''),
-                        'containerStatuses': item.get('status', {}).get('containerStatuses', [])
-                    }
-                    optimized_item['spec'] = {
-                        'containers': item.get('spec', {}).get('containers', [])
-                    }
-                elif resource_type == 'services':
-                    optimized_item['spec'] = {
-                        'type': item.get('spec', {}).get('type', ''),
-                        'clusterIP': item.get('spec', {}).get('clusterIP', ''),
-                        'externalIP': item.get('spec', {}).get('externalIP', ''),
-                        'ports': item.get('spec', {}).get('ports', [])
-                    }
-                elif resource_type == 'deployments':
-                    optimized_item['spec'] = {
-                        'replicas': item.get('spec', {}).get('replicas', 0)
-                    }
-                    optimized_item['status'] = {
-                        'availableReplicas': item.get('status', {}).get('availableReplicas', 0),
-                        'readyReplicas': item.get('status', {}).get('readyReplicas', 0)
-                    }
-                
-                # Add the optimized item to the collection
-                optimized_items.append(optimized_item)
-            
-            # Replace the original items with the optimized ones
-            resources['items'] = optimized_items
-            
-            # Log optimization metrics
-            original_size = len(output)
-            optimized_output = json.dumps(resources)
-            optimized_size = len(optimized_output)
-            print(f"Optimized response for {resource_type}: {original_size} bytes → {optimized_size} bytes")
+                    
+                    # Keep essential status fields based on resource type
+                    if resource_type == 'pods':
+                        minimal_item['status'] = {
+                            'phase': item['status'].get('phase'),
+                            'containerStatuses': [{
+                                'ready': status.get('ready'),
+                                'restartCount': status.get('restartCount'),
+                                'state': status.get('state')
+                            } for status in item['status'].get('containerStatuses', [])]
+                        }
+                    elif resource_type == 'services':
+                        minimal_item['spec'] = {
+                            'type': item['spec'].get('type'),
+                            'clusterIP': item['spec'].get('clusterIP')
+                        }
+                    elif resource_type == 'deployments':
+                        minimal_item['status'] = {
+                            'replicas': item['status'].get('replicas'),
+                            'readyReplicas': item['status'].get('readyReplicas')
+                        }
+                    
+                    item.clear()
+                    item.update(minimal_item)
         
-        return jsonify(format='table', data=resources)
+        return jsonify(data=data)
+    except subprocess.CalledProcessError as e:
+        return jsonify(error=f"Failed to get {resource_type}: {e.stderr}")
     except json.JSONDecodeError:
-        return jsonify(format='error', message=f"Unable to fetch {resource_type}")
+        return jsonify(error=f"Invalid JSON response from kubectl")
 
 @app.route('/run_action', methods=['POST'])
 def run_action():
