@@ -34,6 +34,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (event.state && event.state.tabId) {
                 console.log(`History state has tab: ${event.state.tabId}`);
                 
+                // If home tab is the destination, refresh dashboard metrics
+                if (event.state.tabId === 'home') {
+                    // Refresh cluster capacity metrics immediately
+                    if (typeof fetchClusterCapacity === 'function') {
+                        console.log('History navigation: Refreshing cluster capacity metrics');
+                        fetchClusterCapacity();
+                    }
+                }
+                
                 // If returning to home dashboard with an active resource tab
                 if (event.state.tabId === 'home' && event.state.activeResourceTab) {
                     console.log(`History navigation to home with active resource tab: ${event.state.activeResourceTab}`);
@@ -75,6 +84,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Load the active resource tab data
                     fetchResourceData(event.state.activeResourceTab);
+                    
+                    // If this is a pods tab, it will update the dashboard metrics automatically
+                    // If not, we need to ensure dashboard metrics are refreshed
+                    if (event.state.activeResourceTab !== 'pods') {
+                        // Force a pods data fetch to update the metrics
+                        if (typeof updateDashboardMetrics === 'function' && window.app.state.resources && window.app.state.resources.pods) {
+                            console.log('Updating dashboard metrics from cached pods data');
+                            updateDashboardMetrics(window.app.state.resources.pods.data.items);
+                        }
+                    }
                     
                     return;
                 }
@@ -703,6 +722,12 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
         const lastFetch = window.app.state.lastFetch[resourceType];
         if (cachedData && lastFetch && (Date.now() - lastFetch < window.app.CACHE_TIMEOUT)) {
             console.log(`Using cached data for ${resourceType}`);
+            
+            // If using pods data from cache, make sure to update dashboard metrics
+            if (resourceType === 'pods' && !criticalOnly) {
+                updateDashboardMetrics(cachedData.data.items);
+            }
+            
             return Promise.resolve(processResourceData(resourceType, cachedData, startTime));
         }
     }
@@ -755,6 +780,20 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
             
             // Process the data
             processResourceData(resourceType, data, startTime, processingStartTime);
+            
+            // Update dashboard metrics if this is pods data and not a critical-only load
+            if (resourceType === 'pods' && !criticalOnly) {
+                console.log('Updating dashboard metrics from pods data');
+                updateDashboardMetrics(data.data.items);
+            }
+            
+            // If we loaded pods data, also refresh the cluster capacity metrics
+            if (resourceType === 'pods') {
+                if (typeof fetchClusterCapacity === 'function') {
+                    console.log('Refreshing cluster capacity metrics after pods load');
+                    fetchClusterCapacity();
+                }
+            }
             
             return data;
         })
