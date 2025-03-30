@@ -157,17 +157,51 @@
             // Only reset resources if we're coming from a different page
             if (window.app.state.navigation.isNavigating) {
                 window.app.loadedResources = {};
+                if (window.app.state.resources) {
+                    window.app.state.resources = {};
+                }
                 window.app.state.navigation.isNavigating = false;
             }
             
             // Initialize resource loading for the active tab
             const activeTab = window.app.state.navigation.activeTab || 'home';
+            console.log(`Active tab from navigation state: ${activeTab}`);
+            
+            // If active tab is 'home', check for a resource tab that might be active
+            if (activeTab === 'home') {
+                const visibleResourceTab = document.querySelector('.tab-pane.active[id]');
+                if (visibleResourceTab && visibleResourceTab.id) {
+                    console.log(`Found visible resource tab: ${visibleResourceTab.id}`);
+                    activateTab(visibleResourceTab.id, true); // true means trigger a load
+                    return;
+                }
+            }
+            
+            // Activate the tab before loading resources
             activateTab(activeTab, false); // false means don't trigger a load
             
-            // Load resources after a short delay to ensure DOM is ready
+            // Load resources after a delay to ensure DOM is ready
             setTimeout(() => {
-                loadResourcesForTab(activeTab);
-            }, 100);
+                if (activeTab === 'home') {
+                    // If we're on the home dashboard, make sure the pods tab is loaded
+                    const podsTab = document.getElementById('pods');
+                    if (podsTab && podsTab.classList.contains('active')) {
+                        loadResourcesForTab('pods');
+                    } else {
+                        // Find the first active resource tab
+                        const resourceTabs = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+                        for (const tab of resourceTabs) {
+                            const tabElement = document.getElementById(tab);
+                            if (tabElement && tabElement.classList.contains('active')) {
+                                loadResourcesForTab(tab);
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    loadResourcesForTab(activeTab);
+                }
+            }, 200);
         }
 
         // Navigation function
@@ -197,8 +231,18 @@
                             document.getElementById('main-content').style.opacity = '1';
                             window.scrollTo(0, scrollPos);
                             
-                            // Initialize after content update
-                            initializeHomePage();
+                            // Clear resource cache to force refresh
+                            if (window.app.state.resources) {
+                                window.app.state.resources = {};
+                            }
+                            
+                            // Reset loadedResources state
+                            window.app.loadedResources = {};
+                            
+                            // Initialize after content update with a delay to ensure DOM is ready
+                            setTimeout(() => {
+                                initializeHomePage();
+                            }, 200);
                         });
                         
                         // Update history with scroll position
@@ -280,9 +324,23 @@
                 loadingElement.style.display = 'block';
             }
 
+            // Ensure the loadedResources object exists
+            if (!window.app.loadedResources) {
+                window.app.loadedResources = {};
+            }
+            
+            // Clear the resource cache for this tab
+            if (window.app.state.resources) {
+                delete window.app.state.resources[tabId];
+            }
+            
+            // Reset the loaded state
+            window.app.loadedResources[tabId] = false;
+
             // Load resources based on tab type
             if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
                 if (typeof fetchResourceData === 'function') {
+                    console.log(`Calling fetchResourceData for ${tabId}`);
                     // First load critical data
                     fetchResourceData(tabId, 'all', true)
                         .then(() => {
@@ -293,7 +351,31 @@
                         })
                         .catch(error => {
                             console.error(`Error loading ${tabId}:`, error);
+                            
+                            // Show error in the table
+                            if (tableBody) {
+                                tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
+                                    <i class="fas fa-exclamation-circle me-2"></i>
+                                    Failed to load ${tabId}. 
+                                    <button onclick="fetchResourceData('${tabId}')" class="btn btn-sm btn-outline-danger ms-3">
+                                        <i class="fas fa-sync-alt me-1"></i> Retry
+                                    </button>
+                                </td></tr>`;
+                            }
                         });
+                } else {
+                    console.error(`fetchResourceData function not available when loading ${tabId}`);
+                    
+                    // Load the index.js script if it's not loaded
+                    const indexScript = document.createElement('script');
+                    indexScript.src = "/static/js/index.js";
+                    indexScript.onload = function() {
+                        console.log("index.js loaded, retrying resource load");
+                        if (typeof fetchResourceData === 'function') {
+                            fetchResourceData(tabId, 'all', false);
+                        }
+                    };
+                    document.head.appendChild(indexScript);
                 }
             } else if (tabId === 'namespaces') {
                 if (typeof loadNamespaces === 'function') {

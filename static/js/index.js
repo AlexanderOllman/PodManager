@@ -601,13 +601,45 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
     const startTime = performance.now();
     
     // Cancel any existing request for this resource type
-    if (window.app.state.activeRequests.has(resourceType)) {
+    if (window.app.state.activeRequests && window.app.state.activeRequests.has(resourceType)) {
         window.app.state.activeRequests.get(resourceType).abort();
         window.app.state.activeRequests.delete(resourceType);
     }
     
-    // For critical-only loads, don't use cache
-    if (!criticalOnly) {
+    // Initialize the activeRequests Map if it doesn't exist
+    if (!window.app.state.activeRequests) {
+        window.app.state.activeRequests = new Map();
+    }
+    
+    // Initialize resources object if it doesn't exist
+    if (!window.app.state.resources) {
+        window.app.state.resources = {};
+    }
+    
+    // Initialize lastFetch object if it doesn't exist
+    if (!window.app.state.lastFetch) {
+        window.app.state.lastFetch = {};
+    }
+    
+    // Initialize the app's CACHE_TIMEOUT if it doesn't exist
+    if (!window.app.CACHE_TIMEOUT) {
+        window.app.CACHE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+    }
+    
+    // Track when the user left the dashboard 
+    const navigatingBack = window.app.state.navigation && 
+                           window.app.state.navigation.isNavigating === false && 
+                           window.location.pathname === '/';
+    
+    // Force fresh data when returning to the dashboard
+    if (navigatingBack) {
+        console.log("Returning to dashboard - forcing fresh data fetch");
+        delete window.app.state.resources[resourceType];
+        delete window.app.state.lastFetch[resourceType];
+    }
+    
+    // For critical-only loads, don't use cache unless explicitly returning to dashboard
+    if (!criticalOnly && !navigatingBack) {
         // Check cache first
         const cachedData = window.app.state.resources[resourceType];
         const lastFetch = window.app.state.lastFetch[resourceType];
@@ -657,8 +689,16 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
             window.app.state.resources[resourceType] = data;
             window.app.state.lastFetch[resourceType] = Date.now();
             
+            // Mark as loaded
+            if (!window.app.loadedResources) {
+                window.app.loadedResources = {};
+            }
+            window.app.loadedResources[resourceType] = true;
+            
             // Process the data
             processResourceData(resourceType, data, startTime, processingStartTime);
+            
+            return data;
         })
         .catch(error => {
             if (error.name === 'AbortError') {
@@ -694,7 +734,12 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
             throw error;
         })
         .finally(() => {
-            window.app.state.activeRequests.delete(resourceType);
+            if (window.app.state.activeRequests) {
+                window.app.state.activeRequests.delete(resourceType);
+            }
+            
+            // Hide loading indicator
+            hideLoading(resourceType);
         });
     }
     
@@ -872,62 +917,74 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
     window.loadedResources[resourceType] = true;
 }
 
-// Show loading indicator
+// Show loading indicator for resource type
 function showLoading(resourceType) {
+    console.log(`Showing loading for ${resourceType}`);
+    
+    // Get the loading container
     const loadingElement = document.getElementById(`${resourceType}Loading`);
-    if (loadingElement) {
-        loadingElement.style.display = 'flex';
-    } else {
-        // Create loading indicator if it doesn't exist
-        const tableContainer = document.querySelector(`#${resourceType} .table-responsive`);
-        if (tableContainer) {
-            const loadingDiv = document.createElement('div');
-            loadingDiv.id = `${resourceType}Loading`;
-            loadingDiv.className = 'loading-container';
-            loadingDiv.innerHTML = `
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <span class="loading-text ms-2">Loading ${capitalizeFirstLetter(resourceType)}...</span>
-                <div class="progress mt-2 w-100">
-                    <div id="${resourceType}ProgressBar" class="progress-bar" role="progressbar" 
-                         style="width: 10%" aria-valuenow="10" aria-valuemin="0" aria-valuemax="100"></div>
-                </div>
-                <div id="${resourceType}LoadingInfo" class="loading-info mt-1 small text-muted"></div>
-            `;
-            tableContainer.parentNode.insertBefore(loadingDiv, tableContainer);
-        }
+    if (!loadingElement) {
+        console.error(`Loading element for ${resourceType} not found`);
+        return;
     }
     
-    // Reset progress bar
+    // Show the loading container
+    loadingElement.style.display = 'block';
+    
+    // Get the progress bar and update its width
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
     if (progressBar) {
-        progressBar.style.width = '10%';
+        progressBar.style.width = '25%'; // Start at 25%
+        
+        // Animate the progress bar
+        setTimeout(() => {
+            if (progressBar) progressBar.style.width = '40%';
+        }, 300);
+        
+        setTimeout(() => {
+            if (progressBar) progressBar.style.width = '60%';
+        }, 600);
     }
     
-    // Reset loading info
-    const loadingInfo = document.getElementById(`${resourceType}LoadingInfo`);
-    if (loadingInfo) {
-        loadingInfo.textContent = 'Preparing request...';
+    // Add loading class to the table if it exists
+    const table = document.getElementById(`${resourceType}Table`);
+    if (table) {
+        table.classList.add('loading');
     }
 }
 
-// Hide loading indicator
+// Hide loading indicator for resource type
 function hideLoading(resourceType) {
+    console.log(`Hiding loading for ${resourceType}`);
+    
+    // Get the loading container
     const loadingElement = document.getElementById(`${resourceType}Loading`);
-    if (loadingElement) {
-        // Animate completion before hiding
-        const progressBar = document.getElementById(`${resourceType}ProgressBar`);
-        if (progressBar) {
-            progressBar.style.width = '100%';
+    if (!loadingElement) {
+        console.error(`Loading element for ${resourceType} not found`);
+        return;
+    }
+    
+    // Complete the progress bar animation
+    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
+    if (progressBar) {
+        progressBar.style.width = '100%';
+        
+        // Delay hiding to allow animation to complete
+        setTimeout(() => {
+            if (loadingElement) loadingElement.style.display = 'none';
             
-            // Give a slight delay to show the completed progress
-            setTimeout(() => {
-                loadingElement.style.display = 'none';
-            }, 500);
-        } else {
-            loadingElement.style.display = 'none';
-        }
+            // Reset progress bar
+            if (progressBar) progressBar.style.width = '0%';
+        }, 300);
+    } else {
+        // If no progress bar, hide immediately
+        loadingElement.style.display = 'none';
+    }
+    
+    // Remove loading class from the table if it exists
+    const table = document.getElementById(`${resourceType}Table`);
+    if (table) {
+        table.classList.remove('loading');
     }
 }
 
