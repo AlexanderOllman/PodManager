@@ -604,18 +604,7 @@ body {
   color: var(--hpe-gray);
 }
 
-/* Progress and Loading */
-.progress {
-  height: 6px;
-  border-radius: 3px;
-  background-color: var(--hpe-light-gray);
-  margin: 0.5rem 0;
-}
-
-.progress-bar {
-  background: var(--hpe-gradient);
-}
-
+/* Loading and Progress Styles */
 .loading-container {
   display: flex;
   flex-direction: column;
@@ -632,40 +621,43 @@ body {
 
 .progress-container {
   width: 80%;
-  max-width: 650px;
+  max-width: 500px;
   text-align: center;
 }
 
 .progress {
-  height: 12px;
-  border-radius: 10px;
-  margin-bottom: 15px;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  height: 8px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
   overflow: hidden;
+  margin: 15px 0;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .progress-bar {
-  background-color: #00b388;
-  border-radius: 10px;
-  transition: width 0.5s ease;
+  height: 100%;
+  background: linear-gradient(to right, #f5f5f5, #01a982);
+  border-radius: 4px;
+  transition: width 0.4s ease-in-out;
+  position: relative;
 }
 
 .loading-text {
-  font-size: 1.25rem;
-  margin-bottom: 10px;
-  font-weight: 600;
+  font-size: 1rem;
   color: #333;
+  margin-bottom: 8px;
+  font-weight: 500;
   animation: fadeInOut 2s infinite;
 }
 
 .loading-details {
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: #666;
-  margin-top: 5px;
+  margin-top: 4px;
   min-height: 20px;
+  opacity: 0.8;
 }
 
-/* Animation for fading text */
 @keyframes fadeInOut {
   0% { opacity: 0.6; }
   50% { opacity: 1; }

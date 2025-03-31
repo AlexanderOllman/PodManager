@@ -967,114 +967,41 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
 
 // Show loading indicator for resource type
 function showLoading(resourceType) {
-    console.log(`Showing loading for ${resourceType}`);
-    
-    // Get the loading container
-    const loadingElement = document.getElementById(`${resourceType}Loading`);
-    if (!loadingElement) {
-        console.error(`Loading element for ${resourceType} not found`);
-        return;
-    }
-    
-    // Make sure the table container is hidden
+    const loadingContainer = document.getElementById(`${resourceType}Loading`);
     const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
+    
+    if (loadingContainer) {
+        loadingContainer.style.display = 'flex';
+    }
     if (tableContainer) {
         tableContainer.style.opacity = '0';
     }
-    
-    // Show the loading container
-    loadingElement.style.display = 'flex';
-    
-    // Get the loading text elements
-    const loadingText = document.getElementById(`${resourceType}LoadingText`);
-    const loadingDetails = document.getElementById(`${resourceType}LoadingDetails`);
-    
-    if (loadingText) {
-        loadingText.textContent = `Loading ${capitalizeFirstLetter(resourceType)}...`;
-    }
-    
-    // Set up loading steps
-    const loadingSteps = [
-        {message: 'Connecting to Kubernetes API...', detailMessage: 'Establishing secure connection', percentage: 10},
-        {message: 'Fetching resource data...', detailMessage: 'Retrieving data from cluster', percentage: 25},
-        {message: 'Processing response...', detailMessage: 'Parsing Kubernetes resources', percentage: 40},
-        {message: 'Calculating metrics...', detailMessage: 'Analyzing resource usage', percentage: 60},
-        {message: 'Preparing display...', detailMessage: 'Organizing data for presentation', percentage: 80},
-        {message: 'Finalizing...', detailMessage: 'Applying final touches', percentage: 95}
-    ];
-    
-    // Store the loading steps in the window object for this resource type
-    window.loadingSteps = window.loadingSteps || {};
-    window.loadingSteps[resourceType] = loadingSteps;
-    window.loadingStepIndex = window.loadingStepIndex || {};
-    window.loadingStepIndex[resourceType] = 0;
-    
-    // Get the progress bar and update its width
-    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
     if (progressBar) {
-        progressBar.style.width = '5%'; // Start at 5%
-        
-        // Update loading step animation
-        updateLoadingStep(resourceType, 0);
-    }
-    
-    // Add loading class to the table if it exists
-    const table = document.getElementById(`${resourceType}Table`);
-    if (table) {
-        table.classList.add('loading');
+        progressBar.style.width = '5%';
+        progressBar.style.background = 'linear-gradient(to right, #f5f5f5, #01a982)';
     }
 }
 
 // Update loading step with animation
 function updateLoadingStep(resourceType, stepIndex) {
-    if (!window.loadingSteps || !window.loadingSteps[resourceType]) {
-        return;
-    }
-    
-    const steps = window.loadingSteps[resourceType];
-    if (stepIndex >= steps.length) {
-        return;
-    }
-    
-    const loadingText = document.getElementById(`${resourceType}LoadingText`);
-    const loadingDetails = document.getElementById(`${resourceType}LoadingDetails`);
+    const steps = [
+        { text: 'Initializing...', percentage: 5 },
+        { text: 'Fetching data...', percentage: 30 },
+        { text: 'Processing...', percentage: 60 },
+        { text: 'Finalizing...', percentage: 90 },
+        { text: 'Complete', percentage: 100 }
+    ];
+
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
+    const loadingText = document.getElementById(`${resourceType}LoadingText`);
     
-    // Update text with fade effect
-    if (loadingText) {
-        loadingText.style.opacity = '0';
-        setTimeout(() => {
-            loadingText.textContent = steps[stepIndex].message;
-            loadingText.style.opacity = '1';
-        }, 300);
-    }
-    
-    // Update details with fade effect
-    if (loadingDetails) {
-        loadingDetails.style.opacity = '0';
-        setTimeout(() => {
-            loadingDetails.textContent = steps[stepIndex].detailMessage;
-            loadingDetails.style.opacity = '1';
-        }, 300);
-    }
-    
-    // Update progress bar
-    if (progressBar) {
+    if (progressBar && stepIndex < steps.length) {
         progressBar.style.width = `${steps[stepIndex].percentage}%`;
     }
     
-    // Store the current step index
-    window.loadingStepIndex[resourceType] = stepIndex;
-    
-    // Schedule next step update if not the last step
-    if (stepIndex < steps.length - 1) {
-        setTimeout(() => {
-            // Only proceed if we're still loading (check if container is visible)
-            const loadingElement = document.getElementById(`${resourceType}Loading`);
-            if (loadingElement && loadingElement.style.display !== 'none') {
-                updateLoadingStep(resourceType, stepIndex + 1);
-            }
-        }, 1200); // Time between steps
+    if (loadingText && stepIndex < steps.length) {
+        loadingText.textContent = steps[stepIndex].text;
     }
 }
 
@@ -1092,72 +1019,26 @@ function advanceLoadingStep(resourceType) {
 
 // Hide loading indicator for resource type
 function hideLoading(resourceType) {
-    console.log(`Hiding loading for ${resourceType}`);
-    
-    // Get the loading container and table container
-    const loadingElement = document.getElementById(`${resourceType}Loading`);
+    const loadingContainer = document.getElementById(`${resourceType}Loading`);
     const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-    
-    if (!loadingElement) {
-        console.error(`Loading element for ${resourceType} not found`);
-        return;
-    }
-    
-    // Complete the progress bar animation
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
-    const loadingText = document.getElementById(`${resourceType}LoadingText`);
-    const loadingDetails = document.getElementById(`${resourceType}LoadingDetails`);
-    
-    // Show completion message
-    if (loadingText) {
-        loadingText.textContent = 'Loading Complete!';
-    }
-    
-    if (loadingDetails) {
-        loadingDetails.textContent = 'Displaying data...';
-    }
     
     if (progressBar) {
         progressBar.style.width = '100%';
-        
-        // Delay hiding to allow animation to complete
         setTimeout(() => {
-            // Fade in the table container first
-            if (tableContainer) {
-                tableContainer.style.opacity = '1';
+            if (loadingContainer) {
+                loadingContainer.style.display = 'none';
             }
-            
-            // Then after a small delay, hide the loading container
-            setTimeout(() => {
-                if (loadingElement) {
-                    loadingElement.style.display = 'none';
-                }
-                
-                // Reset progress bar
-                if (progressBar) {
-                    progressBar.style.width = '0%';
-                }
-            }, 500);
-        }, 600);
-    } else {
-        // If no progress bar, hide immediately
-        loadingElement.style.display = 'none';
-        
-        // Show the table container
-        if (tableContainer) {
+            if (progressBar) {
+                progressBar.style.width = '0%';
+            }
+        }, 500);
+    }
+    
+    if (tableContainer) {
+        setTimeout(() => {
             tableContainer.style.opacity = '1';
-        }
-    }
-    
-    // Remove loading class from the table if it exists
-    const table = document.getElementById(`${resourceType}Table`);
-    if (table) {
-        table.classList.remove('loading');
-    }
-    
-    // Reset loading step tracking
-    if (window.loadingStepIndex) {
-        delete window.loadingStepIndex[resourceType];
+        }, 100);
     }
 }
 
@@ -2514,13 +2395,13 @@ function updateDashboardMetrics(pods) {
     if (cpuProgressBar) {
         cpuProgressBar.style.width = `${cpuPercentage}%`;
         
-        // Change color based on usage
-        if (cpuPercentage > 90) {
-            cpuProgressBar.className = 'progress-bar bg-danger';
-        } else if (cpuPercentage > 75) {
-            cpuProgressBar.className = 'progress-bar bg-warning';
+        // Update color based on usage
+        if (cpuPercentage >= 90) {
+            cpuProgressBar.style.background = 'linear-gradient(to right, #f5f5f5, #ff5a5a)';
+        } else if (cpuPercentage >= 75) {
+            cpuProgressBar.style.background = 'linear-gradient(to right, #f5f5f5, #ffb800)';
         } else {
-            cpuProgressBar.className = 'progress-bar';
+            cpuProgressBar.style.background = 'linear-gradient(to right, #f5f5f5, #01a982)';
         }
     }
     
