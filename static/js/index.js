@@ -130,48 +130,24 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeApp() {
     console.log('Initializing application...');
     
-    // Initialize loading states
-    window.loadingStates = {
-        pods: { table: false, metrics: false },
-        services: { table: false },
-        inferenceservices: { table: false },
-        deployments: { table: false },
-        configmaps: { table: false },
-        secrets: { table: false },
-        namespaces: { table: false },
-        charts: { table: false }
-    };
-    
-    // Initialize progress animations state
-    window.progressAnimations = {};
-    
-    // Initialize the app state
-    window.app = {
-        loadedResources: {},
-        currentNamespace: 'default'
-    };
-    
     // Initialize Bootstrap components
     initializeBootstrapComponents();
     
-    // Set up event listeners
-    setupTabClickHandlers();
+    // Initialize components that don't require special dependencies
+    fetchResourcesForAllTabs();
+    fetchClusterCapacity(); // Add this line to fetch cluster capacity on initialization
+    checkGitAvailability();
+    fetchNamespaces();
     setupDropZone();
     
-    // Initialize the terminal
+    // Initialize terminal if available
     initializeTerminal();
     
-    // Initialize the home page
-    initializeHomePage();
-    
-    // Set up socket listeners
+    // Connect socket event listeners
     connectSocketListeners();
     
-    // Initialize GPU filter functionality
-    initializeGPUFilter();
-    
-    // Initialize namespace functionality
-    initializeNamespaceFunctionality();
+    // Set up additional tab click handlers
+    setupTabClickHandlers();
     
     console.log('Application initialized');
 }
@@ -199,36 +175,49 @@ function initializeBootstrapComponents() {
 
 // Home page specific initialization
 function initializeHomePage() {
-    console.log('Initializing home page...');
+    console.log('Initializing home page components...');
     
-    // Reset all loading states
-    Object.keys(window.loadingStates).forEach(resourceType => {
-        Object.keys(window.loadingStates[resourceType]).forEach(key => {
-            window.loadingStates[resourceType][key] = false;
-        });
+    // Initialize GPU filter card
+    initializeGPUFilter();
+    
+    // Add controls to each resource tab
+    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+    resourceTypes.forEach(resourceType => {
+        addResourceControls(resourceType);
+        
+        // Set up tab click handlers to load data on demand
+        const tabElement = document.querySelector(`#${resourceType}-tab`);
+        if (tabElement) {
+            tabElement.addEventListener('click', () => {
+                // Always fetch fresh data when tab is clicked
+                console.log(`Tab ${resourceType} clicked, fetching fresh data...`);
+                
+                // Get current namespace selection
+                const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
+                const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+                
+                // Force fetch by clearing the cached state
+                if (window.loadedResources) {
+                    delete window.loadedResources[resourceType];
+                }
+                
+                fetchResourceData(resourceType, currentNamespace);
+            });
+        }
     });
     
-    // Hide all tables initially
-    document.querySelectorAll('.table-container').forEach(container => {
-        container.style.opacity = '0';
-    });
-    
-    // Show loading indicators
-    document.querySelectorAll('.loading-container').forEach(container => {
-        container.style.display = 'flex';
-    });
-    
-    // Initialize in sequence
-    Promise.all([
-        fetchClusterCapacity(),
-        fetchResourcesForAllTabs(),
-        loadNamespaces(),
-        loadCharts()
-    ]).then(() => {
-        console.log('Home page initialization complete');
-    }).catch(error => {
-        console.error('Error initializing home page:', error);
-    });
+    // Load the active tab content
+    const activeTabId = document.querySelector('.tab-pane.active')?.id;
+    if (activeTabId && resourceTypes.includes(activeTabId)) {
+        // Get the namespace for this tab
+        const namespaceSelector = document.getElementById(`${activeTabId}Namespace`);
+        const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+        
+        fetchResourceData(activeTabId, currentNamespace);
+    } else {
+        // If no tab is active, load pods as default
+        fetchResourceData('pods', 'all');
+    }
 }
 
 // Terminal initialization - already loaded in head
@@ -817,129 +806,169 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
 
 // Helper function to process resource data
 function processResourceData(resourceType, data, startTime, processingStartTime = performance.now()) {
-    console.log(`Processing ${resourceType} data...`);
+    // Advance to the finalizing step
+    advanceLoadingStep(resourceType);
     
-    // Update loading state for table
-    window.loadingStates[resourceType].table = false;
-    
-    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-    if (tableContainer) {
-        tableContainer.style.opacity = '0';
-    }
-
-    // Clear and populate the table with resource data
-    const table = document.getElementById(`${resourceType}Table`);
-    if (table && table.getElementsByTagName('tbody')[0]) {
-        const tbody = table.getElementsByTagName('tbody')[0];
-        tbody.innerHTML = '';
-        
-        // Process and add the data
-        data.forEach(item => {
-            // ... existing data processing code ...
+    // Clear and populate the table
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (tableBody) {
+        tableBody.innerHTML = '';
+        data.data.items.forEach(item => {
+            const row = document.createElement('tr');
+            switch (resourceType) {
+                case 'pods':
+                    const resources = getResourceUsage(item);
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
+                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
+                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'services':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.spec.type}</td>
+                        <td>${item.spec.clusterIP}</td>
+                        <td>${item.spec.externalIP || 'N/A'}</td>
+                        <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'inferenceservices':
+                    // For InferenceServices, get resources from spec.predictor
+                    let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
+                    if (item.spec && item.spec.predictor) {
+                        if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                            item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                            item.spec.predictor.xgboost || item.spec.predictor.custom) {
+                            // Get the appropriate predictor implementation
+                            const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                                                 item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                                                 item.spec.predictor.xgboost || item.spec.predictor.custom;
+                            
+                            if (predictorImpl.resources) {
+                                if (predictorImpl.resources.requests) {
+                                    // CPU
+                                    if (predictorImpl.resources.requests.cpu) {
+                                        const cpuReq = predictorImpl.resources.requests.cpu;
+                                        if (cpuReq.endsWith('m')) {
+                                            infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
+                                        } else {
+                                            infResources.cpu = parseFloat(cpuReq).toFixed(2);
+                                        }
+                                    }
+                                    
+                                    // GPU
+                                    if (predictorImpl.resources.requests['nvidia.com/gpu']) {
+                                        infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
+                                    } else if (predictorImpl.resources.requests.gpu) {
+                                        infResources.gpu = predictorImpl.resources.requests.gpu;
+                                    }
+                                    
+                                    // Memory
+                                    if (predictorImpl.resources.requests.memory) {
+                                        infResources.memory = predictorImpl.resources.requests.memory;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.url || 'N/A'}</td>
+                        <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
+                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
+                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
+                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
+                        <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
+                        <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'deployments':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
+                        <td>${item.status.updatedReplicas}</td>
+                        <td>${item.status.availableReplicas}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'configmaps':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${Object.keys(item.data || {}).length}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+                case 'secrets':
+                    row.innerHTML = `
+                        <td>${item.metadata.namespace}</td>
+                        <td>${item.metadata.name}</td>
+                        <td>${item.type}</td>
+                        <td>${Object.keys(item.data || {}).length}</td>
+                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                    `;
+                    break;
+            }
+            
+            tableBody.appendChild(row);
         });
-        
-        // Mark table as loaded
-        window.loadingStates[resourceType].table = true;
     }
-
-    // Special handling for pods - update dashboard metrics
+    
+    // After all table rows are added, update dashboard metrics if this is pods data
     if (resourceType === 'pods') {
-        window.loadingStates.pods.metrics = false;
-        updateDashboardMetrics(data);
-        // Metrics will be marked as loaded in updateDashboardMetrics
+        console.log('Updating dashboard metrics from processed pods data');
+        updateDashboardMetrics(data.data.items);
     }
-
-    // Initialize dropdowns after data is loaded
-    setTimeout(() => {
-        const dropdowns = document.querySelectorAll(`#${resourceType}Table .dropdown-toggle`);
-        dropdowns.forEach(dropdown => {
-            new bootstrap.Dropdown(dropdown);
+    
+    // Initialize dropdowns in the table
+    setTimeout(function() {
+        var dropdownElementList = [].slice.call(document.querySelectorAll(`#${resourceType}Table .dropdown-toggle`));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
         });
     }, 100);
-
-    // Log performance information
+    
+    // Mark as loaded in the app state
+    if (!window.app.loadedResources) {
+        window.app.loadedResources = {};
+    }
+    window.app.loadedResources[resourceType] = true;
+    
+    // Log performance info
     const endTime = performance.now();
+    const fetchTime = processingStartTime - startTime;
+    const processTime = endTime - processingStartTime;
     const totalTime = endTime - startTime;
-    const processingTime = endTime - processingStartTime;
-    console.log(`${resourceType} data processed in ${processingTime.toFixed(2)}ms (total: ${totalTime.toFixed(2)}ms)`);
-
-    // Check if all required data is loaded before showing the table
-    checkAndShowResource(resourceType);
-}
-
-// Add this new function to check and show resources
-function checkAndShowResource(resourceType) {
-    const state = window.loadingStates[resourceType];
-    let allLoaded = true;
-
-    // Check all required states for this resource type
-    for (const key in state) {
-        if (!state[key]) {
-            allLoaded = false;
-            break;
-        }
-    }
-
-    if (allLoaded) {
-        const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-        const loadingContainer = document.getElementById(`${resourceType}Loading`);
-        
-        if (tableContainer) {
-            setTimeout(() => {
-                tableContainer.style.opacity = '1';
-            }, 100);
-        }
-        
-        if (loadingContainer) {
-            setTimeout(() => {
-                loadingContainer.style.display = 'none';
-            }, 500);
-        }
-    }
-}
-
-// Update the updateDashboardMetrics function
-function updateDashboardMetrics(pods) {
-    // ... existing metrics calculation code ...
-
-    // After all metrics are updated, mark metrics as loaded
-    window.loadingStates.pods.metrics = true;
+    console.log(`${resourceType} loaded in ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, process: ${processTime.toFixed(0)}ms)`);
     
-    // Check if we can show the pods table now
-    checkAndShowResource('pods');
-}
-
-// Update hideLoading to work with the new system
-function hideLoading(resourceType) {
-    const animation = window.progressAnimations[resourceType];
+    // Hide loading indicator after all processing is complete
+    setTimeout(() => {
+        hideLoading(resourceType);
+    }, 1000);
     
-    if (animation) {
-        if (animation.animationFrame) {
-            cancelAnimationFrame(animation.animationFrame);
-        }
-        
-        animation.targetPercentage = 100;
-        animation.startTime = performance.now();
-        animation.startPercentage = parseFloat(progressBar.style.width) || 0;
-        
-        animateProgress(resourceType);
-    }
-    
-    // Don't hide the loading container or show the table here anymore
-    // That will be handled by checkAndShowResource
+    return data;
 }
 
 // Progress animation state
 window.progressAnimations = {};
 
 function showLoading(resourceType) {
-    // Reset loading states for this resource
-    if (window.loadingStates[resourceType]) {
-        Object.keys(window.loadingStates[resourceType]).forEach(key => {
-            window.loadingStates[resourceType][key] = false;
-        });
-    }
-    
     const loadingContainer = document.getElementById(`${resourceType}Loading`);
     const tableContainer = document.getElementById(`${resourceType}TableContainer`);
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
