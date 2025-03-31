@@ -638,8 +638,9 @@ body {
   height: 100%;
   background: linear-gradient(to right, #f5f5f5, #01a982);
   border-radius: 4px;
-  transition: width 0.4s ease-in-out;
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  will-change: transform;
 }
 
 .loading-text {
@@ -666,7 +667,14 @@ body {
 
 /* Table container with fade effect */
 .table-container {
+  opacity: 0;
   transition: opacity 0.5s ease-in-out;
+  pointer-events: none;
+}
+
+.table-container.loaded {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Resource table styles */
@@ -891,7 +899,8 @@ body {
 }
 
 .progress-bar {
-  background: var(--hpe-gradient);
+  background: linear-gradient(to right, #f5f5f5, #01a982);
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .loading-text {

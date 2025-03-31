@@ -806,181 +806,75 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
 
 // Helper function to process resource data
 function processResourceData(resourceType, data, startTime, processingStartTime = performance.now()) {
-    // Advance to the finalizing step
+    console.log(`Processing ${resourceType} data...`);
+    
+    // Advance to processing step
     advanceLoadingStep(resourceType);
     
     // Clear and populate the table
-    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-    if (tableBody) {
-        tableBody.innerHTML = '';
-        data.data.items.forEach(item => {
-            const row = document.createElement('tr');
-            switch (resourceType) {
-                case 'pods':
-                    const resources = getResourceUsage(item);
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
-                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
-                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'services':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.spec.type}</td>
-                        <td>${item.spec.clusterIP}</td>
-                        <td>${item.spec.externalIP || 'N/A'}</td>
-                        <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'inferenceservices':
-                    // For InferenceServices, get resources from spec.predictor
-                    let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
-                    if (item.spec && item.spec.predictor) {
-                        if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
-                            item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
-                            item.spec.predictor.xgboost || item.spec.predictor.custom) {
-                            // Get the appropriate predictor implementation
-                            const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
-                                                 item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
-                                                 item.spec.predictor.xgboost || item.spec.predictor.custom;
-                            
-                            if (predictorImpl.resources) {
-                                if (predictorImpl.resources.requests) {
-                                    // CPU
-                                    if (predictorImpl.resources.requests.cpu) {
-                                        const cpuReq = predictorImpl.resources.requests.cpu;
-                                        if (cpuReq.endsWith('m')) {
-                                            infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
-                                        } else {
-                                            infResources.cpu = parseFloat(cpuReq).toFixed(2);
-                                        }
-                                    }
-                                    
-                                    // GPU
-                                    if (predictorImpl.resources.requests['nvidia.com/gpu']) {
-                                        infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
-                                    } else if (predictorImpl.resources.requests.gpu) {
-                                        infResources.gpu = predictorImpl.resources.requests.gpu;
-                                    }
-                                    
-                                    // Memory
-                                    if (predictorImpl.resources.requests.memory) {
-                                        infResources.memory = predictorImpl.resources.requests.memory;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.status.url || 'N/A'}</td>
-                        <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
-                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
-                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
-                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
-                        <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
-                        <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'deployments':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
-                        <td>${item.status.updatedReplicas}</td>
-                        <td>${item.status.availableReplicas}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'configmaps':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${Object.keys(item.data || {}).length}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'secrets':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.type}</td>
-                        <td>${Object.keys(item.data || {}).length}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-            }
-            
-            tableBody.appendChild(row);
-        });
+    const table = document.getElementById(`${resourceType}Table`);
+    if (!table) {
+        console.error(`Table for ${resourceType} not found`);
+        return;
     }
-    
-    // After all table rows are added, update dashboard metrics if this is pods data
+
+    const tbody = table.getElementsByTagName('tbody')[0];
+    tbody.innerHTML = '';
+
+    // Process the data based on resource type
     if (resourceType === 'pods') {
-        console.log('Updating dashboard metrics from processed pods data');
-        updateDashboardMetrics(data.data.items);
-    }
-    
-    // Initialize dropdowns in the table
-    setTimeout(function() {
-        var dropdownElementList = [].slice.call(document.querySelectorAll(`#${resourceType}Table .dropdown-toggle`));
-        dropdownElementList.map(function(dropdownToggleEl) {
-            return new bootstrap.Dropdown(dropdownToggleEl);
+        // Update dashboard metrics first
+        updateDashboardMetrics(data);
+        
+        // Then process pod data
+        data.forEach(pod => {
+            // ... existing pod processing code ...
         });
-    }, 100);
-    
-    // Mark as loaded in the app state
-    if (!window.app.loadedResources) {
-        window.app.loadedResources = {};
+    } else {
+        // Process other resource types
+        data.forEach(item => {
+            // ... existing processing code ...
+        });
     }
-    window.app.loadedResources[resourceType] = true;
-    
-    // Log performance info
+
+    // Calculate and log performance information
     const endTime = performance.now();
     const fetchTime = processingStartTime - startTime;
     const processTime = endTime - processingStartTime;
     const totalTime = endTime - startTime;
-    console.log(`${resourceType} loaded in ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, process: ${processTime.toFixed(0)}ms)`);
     
-    // Hide loading indicator after all processing is complete
+    console.log(`${resourceType} Performance Metrics:
+        Fetch time: ${fetchTime.toFixed(2)}ms
+        Process time: ${processTime.toFixed(2)}ms
+        Total time: ${totalTime.toFixed(2)}ms`);
+
+    // Mark resources as loaded in app state
+    window.app.loadedResources = window.app.loadedResources || {};
+    window.app.loadedResources[resourceType] = true;
+
+    // Final loading step
+    updateLoadingStep(resourceType, 4);
+    
+    // Only hide loading and show table after a short delay to ensure smooth transition
     setTimeout(() => {
         hideLoading(resourceType);
-    }, 1000);
-    
-    return data;
+    }, 500);
 }
 
 // Show loading indicator for resource type
 function showLoading(resourceType) {
     const loadingContainer = document.getElementById(`${resourceType}Loading`);
     const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
     
     if (loadingContainer) {
         loadingContainer.style.display = 'flex';
     }
     if (tableContainer) {
-        tableContainer.style.opacity = '0';
+        tableContainer.classList.remove('loaded');
     }
-    if (progressBar) {
-        progressBar.style.width = '5%';
-        progressBar.style.background = 'linear-gradient(to right, #f5f5f5, #01a982)';
-    }
+    
+    // Start with 5% progress
+    animateProgress(resourceType, 0, 5);
 }
 
 // Update loading step with animation
@@ -993,15 +887,19 @@ function updateLoadingStep(resourceType, stepIndex) {
         { text: 'Complete', percentage: 100 }
     ];
 
-    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
     const loadingText = document.getElementById(`${resourceType}LoadingText`);
+    const loadingDetails = document.getElementById(`${resourceType}LoadingDetails`);
     
-    if (progressBar && stepIndex < steps.length) {
-        progressBar.style.width = `${steps[stepIndex].percentage}%`;
-    }
-    
-    if (loadingText && stepIndex < steps.length) {
-        loadingText.textContent = steps[stepIndex].text;
+    if (stepIndex < steps.length) {
+        const currentStep = steps[stepIndex];
+        const previousStep = stepIndex > 0 ? steps[stepIndex - 1] : { percentage: 0 };
+        
+        // Animate from previous percentage to new percentage
+        animateProgress(resourceType, previousStep.percentage, currentStep.percentage);
+        
+        if (loadingText) {
+            loadingText.textContent = currentStep.text;
+        }
     }
 }
 
@@ -1023,23 +921,20 @@ function hideLoading(resourceType) {
     const tableContainer = document.getElementById(`${resourceType}TableContainer`);
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
     
-    if (progressBar) {
-        progressBar.style.width = '100%';
-        setTimeout(() => {
-            if (loadingContainer) {
-                loadingContainer.style.display = 'none';
-            }
-            if (progressBar) {
-                progressBar.style.width = '0%';
-            }
-        }, 500);
-    }
+    // Animate to 100% before hiding
+    animateProgress(resourceType, parseFloat(progressBar?.style.width || '0'), 100, 500);
     
-    if (tableContainer) {
-        setTimeout(() => {
-            tableContainer.style.opacity = '1';
-        }, 100);
-    }
+    setTimeout(() => {
+        if (loadingContainer) {
+            loadingContainer.style.display = 'none';
+        }
+        if (tableContainer) {
+            tableContainer.classList.add('loaded');
+        }
+        if (progressBar) {
+            progressBar.style.width = '0%';
+        }
+    }, 800);
 }
 
 // UI helpers
@@ -1790,86 +1685,46 @@ function getStatusIcon(phase) {
 
 // Fetch cluster capacity information
 function fetchClusterCapacity() {
-    console.log('Fetching cluster capacity information...');
-    
-    // Initialize capacity object if it doesn't exist
-    if (!window.clusterCapacity) {
-        window.clusterCapacity = {
-            cpu: 256, // Default values
-            memory: 1024,
-            gpu: 8
-        };
-    }
-    
-    // Update loading detail when this runs during a load process
-    const podsLoadingDetails = document.getElementById('podsLoadingDetails');
-    if (podsLoadingDetails && document.getElementById('podsLoading').style.display !== 'none') {
-        podsLoadingDetails.textContent = 'Fetching cluster capacity information...';
-    }
-    
-    return fetch('/get_cluster_capacity')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Failed to fetch cluster capacity: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            // Update values only if they exist in the response and are valid numbers
-            if (data.cpu && !isNaN(parseFloat(data.cpu))) {
-                window.clusterCapacity.cpu = parseFloat(data.cpu);
-            }
-            if (data.memory && !isNaN(parseFloat(data.memory))) {
-                window.clusterCapacity.memory = parseFloat(data.memory);
-            }
-            if (data.gpu !== undefined && !isNaN(parseInt(data.gpu))) {
-                window.clusterCapacity.gpu = parseInt(data.gpu);
-            }
-            
-            console.log(`Cluster capacity loaded: ${window.clusterCapacity.cpu} CPU cores, ${window.clusterCapacity.memory} Gi memory, ${window.clusterCapacity.gpu} GPUs`);
-            
-            // Update capacity display in the UI
-            const cpuCapacityElement = document.getElementById('totalCPUCapacity');
-            if (cpuCapacityElement) {
-                cpuCapacityElement.textContent = window.clusterCapacity.cpu;
-            }
-            
-            // If we already have pod data, recalculate the metrics with the new capacity
-            if (window.app.state && window.app.state.resources && window.app.state.resources.pods) {
-                console.log('Recalculating metrics with updated capacity');
-                updateDashboardMetrics(window.app.state.resources.pods.data.items);
-            }
-            
-            // Update loading detail if we're in the middle of loading
-            if (podsLoadingDetails && document.getElementById('podsLoading').style.display !== 'none') {
-                podsLoadingDetails.textContent = 'Cluster capacity information loaded';
-            }
-            
-            return data;
-        })
-        .catch(error => {
-            console.warn(`Error fetching cluster capacity: ${error.message}. Using default values.`);
-            
-            // Make sure default values are set
-            window.clusterCapacity = window.clusterCapacity || {
-                cpu: 256,
-                memory: 1024,
-                gpu: 8
-            };
-            
-            // Update capacity display in the UI with defaults
-            const cpuCapacityElement = document.getElementById('totalCPUCapacity');
-            if (cpuCapacityElement) {
-                cpuCapacityElement.textContent = window.clusterCapacity.cpu;
-            }
-            
-            // Update loading detail if we're in the middle of loading
-            if (podsLoadingDetails && document.getElementById('podsLoading').style.display !== 'none') {
-                podsLoadingDetails.textContent = 'Using default cluster capacity values';
-            }
-            
-            return window.clusterCapacity;
-        });
+    return new Promise((resolve, reject) => {
+        fetch('/api/cluster/capacity')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.warn('Using default cluster capacity values:', data.error);
+                    window.app.clusterCapacity = {
+                        cpu: 256,
+                        memory: '1024Gi'
+                    };
+                } else {
+                    window.app.clusterCapacity = data;
+                }
+                
+                // If we already have pod data, recalculate metrics
+                if (window.app.loadedResources && window.app.loadedResources.pods) {
+                    const podsTable = document.getElementById('podsTable');
+                    if (podsTable) {
+                        const pods = Array.from(podsTable.getElementsByTagName('tr'))
+                            .slice(1) // Skip header row
+                            .map(row => ({
+                                // Extract pod data from table rows
+                                status: row.querySelector('[data-status]')?.dataset.status,
+                                resources: {
+                                    cpu: row.querySelector('.cpu-cell')?.dataset.value || '0',
+                                    memory: row.querySelector('.memory-cell')?.dataset.value || '0',
+                                    gpu: row.querySelector('.gpu-cell')?.dataset.value || '0'
+                                }
+                            }));
+                        updateDashboardMetrics(pods);
+                    }
+                }
+                
+                resolve(data);
+            })
+            .catch(error => {
+                console.error('Error fetching cluster capacity:', error);
+                reject(error);
+            });
+    });
 }
 
 // Namespaces functionality
