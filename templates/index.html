@@ -120,26 +120,29 @@
                         <div class="progress">
                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="podsProgressBar"></div>
                         </div>
-                        <div class="loading-text">Loading Pods...</div>
+                        <div class="loading-text" id="podsLoadingText">Initializing...</div>
+                        <div class="loading-details" id="podsLoadingDetails"></div>
                     </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-hover table-striped table-sm border-bottom shadow-sm" id="podsTable">
-                        <thead class="bg-light">
-                            <tr>
-                                <th class="border-0">Namespace</th>
-                                <th class="border-0">Name</th>
-                                <th class="border-0">Status</th>
-                                <th class="border-0">vCPU</th>
-                                <th class="border-0">GPU</th>
-                                <th class="border-0">Memory</th>
-                                <th class="border-0 text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Table content will be dynamically populated -->
-                        </tbody>
-                    </table>
+                <div class="table-container" id="podsTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped table-sm border-bottom shadow-sm" id="podsTable">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="border-0">Namespace</th>
+                                    <th class="border-0">Name</th>
+                                    <th class="border-0">Status</th>
+                                    <th class="border-0">vCPU</th>
+                                    <th class="border-0">GPU</th>
+                                    <th class="border-0">Memory</th>
+                                    <th class="border-0 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table content will be dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <div class="tab-pane fade" id="services" role="tabpanel" aria-labelledby="services-tab">
@@ -148,27 +151,30 @@
                         <div class="progress">
                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="servicesProgressBar"></div>
                         </div>
-                        <div class="loading-text">Loading Services...</div>
+                        <div class="loading-text" id="servicesLoadingText">Initializing...</div>
+                        <div class="loading-details" id="servicesLoadingDetails"></div>
                     </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped table-sm" id="servicesTable">
-                        <thead>
-                            <tr>
-                                <th>Namespace</th>
-                                <th>Name</th>
-                                <th>Type</th>
-                                <th>Cluster-IP</th>
-                                <th>External-IP</th>
-                                <th>Ports</th>
-                                <th>Age</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Table content will be dynamically populated -->
-                        </tbody>
-                    </table>
+                <div class="table-container" id="servicesTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-sm" id="servicesTable">
+                            <thead>
+                                <tr>
+                                    <th>Namespace</th>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Cluster-IP</th>
+                                    <th>External-IP</th>
+                                    <th>Ports</th>
+                                    <th>Age</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table content will be dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <div class="tab-pane fade" id="inferenceservices" role="tabpanel" aria-labelledby="inferenceservices-tab">
@@ -177,30 +183,33 @@
                         <div class="progress">
                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="inferenceProgressBar"></div>
                         </div>
-                        <div class="loading-text">Loading Inference Services...</div>
+                        <div class="loading-text" id="inferenceLoadingText">Initializing...</div>
+                        <div class="loading-details" id="inferenceLoadingDetails"></div>
                     </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped table-sm" id="inferenceservicesTable">
-                        <thead>
-                            <tr>
-                                <th>Namespace</th>
-                                <th>Name</th>
-                                <th>URL</th>
-                                <th>Ready</th>
-                                <th>vCPU</th>
-                                <th>GPU</th>
-                                <th>Memory</th>
-                                <th>Default Traffic</th>
-                                <th>Canary Traffic</th>
-                                <th>Age</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Table content will be dynamically populated -->
-                        </tbody>
-                    </table>
+                <div class="table-container" id="inferenceservicesTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-sm" id="inferenceservicesTable">
+                            <thead>
+                                <tr>
+                                    <th>Namespace</th>
+                                    <th>Name</th>
+                                    <th>URL</th>
+                                    <th>Ready</th>
+                                    <th>vCPU</th>
+                                    <th>GPU</th>
+                                    <th>Memory</th>
+                                    <th>Default Traffic</th>
+                                    <th>Canary Traffic</th>
+                                    <th>Age</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table content will be dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <div class="tab-pane fade" id="deployments" role="tabpanel" aria-labelledby="deployments-tab">
@@ -209,26 +218,29 @@
                         <div class="progress">
                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="deploymentsProgressBar"></div>
                         </div>
-                        <div class="loading-text">Loading Deployments...</div>
+                        <div class="loading-text" id="deploymentsLoadingText">Initializing...</div>
+                        <div class="loading-details" id="deploymentsLoadingDetails"></div>
                     </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped table-sm" id="deploymentsTable">
-                        <thead>
-                            <tr>
-                                <th>Namespace</th>
-                                <th>Name</th>
-                                <th>Ready</th>
-                                <th>Up-to-date</th>
-                                <th>Available</th>
-                                <th>Age</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Table content will be dynamically populated -->
-                        </tbody>
-                    </table>
+                <div class="table-container" id="deploymentsTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-sm" id="deploymentsTable">
+                            <thead>
+                                <tr>
+                                    <th>Namespace</th>
+                                    <th>Name</th>
+                                    <th>Ready</th>
+                                    <th>Up-to-date</th>
+                                    <th>Available</th>
+                                    <th>Age</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table content will be dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <div class="tab-pane fade" id="configmaps" role="tabpanel" aria-labelledby="configmaps-tab">
@@ -237,24 +249,27 @@
                         <div class="progress">
                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="configmapsProgressBar"></div>
                         </div>
-                        <div class="loading-text">Loading Config Maps...</div>
+                        <div class="loading-text" id="configmapsLoadingText">Initializing...</div>
+                        <div class="loading-details" id="configmapsLoadingDetails"></div>
                     </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped table-sm" id="configmapsTable">
-                        <thead>
-                            <tr>
-                                <th>Namespace</th>
-                                <th>Name</th>
-                                <th>Data</th>
-                                <th>Age</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Table content will be dynamically populated -->
-                        </tbody>
-                    </table>
+                <div class="table-container" id="configmapsTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-sm" id="configmapsTable">
+                            <thead>
+                                <tr>
+                                    <th>Namespace</th>
+                                    <th>Name</th>
+                                    <th>Data</th>
+                                    <th>Age</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table content will be dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <div class="tab-pane fade" id="secrets" role="tabpanel" aria-labelledby="secrets-tab">
@@ -263,25 +278,28 @@
                         <div class="progress">
                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="secretsProgressBar"></div>
                         </div>
-                        <div class="loading-text">Loading Secrets...</div>
+                        <div class="loading-text" id="secretsLoadingText">Initializing...</div>
+                        <div class="loading-details" id="secretsLoadingDetails"></div>
                     </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped table-sm" id="secretsTable">
-                        <thead>
-                            <tr>
-                                <th>Namespace</th>
-                                <th>Name</th>
-                                <th>Type</th>
-                                <th>Data</th>
-                                <th>Age</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Table content will be dynamically populated -->
-                        </tbody>
-                    </table>
+                <div class="table-container" id="secretsTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-sm" id="secretsTable">
+                            <thead>
+                                <tr>
+                                    <th>Namespace</th>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Data</th>
+                                    <th>Age</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table content will be dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

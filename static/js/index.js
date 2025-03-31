@@ -414,77 +414,59 @@ function connectSocketListeners() {
     }
 }
 
-// Fetch all resources for each tab (line 882)
+// Fetch data for all resource tabs
 function fetchResourcesForAllTabs() {
-    // Skip if already run
-    if (window.resourcesTabsInitialized) {
-        console.log('Resource tabs already initialized, skipping duplicate initialization');
-        return;
+    console.log('Initializing resources for all tabs...');
+    
+    // Make sure there's a global object to track loaded resources
+    if (!window.app.loadedResources) {
+        window.app.loadedResources = {};
     }
     
-    console.log('Setting up resource tabs and loading initial data...');
+    // Get active tab to determine which resource to load immediately
+    const activeTabId = document.querySelector('.tab-pane.active')?.id;
     
-    // Define supported resource types
+    // Only load data for visible tabs immediately, lazy load the rest
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
     
-    // Initialize loadedResources tracking object if not already created
-    window.loadedResources = window.loadedResources || {};
-    
-    // Setup for each resource type
-    resourceTypes.forEach(resourceType => {
-        showLoading(resourceType);
-        
-        // Add refresh button and search bar to each resource tab
-        addResourceControls(resourceType);
-        
-        // Set up tab click handlers to load data on demand
-        const tabElement = document.querySelector(`#${resourceType}-tab`);
-        if (tabElement) {
-            tabElement.addEventListener('click', () => {
-                // Always fetch fresh data when tab is clicked
-                console.log(`Tab ${resourceType} clicked, fetching fresh data...`);
-                
-                // Get current namespace selection
-                const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
-                const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
-                
-                // Force fetch by clearing the cached state
-                if (window.loadedResources) {
-                    delete window.loadedResources[resourceType];
-                }
-                
-                fetchResourceData(resourceType, currentNamespace);
-            });
-        }
-    });
-    
-    // Only load the active tab initially
-    const activeTabId = document.querySelector('.tab-pane.active').id;
-    if (activeTabId && resourceTypes.includes(activeTabId)) {
-        // Get the namespace for this tab
-        const namespaceSelector = document.getElementById(`${activeTabId}Namespace`);
-        const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
-        
-        fetchResourceData(activeTabId, currentNamespace);
-    } else {
-        // If no tab is active, load pods as default
-        fetchResourceData('pods', 'all');
-    }
-    
-    // Set up a failsafe to check if the resources loaded correctly
-    setTimeout(() => {
-        const activeTabId = document.querySelector('.tab-pane.active').id;
+    // First load capacity information
+    fetchClusterCapacity().then(() => {
+        // Load immediately if this is an active resource tab
         if (activeTabId && resourceTypes.includes(activeTabId)) {
-            const tableBody = document.querySelector(`#${activeTabId}Table tbody`);
-            if (tableBody && (tableBody.children.length === 0 || !window.loadedResources[activeTabId])) {
-                console.log(`No data found in ${activeTabId} after initial load, retrying...`);
-                fetchResourceData(activeTabId);
+            console.log(`Loading active tab: ${activeTabId}`);
+            fetchResourceData(activeTabId, 'all', false);
+        } 
+        // Or if we're on the home tab, load the default (pods)
+        else if (activeTabId === 'home' || !activeTabId) {
+            console.log('On home tab, loading pods data');
+            // Check if there's an active resource tab
+            let activeResourceTab = null;
+            for (const tab of resourceTypes) {
+                const tabElement = document.getElementById(tab);
+                if (tabElement && tabElement.classList.contains('active')) {
+                    activeResourceTab = tab;
+                    break;
+                }
+            }
+            
+            // If no active resource tab, default to pods
+            if (!activeResourceTab) {
+                console.log('No active resource tab, defaulting to pods');
+                const podsTab = document.getElementById('pods');
+                const podsTabButton = document.getElementById('pods-tab');
+                if (podsTab && podsTabButton) {
+                    podsTab.classList.add('show', 'active');
+                    podsTabButton.classList.add('active');
+                }
+                fetchResourceData('pods', 'all', false);
+            } else {
+                console.log(`Loading active resource tab: ${activeResourceTab}`);
+                fetchResourceData(activeResourceTab, 'all', false);
             }
         }
-    }, 5000);
-    
-    // Mark as initialized
-    window.resourcesTabsInitialized = true;
+    }).catch(err => {
+        console.error('Error initializing resources:', err);
+    });
 }
 
 // Add refresh button and search bar to each resource tab
@@ -722,6 +704,9 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
         formData.append('namespace', namespace);
     }
     
+    // Advance to connecting step
+    setTimeout(() => advanceLoadingStep(resourceType), 800);
+    
     // Track when we start processing the response
     let processingStartTime;
     
@@ -736,12 +721,17 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
         })
         .then(response => {
             processingStartTime = performance.now();
+            // Advance to processing step
+            advanceLoadingStep(resourceType);
             return response.json();
         })
         .then(data => {
             if (!data || !data.data || !data.data.items) {
                 throw new Error('Invalid response format');
             }
+            
+            // Advance to metrics calculation step
+            advanceLoadingStep(resourceType);
             
             // Cache the successful response
             window.app.state.resources[resourceType] = data;
@@ -753,8 +743,13 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
             }
             window.app.loadedResources[resourceType] = true;
             
+            // Advance to preparing display step
+            setTimeout(() => advanceLoadingStep(resourceType), 500);
+            
             // Process the data
-            processResourceData(resourceType, data, startTime, processingStartTime);
+            setTimeout(() => {
+                processResourceData(resourceType, data, startTime, processingStartTime);
+            }, 800);
             
             return data;
         })
@@ -780,13 +775,21 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
             // Show error in UI after all retries failed
             const tableBody = document.querySelector(`#${resourceType}Table tbody`);
             if (tableBody) {
-                tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
-                    <i class="fas fa-exclamation-circle me-2"></i>
-                    Failed to load ${resourceType} after multiple attempts. 
-                    <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
-                        <i class="fas fa-sync-alt me-1"></i> Retry
-                    </button>
-                </td></tr>`;
+                // Hide loading indicator with error
+                hideLoading(resourceType);
+                
+                // Show error in table
+                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+                if (tableContainer) {
+                    tableContainer.style.opacity = '1';
+                    tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        Failed to load ${resourceType} after multiple attempts. 
+                        <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
+                            <i class="fas fa-sync-alt me-1"></i> Retry
+                        </button>
+                    </td></tr>`;
+                }
             }
             
             throw error;
@@ -795,9 +798,6 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
             if (window.app.state.activeRequests) {
                 window.app.state.activeRequests.delete(resourceType);
             }
-            
-            // Hide loading indicator
-            hideLoading(resourceType);
         });
     }
     
@@ -806,11 +806,8 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
 
 // Helper function to process resource data
 function processResourceData(resourceType, data, startTime, processingStartTime = performance.now()) {
-    // Update progress bar to indicate processing data
-    const progressBar = document.querySelector(`#${resourceType}Progress .progress-bar`);
-    if (progressBar) {
-        progressBar.style.width = '50%';
-    }
+    // Advance to the finalizing step
+    advanceLoadingStep(resourceType);
     
     // Clear and populate the table
     const tableBody = document.querySelector(`#${resourceType}Table tbody`);
@@ -928,6 +925,7 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
                     `;
                     break;
             }
+            
             tableBody.appendChild(row);
         });
     }
@@ -938,15 +936,13 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
         updateDashboardMetrics(data.data.items);
     }
     
-    // Complete the loading progress
-    if (progressBar) {
-        progressBar.style.width = '100%';
-    }
-    
-    // Hide loading indicator after a small delay
-    setTimeout(() => {
-        hideLoading(resourceType);
-    }, 200);
+    // Initialize dropdowns in the table
+    setTimeout(function() {
+        var dropdownElementList = [].slice.call(document.querySelectorAll(`#${resourceType}Table .dropdown-toggle`));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }, 100);
     
     // Mark as loaded in the app state
     if (!window.app.loadedResources) {
@@ -960,6 +956,11 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
     const processTime = endTime - processingStartTime;
     const totalTime = endTime - startTime;
     console.log(`${resourceType} loaded in ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, process: ${processTime.toFixed(0)}ms)`);
+    
+    // Hide loading indicator after all processing is complete
+    setTimeout(() => {
+        hideLoading(resourceType);
+    }, 1000);
     
     return data;
 }
@@ -975,22 +976,46 @@ function showLoading(resourceType) {
         return;
     }
     
+    // Make sure the table container is hidden
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    if (tableContainer) {
+        tableContainer.style.opacity = '0';
+    }
+    
     // Show the loading container
-    loadingElement.style.display = 'block';
+    loadingElement.style.display = 'flex';
+    
+    // Get the loading text elements
+    const loadingText = document.getElementById(`${resourceType}LoadingText`);
+    const loadingDetails = document.getElementById(`${resourceType}LoadingDetails`);
+    
+    if (loadingText) {
+        loadingText.textContent = `Loading ${capitalizeFirstLetter(resourceType)}...`;
+    }
+    
+    // Set up loading steps
+    const loadingSteps = [
+        {message: 'Connecting to Kubernetes API...', detailMessage: 'Establishing secure connection', percentage: 10},
+        {message: 'Fetching resource data...', detailMessage: 'Retrieving data from cluster', percentage: 25},
+        {message: 'Processing response...', detailMessage: 'Parsing Kubernetes resources', percentage: 40},
+        {message: 'Calculating metrics...', detailMessage: 'Analyzing resource usage', percentage: 60},
+        {message: 'Preparing display...', detailMessage: 'Organizing data for presentation', percentage: 80},
+        {message: 'Finalizing...', detailMessage: 'Applying final touches', percentage: 95}
+    ];
+    
+    // Store the loading steps in the window object for this resource type
+    window.loadingSteps = window.loadingSteps || {};
+    window.loadingSteps[resourceType] = loadingSteps;
+    window.loadingStepIndex = window.loadingStepIndex || {};
+    window.loadingStepIndex[resourceType] = 0;
     
     // Get the progress bar and update its width
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
     if (progressBar) {
-        progressBar.style.width = '25%'; // Start at 25%
+        progressBar.style.width = '5%'; // Start at 5%
         
-        // Animate the progress bar
-        setTimeout(() => {
-            if (progressBar) progressBar.style.width = '40%';
-        }, 300);
-        
-        setTimeout(() => {
-            if (progressBar) progressBar.style.width = '60%';
-        }, 600);
+        // Update loading step animation
+        updateLoadingStep(resourceType, 0);
     }
     
     // Add loading class to the table if it exists
@@ -1000,12 +1025,79 @@ function showLoading(resourceType) {
     }
 }
 
+// Update loading step with animation
+function updateLoadingStep(resourceType, stepIndex) {
+    if (!window.loadingSteps || !window.loadingSteps[resourceType]) {
+        return;
+    }
+    
+    const steps = window.loadingSteps[resourceType];
+    if (stepIndex >= steps.length) {
+        return;
+    }
+    
+    const loadingText = document.getElementById(`${resourceType}LoadingText`);
+    const loadingDetails = document.getElementById(`${resourceType}LoadingDetails`);
+    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
+    
+    // Update text with fade effect
+    if (loadingText) {
+        loadingText.style.opacity = '0';
+        setTimeout(() => {
+            loadingText.textContent = steps[stepIndex].message;
+            loadingText.style.opacity = '1';
+        }, 300);
+    }
+    
+    // Update details with fade effect
+    if (loadingDetails) {
+        loadingDetails.style.opacity = '0';
+        setTimeout(() => {
+            loadingDetails.textContent = steps[stepIndex].detailMessage;
+            loadingDetails.style.opacity = '1';
+        }, 300);
+    }
+    
+    // Update progress bar
+    if (progressBar) {
+        progressBar.style.width = `${steps[stepIndex].percentage}%`;
+    }
+    
+    // Store the current step index
+    window.loadingStepIndex[resourceType] = stepIndex;
+    
+    // Schedule next step update if not the last step
+    if (stepIndex < steps.length - 1) {
+        setTimeout(() => {
+            // Only proceed if we're still loading (check if container is visible)
+            const loadingElement = document.getElementById(`${resourceType}Loading`);
+            if (loadingElement && loadingElement.style.display !== 'none') {
+                updateLoadingStep(resourceType, stepIndex + 1);
+            }
+        }, 1200); // Time between steps
+    }
+}
+
+// Advance to next loading step manually
+function advanceLoadingStep(resourceType) {
+    if (!window.loadingStepIndex || window.loadingStepIndex[resourceType] === undefined) {
+        return;
+    }
+    
+    const nextStep = window.loadingStepIndex[resourceType] + 1;
+    if (window.loadingSteps[resourceType] && nextStep < window.loadingSteps[resourceType].length) {
+        updateLoadingStep(resourceType, nextStep);
+    }
+}
+
 // Hide loading indicator for resource type
 function hideLoading(resourceType) {
     console.log(`Hiding loading for ${resourceType}`);
     
-    // Get the loading container
+    // Get the loading container and table container
     const loadingElement = document.getElementById(`${resourceType}Loading`);
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    
     if (!loadingElement) {
         console.error(`Loading element for ${resourceType} not found`);
         return;
@@ -1013,25 +1105,59 @@ function hideLoading(resourceType) {
     
     // Complete the progress bar animation
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
+    const loadingText = document.getElementById(`${resourceType}LoadingText`);
+    const loadingDetails = document.getElementById(`${resourceType}LoadingDetails`);
+    
+    // Show completion message
+    if (loadingText) {
+        loadingText.textContent = 'Loading Complete!';
+    }
+    
+    if (loadingDetails) {
+        loadingDetails.textContent = 'Displaying data...';
+    }
+    
     if (progressBar) {
         progressBar.style.width = '100%';
         
         // Delay hiding to allow animation to complete
         setTimeout(() => {
-            if (loadingElement) loadingElement.style.display = 'none';
+            // Fade in the table container first
+            if (tableContainer) {
+                tableContainer.style.opacity = '1';
+            }
             
-            // Reset progress bar
-            if (progressBar) progressBar.style.width = '0%';
-        }, 300);
+            // Then after a small delay, hide the loading container
+            setTimeout(() => {
+                if (loadingElement) {
+                    loadingElement.style.display = 'none';
+                }
+                
+                // Reset progress bar
+                if (progressBar) {
+                    progressBar.style.width = '0%';
+                }
+            }, 500);
+        }, 600);
     } else {
         // If no progress bar, hide immediately
         loadingElement.style.display = 'none';
+        
+        // Show the table container
+        if (tableContainer) {
+            tableContainer.style.opacity = '1';
+        }
     }
     
     // Remove loading class from the table if it exists
     const table = document.getElementById(`${resourceType}Table`);
     if (table) {
         table.classList.remove('loading');
+    }
+    
+    // Reset loading step tracking
+    if (window.loadingStepIndex) {
+        delete window.loadingStepIndex[resourceType];
     }
 }
 
@@ -1628,24 +1754,51 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Set up tab click handlers for GPU filter persistence
+// Setup tab click handlers
 function setupTabClickHandlers() {
-    const resourceTabs = document.querySelectorAll('#resourceTabs .nav-link');
+    console.log('Setting up tab click handlers');
     
-    resourceTabs.forEach(tab => {
-        tab.addEventListener('click', function() {
-            const targetId = this.getAttribute('data-bs-target').substring(1); // Remove the # prefix
-            
-            // If we're switching to pods tab and GPU filter was active, reapply filter
-            if (targetId === 'pods') {
-                // Check in a small timeout to allow the tab to become active
-                setTimeout(() => {
-                    const isGPUFilterActive = document.getElementById('gpuCard')?.classList.contains('filter-active');
-                    if (isGPUFilterActive) {
-                        filterPodsWithGPUs();
-                    }
-                }, 100);
-            }
+    // Setup for each resource type
+    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+    
+    // Add refresh button and search bar to each resource tab
+    resourceTypes.forEach(resourceType => {
+        // Add resource controls to each tab
+        addResourceControls(resourceType);
+        
+        // Set up tab click handlers to load data on demand
+        const tabElement = document.querySelector(`#${resourceType}-tab`);
+        if (tabElement) {
+            tabElement.addEventListener('click', () => {
+                // Always fetch fresh data when tab is clicked
+                console.log(`Tab ${resourceType} clicked, fetching fresh data...`);
+                
+                // Get current namespace selection
+                const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
+                const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+                
+                // Force fetch by clearing the cached state
+                if (window.app.loadedResources) {
+                    delete window.app.loadedResources[resourceType];
+                }
+                
+                if (window.app.state.resources) {
+                    delete window.app.state.resources[resourceType];
+                }
+                
+                fetchResourceData(resourceType, currentNamespace);
+            });
+        }
+    });
+    
+    // Handle switching between main sections (Home, CLI, Upload YAML, etc.)
+    const mainNavLinks = document.querySelectorAll('.sidebar .nav-link');
+    mainNavLinks.forEach(link => {
+        link.addEventListener('click', event => {
+            // The actual navigation is handled by the navigateToTab function
+            // This is just for any additional setup needed
+            const tabId = link.getAttribute('data-bs-target').replace('#', '');
+            console.log(`Main navigation clicked: ${tabId}`);
         });
     });
 }
@@ -1767,7 +1920,13 @@ function fetchClusterCapacity() {
         };
     }
     
-    fetch('/get_cluster_capacity')
+    // Update loading detail when this runs during a load process
+    const podsLoadingDetails = document.getElementById('podsLoadingDetails');
+    if (podsLoadingDetails && document.getElementById('podsLoading').style.display !== 'none') {
+        podsLoadingDetails.textContent = 'Fetching cluster capacity information...';
+    }
+    
+    return fetch('/get_cluster_capacity')
         .then(response => {
             if (!response.ok) {
                 throw new Error(`Failed to fetch cluster capacity: ${response.status}`);
@@ -1799,6 +1958,13 @@ function fetchClusterCapacity() {
                 console.log('Recalculating metrics with updated capacity');
                 updateDashboardMetrics(window.app.state.resources.pods.data.items);
             }
+            
+            // Update loading detail if we're in the middle of loading
+            if (podsLoadingDetails && document.getElementById('podsLoading').style.display !== 'none') {
+                podsLoadingDetails.textContent = 'Cluster capacity information loaded';
+            }
+            
+            return data;
         })
         .catch(error => {
             console.warn(`Error fetching cluster capacity: ${error.message}. Using default values.`);
@@ -1815,6 +1981,13 @@ function fetchClusterCapacity() {
             if (cpuCapacityElement) {
                 cpuCapacityElement.textContent = window.clusterCapacity.cpu;
             }
+            
+            // Update loading detail if we're in the middle of loading
+            if (podsLoadingDetails && document.getElementById('podsLoading').style.display !== 'none') {
+                podsLoadingDetails.textContent = 'Using default cluster capacity values';
+            }
+            
+            return window.clusterCapacity;
         });
 }
 
