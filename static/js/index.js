@@ -965,14 +965,11 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
     return data;
 }
 
-// Progress animation state
-window.progressAnimations = {};
-
+// Show loading indicator for resource type
 function showLoading(resourceType) {
     const loadingContainer = document.getElementById(`${resourceType}Loading`);
     const tableContainer = document.getElementById(`${resourceType}TableContainer`);
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
-    const loadingText = document.getElementById(`${resourceType}LoadingText`);
     
     if (loadingContainer) {
         loadingContainer.style.display = 'flex';
@@ -983,20 +980,10 @@ function showLoading(resourceType) {
     if (progressBar) {
         progressBar.style.width = '5%';
         progressBar.style.background = 'linear-gradient(to right, #f5f5f5, #01a982)';
-        
-        // Initialize progress animation
-        window.progressAnimations[resourceType] = {
-            currentStep: 0,
-            targetPercentage: 5,
-            animationFrame: null,
-            startTime: performance.now()
-        };
-    }
-    if (loadingText) {
-        loadingText.style.animation = 'fadeInOut 2s infinite';
     }
 }
 
+// Update loading step with animation
 function updateLoadingStep(resourceType, stepIndex) {
     const steps = [
         { text: 'Initializing...', percentage: 5 },
@@ -1008,19 +995,9 @@ function updateLoadingStep(resourceType, stepIndex) {
 
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
     const loadingText = document.getElementById(`${resourceType}LoadingText`);
-    const animation = window.progressAnimations[resourceType];
     
-    if (!animation || stepIndex >= steps.length) return;
-
-    // Update animation target
-    animation.targetPercentage = steps[stepIndex].percentage;
-    animation.currentStep = stepIndex;
-    animation.startTime = performance.now();
-    animation.startPercentage = parseFloat(progressBar.style.width) || 0;
-
-    // Start or continue animation
-    if (!animation.animationFrame) {
-        animateProgress(resourceType);
+    if (progressBar && stepIndex < steps.length) {
+        progressBar.style.width = `${steps[stepIndex].percentage}%`;
     }
     
     if (loadingText && stepIndex < steps.length) {
@@ -1028,89 +1005,26 @@ function updateLoadingStep(resourceType, stepIndex) {
     }
 }
 
-function animateProgress(resourceType) {
-    const animation = window.progressAnimations[resourceType];
-    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
+// Advance to next loading step manually
+function advanceLoadingStep(resourceType) {
+    if (!window.loadingStepIndex || window.loadingStepIndex[resourceType] === undefined) {
+        return;
+    }
     
-    if (!animation || !progressBar) return;
-
-    const now = performance.now();
-    const elapsed = now - animation.startTime;
-    const duration = 800; // Match this with the CSS transition duration
-
-    // Calculate progress using easing function
-    const progress = Math.min(elapsed / duration, 1);
-    const easeProgress = cubicBezier(0.4, 0, 0.2, 1, progress);
-    
-    const currentPercentage = animation.startPercentage + 
-        (animation.targetPercentage - animation.startPercentage) * easeProgress;
-
-    progressBar.style.width = `${currentPercentage}%`;
-
-    if (progress < 1) {
-        animation.animationFrame = requestAnimationFrame(() => animateProgress(resourceType));
-    } else {
-        animation.animationFrame = null;
+    const nextStep = window.loadingStepIndex[resourceType] + 1;
+    if (window.loadingSteps[resourceType] && nextStep < window.loadingSteps[resourceType].length) {
+        updateLoadingStep(resourceType, nextStep);
     }
 }
 
-// Cubic bezier easing function
-function cubicBezier(x1, y1, x2, y2, t) {
-    const cx = 3 * x1;
-    const bx = 3 * (x2 - x1) - cx;
-    const ax = 1 - cx - bx;
-    const cy = 3 * y1;
-    const by = 3 * (y2 - y1) - cy;
-    const ay = 1 - cy - by;
-
-    function sampleCurveX(t) {
-        return ((ax * t + bx) * t + cx) * t;
-    }
-
-    function sampleCurveY(t) {
-        return ((ay * t + by) * t + cy) * t;
-    }
-
-    function solveCurveX(x) {
-        let t0 = 0;
-        let t1 = 1;
-        let t2 = x;
-
-        for (let i = 0; i < 8; i++) {
-            const x2 = sampleCurveX(t2);
-            if (Math.abs(x2 - x) < 0.001) return t2;
-            const d2 = (3 * ax * t2 + 2 * bx) * t2 + cx;
-            if (Math.abs(d2) < 0.000001) break;
-            t2 = t2 - (x2 - x) / d2;
-        }
-
-        let t = (x - sampleCurveX(t0)) / (sampleCurveX(t1) - sampleCurveX(t0));
-        return t;
-    }
-
-    return sampleCurveY(solveCurveX(t));
-}
-
+// Hide loading indicator for resource type
 function hideLoading(resourceType) {
     const loadingContainer = document.getElementById(`${resourceType}Loading`);
     const tableContainer = document.getElementById(`${resourceType}TableContainer`);
     const progressBar = document.getElementById(`${resourceType}ProgressBar`);
-    const animation = window.progressAnimations[resourceType];
     
-    if (animation) {
-        // Cancel any ongoing animation
-        if (animation.animationFrame) {
-            cancelAnimationFrame(animation.animationFrame);
-        }
-        
-        // Set final state
-        animation.targetPercentage = 100;
-        animation.startTime = performance.now();
-        animation.startPercentage = parseFloat(progressBar.style.width) || 0;
-        
-        // Run final animation
-        animateProgress(resourceType);
-        
+    if (progressBar) {
+        progressBar.style.width = '100%';
         setTimeout(() => {
             if (loadingContainer) {
                 loadingContainer.style.display = 'none';
@@ -1118,8 +1032,7 @@ function hideLoading(resourceType) {
             if (progressBar) {
                 progressBar.style.width = '0%';
             }
-            delete window.progressAnimations[resourceType];
-        }, 800); // Match this with the CSS transition duration
+        }, 500);
     }
     
     if (tableContainer) {
