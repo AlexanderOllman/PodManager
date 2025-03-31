@@ -638,8 +638,9 @@ body {
   height: 100%;
   background: linear-gradient(to right, #f5f5f5, #01a982);
   border-radius: 4px;
-  transition: width 0.4s ease-in-out;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  will-change: width;
 }
 
 .loading-text {
@@ -647,7 +648,7 @@ body {
   color: #333;
   margin-bottom: 8px;
   font-weight: 500;
-  animation: fadeInOut 2s infinite;
+  transition: opacity 0.3s ease-in-out;
 }
 
 .loading-details {
@@ -655,13 +656,13 @@ body {
   color: #666;
   margin-top: 4px;
   min-height: 20px;
-  opacity: 0.8;
+  transition: opacity 0.3s ease-in-out;
 }
 
 @keyframes fadeInOut {
-  0% { opacity: 0.6; }
+  0% { opacity: 0.7; }
   50% { opacity: 1; }
-  100% { opacity: 0.6; }
+  100% { opacity: 0.7; }
 }
 
 /* Table container with fade effect */
