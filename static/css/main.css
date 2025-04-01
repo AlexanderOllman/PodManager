@@ -638,8 +638,31 @@ body {
   height: 100%;
   background: linear-gradient(to right, #f5f5f5, #01a982);
   border-radius: 4px;
-  transition: width 0.4s ease-in-out;
+  transition: width 0.3s ease-out;
   position: relative;
+  overflow: hidden;
+}
+
+/* Add subtle animation effect to progress bar */
+.progress-bar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, 
+    rgba(255,255,255,0) 0%, 
+    rgba(255,255,255,0.2) 50%, 
+    rgba(255,255,255,0) 100%);
+  transform: translateX(-100%);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .loading-text {
@@ -656,6 +679,7 @@ body {
   margin-top: 4px;
   min-height: 20px;
   opacity: 0.8;
+  transition: opacity 0.3s ease;
 }
 
 @keyframes fadeInOut {
@@ -666,7 +690,9 @@ body {
 
 /* Table container with fade effect */
 .table-container {
-  transition: opacity 0.5s ease-in-out;
+  transition: all 0.5s ease-in-out;
+  opacity: 0;
+  visibility: hidden;
 }
 
 /* Resource table styles */
