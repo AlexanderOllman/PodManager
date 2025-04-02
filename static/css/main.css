@@ -552,9 +552,21 @@ body {
   color: white;
 }
 
+/* Table container with fade effect */
+.table-container {
+  transition: opacity 0.5s ease-in-out;
+  position: relative;
+  z-index: 1;
+}
+
+.table-responsive {
+  position: relative;
+  z-index: 1;
+}
+
 /* Action Dropdown */
 .action-dropdown {
-  position: relative;
+  position: static;
 }
 
 .action-dropdown .dropdown-toggle {
@@ -588,8 +600,12 @@ body {
   border: 1px solid rgba(0,0,0,0.05);
   padding: 0.5rem 0;
   position: absolute;
-  z-index: 1500;
+  z-index: 9999;
   min-width: 160px;
+  transform: none !important;
+  top: 100% !important;
+  left: auto !important;
+  right: 0 !important;
 }
 
 .action-dropdown .dropdown-item {
@@ -597,8 +613,7 @@ body {
   font-size: 0.875rem;
   color: var(--hpe-dark);
   cursor: pointer;
-  position: relative;
-  z-index: 1501;
+  white-space: nowrap;
 }
 
 .action-dropdown .dropdown-item:hover {
@@ -610,6 +625,16 @@ body {
   width: 1rem;
   text-align: center;
   color: var(--hpe-gray);
+}
+
+/* Ensure table cells with dropdowns have proper positioning */
+.table td {
+  position: relative;
+}
+
+/* Add positioning context for filtered results */
+.table tbody tr {
+  position: relative;
 }
 
 /* Loading and Progress Styles */
@@ -670,11 +695,6 @@ body {
   0% { opacity: 0.6; }
   50% { opacity: 1; }
   100% { opacity: 0.6; }
-}
-
-/* Table container with fade effect */
-.table-container {
-  transition: opacity 0.5s ease-in-out;
 }
 
 /* Resource table styles */
