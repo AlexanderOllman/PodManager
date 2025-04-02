@@ -553,6 +553,10 @@ body {
 }
 
 /* Action Dropdown */
+.action-dropdown {
+  position: relative;
+}
+
 .action-dropdown .dropdown-toggle {
   border: none;
   background: none;
@@ -565,8 +569,8 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 3;
   position: relative;
+  z-index: 3;
 }
 
 .action-dropdown .dropdown-toggle::after {
@@ -583,7 +587,9 @@ body {
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   border: 1px solid rgba(0,0,0,0.05);
   padding: 0.5rem 0;
+  position: absolute;
   z-index: 1500;
+  min-width: 160px;
 }
 
 .action-dropdown .dropdown-item {
@@ -591,6 +597,8 @@ body {
   font-size: 0.875rem;
   color: var(--hpe-dark);
   cursor: pointer;
+  position: relative;
+  z-index: 1501;
 }
 
 .action-dropdown .dropdown-item:hover {
