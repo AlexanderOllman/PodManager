@@ -2692,3 +2692,168 @@ function loadResourcesForTab(tabId) {
         }
     }
 }
+
+// Add cache management at the top of the file
+window.app = window.app || {};
+window.app.cache = {
+    resources: {},
+    timestamps: {},
+    STALE_THRESHOLD: 2 * 60 * 1000 // 2 minutes in milliseconds
+};
+
+// Add refresh alert container after loading container
+function addRefreshAlert(resourceType) {
+    const container = document.getElementById(`${resourceType}TableContainer`);
+    if (!container) return;
+
+    // Remove existing alert if any
+    const existingAlert = container.querySelector('.refresh-alert');
+    if (existingAlert) {
+        existingAlert.remove();
+    }
+
+    const alert = document.createElement('div');
+    alert.className = 'refresh-alert alert alert-warning d-flex align-items-center mb-3';
+    alert.style.display = 'none';
+    alert.innerHTML = `
+        <i class="fas fa-exclamation-circle me-2"></i>
+        <div class="flex-grow-1">
+            This data is more than 2 minutes old and may be outdated.
+        </div>
+        <button class="btn btn-sm btn-warning ms-3" onclick="fetchResourceData('${resourceType}')">
+            <i class="fas fa-sync-alt me-1"></i> Refresh Now
+        </button>
+    `;
+    container.insertBefore(alert, container.firstChild);
+    return alert;
+}
+
+// Modify the fetchResourceData function to include caching
+function fetchResourceData(resourceType, attempt = 1) {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000; // 1 second
+
+    function fetchWithRetry() {
+        // Check cache first
+        const cachedData = window.app.cache.resources[resourceType];
+        const lastFetch = window.app.cache.timestamps[resourceType];
+        
+        if (cachedData && lastFetch) {
+            const timeSinceLastFetch = Date.now() - lastFetch;
+            
+            // If data exists and is less than STALE_THRESHOLD old, use it
+            if (timeSinceLastFetch < window.app.cache.STALE_THRESHOLD) {
+                console.log(`Using cached data for ${resourceType}`);
+                processResourceData(resourceType, cachedData, lastFetch);
+                return Promise.resolve(cachedData);
+            } else {
+                // Show the refresh alert
+                const alert = addRefreshAlert(resourceType);
+                if (alert) {
+                    alert.style.display = 'flex';
+                }
+            }
+        }
+
+        // Show loading state
+        showLoading(resourceType);
+        
+        // Set processing start time
+        let processingStartTime;
+        
+        return fetch('/get_resources', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `resource_type=${resourceType}`
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Cache the new data
+            window.app.cache.resources[resourceType] = data;
+            window.app.cache.timestamps[resourceType] = Date.now();
+            
+            processingStartTime = performance.now();
+            
+            // Process the data
+            processResourceData(resourceType, data, Date.now(), processingStartTime);
+            
+            return data;
+        })
+        .catch(error => {
+            if (error.name === 'AbortError') {
+                console.log(`Request for ${resourceType} was cancelled`);
+                return;
+            }
+            
+            // Store error state
+            window.app.state.errors[resourceType] = error;
+            
+            // Retry logic
+            if (attempt < MAX_RETRIES) {
+                console.log(`Retrying ${resourceType} fetch attempt ${attempt + 1}...`);
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve(fetchResourceData(resourceType, attempt + 1));
+                    }, RETRY_DELAY * Math.pow(2, attempt));
+                });
+            }
+            
+            // Show error in UI after all retries failed
+            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+            if (tableBody) {
+                hideLoading(resourceType);
+                
+                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+                if (tableContainer) {
+                    tableContainer.style.opacity = '1';
+                    tableBody.innerHTML = `
+                        <tr><td colspan="7" class="text-center text-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            Failed to load ${resourceType} after multiple attempts. 
+                            <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
+                                <i class="fas fa-sync-alt me-1"></i> Retry
+                            </button>
+                        </td></tr>
+                    `;
+                }
+            }
+            
+            throw error;
+        });
+    }
+    
+    return fetchWithRetry();
+}
+
+// Add a function to check data freshness periodically
+function startDataFreshnessChecker() {
+    setInterval(() => {
+        const activeTab = document.querySelector('#resourceTabs .nav-link.active');
+        if (activeTab) {
+            const resourceType = activeTab.getAttribute('data-bs-target').replace('#', '');
+            const lastFetch = window.app.cache.timestamps[resourceType];
+            
+            if (lastFetch) {
+                const timeSinceLastFetch = Date.now() - lastFetch;
+                if (timeSinceLastFetch >= window.app.cache.STALE_THRESHOLD) {
+                    const alert = addRefreshAlert(resourceType);
+                    if (alert) {
+                        alert.style.display = 'flex';
+                    }
+                }
+            }
+        }
+    }, 30000); // Check every 30 seconds
+}
+
+// Initialize the freshness checker when the document is ready
+document.addEventListener('DOMContentLoaded', () => {
+    startDataFreshnessChecker();
+});

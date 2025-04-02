@@ -1080,4 +1080,27 @@ body {
 
 .pagination .btn:not(:disabled):hover {
     background-color: var(--hpe-light-gray);
+}
+
+/* Refresh Alert Styles */
+.refresh-alert {
+    animation: slideDown 0.3s ease-out;
+    border-left: 4px solid var(--hpe-warning);
+    background-color: rgba(255, 184, 0, 0.1);
+}
+
+.refresh-alert i {
+    color: var(--hpe-warning);
+    font-size: 1.1rem;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 } 
