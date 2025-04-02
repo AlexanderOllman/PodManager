@@ -554,7 +554,7 @@ function clearSearch(resourceType) {
 function filterResources(resourceType, searchTerm) {
     const tableBody = document.querySelector(`#${resourceType}Table tbody`);
     if (!tableBody) return;
-
+    
     // Get the full dataset from the app state
     const fullData = window.app.state.resources[resourceType]?.items || [];
     
@@ -668,7 +668,7 @@ function renderCurrentPage(resourceType) {
                                     const cpuReq = predictorImpl.resources.requests.cpu;
                                     if (cpuReq.endsWith('m')) {
                                         infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
-                                    } else {
+        } else {
                                         infResources.cpu = parseFloat(cpuReq).toFixed(2);
                                     }
                                 }
@@ -922,7 +922,7 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
         console.log('Updating dashboard metrics with data from –', data.data.items.length, '– "pods"');
         updateDashboardMetrics(data.data.items);
     }
-
+    
     // Render the current page
     renderCurrentPage(resourceType);
 
@@ -935,14 +935,14 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
     if (tableContainer) {
         tableContainer.style.opacity = '1';
     }
-
+    
     // Log performance info
     const endTime = performance.now();
     const fetchTime = processingStartTime - startTime;
     const processTime = endTime - processingStartTime;
     const totalTime = endTime - startTime;
     console.log(`${resourceType} loaded in ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, process: ${processTime.toFixed(0)}ms)`);
-
+    
     return data;
 }
 

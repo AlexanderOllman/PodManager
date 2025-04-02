@@ -556,12 +556,12 @@ body {
 .table-container {
   transition: opacity 0.5s ease-in-out;
   position: relative;
-  z-index: 1;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
 }
 
 .table-responsive {
-  position: relative;
-  z-index: 1;
+  overflow: visible;
 }
 
 /* Action Dropdown */
@@ -581,8 +581,6 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  position: relative;
-  z-index: 3;
 }
 
 .action-dropdown .dropdown-toggle::after {
@@ -595,17 +593,13 @@ body {
 }
 
 .action-dropdown .dropdown-menu {
+  position: fixed;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   border: 1px solid rgba(0,0,0,0.05);
   padding: 0.5rem 0;
-  position: absolute;
   z-index: 9999;
   min-width: 160px;
-  transform: none !important;
-  top: 100% !important;
-  left: auto !important;
-  right: 0 !important;
 }
 
 .action-dropdown .dropdown-item {
@@ -613,7 +607,8 @@ body {
   font-size: 0.875rem;
   color: var(--hpe-dark);
   cursor: pointer;
-  white-space: nowrap;
+  position: relative;
+  z-index: 1501;
 }
 
 .action-dropdown .dropdown-item:hover {
@@ -627,14 +622,26 @@ body {
   color: var(--hpe-gray);
 }
 
-/* Ensure table cells with dropdowns have proper positioning */
-.table td {
-  position: relative;
+/* Ensure table header stays fixed while scrolling */
+.table thead th {
+  position: sticky;
+  top: 0;
+  background-color: var(--hpe-light-gray);
+  z-index: 10;
 }
 
-/* Add positioning context for filtered results */
-.table tbody tr {
-  position: relative;
+/* Add some padding to the bottom of the table for better scrolling experience */
+.table tbody {
+  padding-bottom: 1rem;
+}
+
+/* Ensure the refresh alert stays on top */
+.refresh-alert {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  margin: 0;
+  border-radius: 0;
 }
 
 /* Loading and Progress Styles */
