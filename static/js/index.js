@@ -130,6 +130,19 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeApp() {
     console.log('Initializing application...');
     
+    // Initialize app state if it doesn't exist
+    if (!window.app) {
+        window.app = {};
+    }
+    
+    // Initialize app state properties
+    window.app.state = {
+        activeRequests: new Set(),
+        lastFetch: {},
+        errors: {},
+        resources: {}
+    };
+    
     // Initialize Bootstrap components
     initializeBootstrapComponents();
     
@@ -650,10 +663,18 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
     // Show loading indicator
     showLoading(resourceType);
 
-    // Add request to active requests
+    // Ensure app state exists
+    if (!window.app) {
+        window.app = {};
+    }
+    if (!window.app.state) {
+        window.app.state = {};
+    }
     if (!window.app.state.activeRequests) {
         window.app.state.activeRequests = new Set();
     }
+
+    // Add request to active requests
     window.app.state.activeRequests.add(resourceType);
 
     // Add request timeout
