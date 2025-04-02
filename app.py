@@ -96,6 +96,13 @@ def get_resources():
                                 'state': status.get('state')
                             } for status in item['status'].get('containerStatuses', [])]
                         }
+                        # Include spec data for pods to calculate resource usage
+                        minimal_item['spec'] = {
+                            'containers': [{
+                                'name': container.get('name'),
+                                'resources': container.get('resources', {})
+                            } for container in item.get('spec', {}).get('containers', [])]
+                        }
                     elif resource_type == 'services':
                         minimal_item['spec'] = {
                             'type': item['spec'].get('type'),

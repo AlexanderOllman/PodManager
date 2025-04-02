@@ -554,67 +554,189 @@ function clearSearch(resourceType) {
 function filterResources(resourceType, searchTerm) {
     const tableBody = document.querySelector(`#${resourceType}Table tbody`);
     if (!tableBody) return;
+
+    // Get the full dataset from the app state
+    const fullData = window.app.state.resources[resourceType]?.items || [];
     
-    const rows = tableBody.querySelectorAll('tr');
-    const searchTermLower = searchTerm.toLowerCase();
-    
-    // Check if GPU filter is active
-    const isGPUFilterActive = document.getElementById('gpuCard')?.classList.contains('filter-active');
-    // Use gpuPodNames from the window object, falling back to podsWithGPUs if needed
-    const gpuPodNames = window.gpuPodNames || 
-                         (window.podsWithGPUs?.map(pod => `${pod.namespace}/${pod.name}`)) || [];
-    
-    rows.forEach(row => {
-        if (row.classList.contains('no-results-row') || row.classList.contains('no-gpu-pods-row')) {
-            row.style.display = 'none';
-            return;
-        }
-        
-        const text = row.textContent.toLowerCase();
-        const matchesSearch = searchTerm === '' || text.includes(searchTermLower);
-        
-        // If GPU filter is active, also check if this pod has GPUs
-        if (isGPUFilterActive && resourceType === 'pods') {
-            const namespace = row.cells[0]?.textContent;
-            const name = row.cells[1]?.textContent;
-            const hasGPU = gpuPodNames.includes(`${namespace}/${name}`);
-            
-            row.style.display = (matchesSearch && hasGPU) ? '' : 'none';
-        } else {
-            row.style.display = matchesSearch ? '' : 'none';
-        }
+    // Filter the full dataset
+    const filteredItems = fullData.filter(item => {
+        const searchLower = searchTerm.toLowerCase();
+        return (
+            item.metadata.name.toLowerCase().includes(searchLower) ||
+            item.metadata.namespace.toLowerCase().includes(searchLower) ||
+            (item.status?.phase || '').toLowerCase().includes(searchLower)
+        );
     });
+
+    // Update the app state with filtered items
+    if (window.app.state.resources[resourceType]) {
+        window.app.state.resources[resourceType].items = filteredItems;
+        window.app.state.resources[resourceType].currentPage = 1; // Reset to first page
+    }
+
+    // Re-render the current page with filtered data
+    renderCurrentPage(resourceType);
+
+    // Update the "no results" message if needed
+    const noResultsRow = document.createElement('tr');
+    noResultsRow.innerHTML = `<td colspan="7" class="text-center text-muted">No matching resources found</td>`;
     
-    // Show a message if no results
-    let noResultsRow = tableBody.querySelector('.no-results-row');
-    
-    if (searchTerm !== '' && ![...rows].some(row => row.style.display !== 'none' && 
-        !row.classList.contains('no-results-row') && 
-        !row.classList.contains('no-gpu-pods-row'))) {
-        // No visible rows and search is active
-        if (!noResultsRow) {
-            noResultsRow = document.createElement('tr');
-            noResultsRow.className = 'no-results-row';
-            const colspan = resourceType === 'pods' ? 7 : 
-                           (resourceType === 'inferenceservices' ? 11 : 7);
-            noResultsRow.innerHTML = `<td colspan="${colspan}" class="text-center">No ${resourceType} matching "${searchTerm}"${isGPUFilterActive ? ' with GPU resources' : ''}</td>`;
-            tableBody.appendChild(noResultsRow);
-        } else {
-            noResultsRow.querySelector('td').textContent = `No ${resourceType} matching "${searchTerm}"${isGPUFilterActive ? ' with GPU resources' : ''}`;
-            noResultsRow.style.display = '';
+    if (filteredItems.length === 0) {
+        tableBody.innerHTML = '';
+        tableBody.appendChild(noResultsRow);
+    }
+
+    // Update pagination info
+    const totalItems = document.querySelector(`#${resourceType}TableContainer .total-items`);
+    if (totalItems) {
+        totalItems.textContent = filteredItems.length;
+    }
+}
+
+// Helper function to render current page
+function renderCurrentPage(resourceType) {
+    const { items, currentPage, pageSize } = window.app.state.resources[resourceType] || {};
+    if (!items) return;
+
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const pageItems = items.slice(startIndex, endIndex);
+
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (!tableBody) return;
+
+    // Clear existing rows
+    tableBody.innerHTML = '';
+
+    // Update pagination info
+    const totalItems = document.querySelector(`#${resourceType}TableContainer .total-items`);
+    const currentPageSpan = document.querySelector(`#${resourceType}TableContainer .current-page`);
+    const pageSizeSpan = document.querySelector(`#${resourceType}TableContainer .page-size`);
+    const prevButton = document.querySelector(`#${resourceType}TableContainer .prev-page`);
+    const nextButton = document.querySelector(`#${resourceType}TableContainer .next-page`);
+
+    if (totalItems) totalItems.textContent = items.length;
+    if (currentPageSpan) currentPageSpan.textContent = startIndex + 1;
+    if (pageSizeSpan) pageSizeSpan.textContent = Math.min(endIndex, items.length);
+    if (prevButton) prevButton.disabled = currentPage === 1;
+    if (nextButton) nextButton.disabled = endIndex >= items.length;
+
+    // Render current page items
+    pageItems.forEach(item => {
+        const row = document.createElement('tr');
+        switch (resourceType) {
+            case 'pods':
+                const resources = getResourceUsage(item);
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
+                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
+                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+            case 'services':
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${item.spec.type}</td>
+                    <td>${item.spec.clusterIP}</td>
+                    <td>${item.spec.externalIP || 'N/A'}</td>
+                    <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
+                    <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+            case 'inferenceservices':
+                // For InferenceServices, get resources from spec.predictor
+                let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
+                if (item.spec && item.spec.predictor) {
+                    if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                        item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                        item.spec.predictor.xgboost || item.spec.predictor.custom) {
+                        // Get the appropriate predictor implementation
+                        const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
+                                             item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
+                                             item.spec.predictor.xgboost || item.spec.predictor.custom;
+                        
+                        if (predictorImpl.resources) {
+                            if (predictorImpl.resources.requests) {
+                                // CPU
+                                if (predictorImpl.resources.requests.cpu) {
+                                    const cpuReq = predictorImpl.resources.requests.cpu;
+                                    if (cpuReq.endsWith('m')) {
+                                        infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
+                                    } else {
+                                        infResources.cpu = parseFloat(cpuReq).toFixed(2);
+                                    }
+                                }
+                                
+                                // GPU
+                                if (predictorImpl.resources.requests['nvidia.com/gpu']) {
+                                    infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
+                                } else if (predictorImpl.resources.requests.gpu) {
+                                    infResources.gpu = predictorImpl.resources.requests.gpu;
+                                }
+                                
+                                // Memory
+                                if (predictorImpl.resources.requests.memory) {
+                                    infResources.memory = predictorImpl.resources.requests.memory;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${item.status.url || 'N/A'}</td>
+                    <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
+                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
+                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
+                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
+                    <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
+                    <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
+                    <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+            case 'deployments':
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
+                    <td>${item.status.updatedReplicas}</td>
+                    <td>${item.status.availableReplicas}</td>
+                    <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+            case 'configmaps':
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${Object.keys(item.data || {}).length}</td>
+                    <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+            case 'secrets':
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${item.type}</td>
+                    <td>${Object.keys(item.data || {}).length}</td>
+                    <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
         }
-    } else if (noResultsRow) {
-        // Hide the no results message if there are visible rows or search is cleared
-        noResultsRow.style.display = 'none';
-    }
-    
-    // If GPU filter is active but no pods are found, show GPU filter message
-    if (isGPUFilterActive && resourceType === 'pods' && 
-        ![...rows].some(row => row.style.display !== 'none' && 
-            !row.classList.contains('no-results-row') && 
-            !row.classList.contains('no-gpu-pods-row'))) {
-        showNoGPUPodsMessage();
-    }
+        
+        tableBody.appendChild(row);
+    });
 }
 
 // Resource data fetching (for individual tab clicks or refresh button)
@@ -788,34 +910,6 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
 
 // Helper function to process resource data
 function processResourceData(resourceType, data, startTime, processingStartTime = performance.now()) {
-    // Advance to the finalizing step
-    advanceLoadingStep(resourceType);
-    
-    // Clear existing rows
-    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-    if (!tableBody) return;
-
-    // Add pagination controls if not already present
-    const tableContainerElement = document.querySelector(`#${resourceType}TableContainer`);
-    if (tableContainerElement && !tableContainerElement.querySelector('.pagination-container')) {
-        const paginationContainer = document.createElement('div');
-        paginationContainer.className = 'pagination-container d-flex justify-content-between align-items-center mt-3';
-        paginationContainer.innerHTML = `
-            <div class="page-info">
-                Showing <span class="current-page">1</span> to <span class="page-size">10</span> of <span class="total-items">0</span> items
-            </div>
-            <div class="pagination">
-                <button class="btn btn-sm btn-outline-secondary prev-page" disabled>
-                    <i class="fas fa-chevron-left"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-secondary next-page">
-                    <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
-        `;
-        tableContainerElement.appendChild(paginationContainer);
-    }
-
     // Store the full dataset
     window.app.state.resources[resourceType] = {
         items: data.data.items,
@@ -823,170 +917,14 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
         pageSize: 10
     };
 
-    // Function to render current page
-    function renderCurrentPage() {
-        const { items, currentPage, pageSize } = window.app.state.resources[resourceType];
-        const startIndex = (currentPage - 1) * pageSize;
-        const endIndex = startIndex + pageSize;
-        const pageItems = items.slice(startIndex, endIndex);
-
-        // Update pagination info
-        const totalItems = document.querySelector(`#${resourceType}TableContainer .total-items`);
-        const currentPageSpan = document.querySelector(`#${resourceType}TableContainer .current-page`);
-        const pageSizeSpan = document.querySelector(`#${resourceType}TableContainer .page-size`);
-        const prevButton = document.querySelector(`#${resourceType}TableContainer .prev-page`);
-        const nextButton = document.querySelector(`#${resourceType}TableContainer .next-page`);
-
-        if (totalItems) totalItems.textContent = items.length;
-        if (currentPageSpan) currentPageSpan.textContent = startIndex + 1;
-        if (pageSizeSpan) pageSizeSpan.textContent = Math.min(endIndex, items.length);
-        if (prevButton) prevButton.disabled = currentPage === 1;
-        if (nextButton) nextButton.disabled = endIndex >= items.length;
-
-        // Clear and render current page
-        tableBody.innerHTML = '';
-        pageItems.forEach(item => {
-            const row = document.createElement('tr');
-            switch (resourceType) {
-                case 'pods':
-                    const resources = getResourceUsage(item);
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
-                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
-                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'services':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.spec.type}</td>
-                        <td>${item.spec.clusterIP}</td>
-                        <td>${item.spec.externalIP || 'N/A'}</td>
-                        <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'inferenceservices':
-                    // For InferenceServices, get resources from spec.predictor
-                    let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
-                    if (item.spec && item.spec.predictor) {
-                        if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
-                            item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
-                            item.spec.predictor.xgboost || item.spec.predictor.custom) {
-                            // Get the appropriate predictor implementation
-                            const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
-                                                 item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
-                                                 item.spec.predictor.xgboost || item.spec.predictor.custom;
-                            
-                            if (predictorImpl.resources) {
-                                if (predictorImpl.resources.requests) {
-                                    // CPU
-                                    if (predictorImpl.resources.requests.cpu) {
-                                        const cpuReq = predictorImpl.resources.requests.cpu;
-                                        if (cpuReq.endsWith('m')) {
-                                            infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
-                                        } else {
-                                            infResources.cpu = parseFloat(cpuReq).toFixed(2);
-                                        }
-                                    }
-                                    
-                                    // GPU
-                                    if (predictorImpl.resources.requests['nvidia.com/gpu']) {
-                                        infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
-                                    } else if (predictorImpl.resources.requests.gpu) {
-                                        infResources.gpu = predictorImpl.resources.requests.gpu;
-                                    }
-                                    
-                                    // Memory
-                                    if (predictorImpl.resources.requests.memory) {
-                                        infResources.memory = predictorImpl.resources.requests.memory;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.status.url || 'N/A'}</td>
-                        <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
-                        <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
-                        <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
-                        <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
-                        <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
-                        <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'deployments':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
-                        <td>${item.status.updatedReplicas}</td>
-                        <td>${item.status.availableReplicas}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'configmaps':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${Object.keys(item.data || {}).length}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-                case 'secrets':
-                    row.innerHTML = `
-                        <td>${item.metadata.namespace}</td>
-                        <td>${item.metadata.name}</td>
-                        <td>${item.type}</td>
-                        <td>${Object.keys(item.data || {}).length}</td>
-                        <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                        <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                    `;
-                    break;
-            }
-            
-            tableBody.appendChild(row);
-        });
+    // Always update dashboard metrics for pods, even when using cached data
+    if (resourceType === 'pods') {
+        console.log('Updating dashboard metrics with data from –', data.data.items.length, '– "pods"');
+        updateDashboardMetrics(data.data.items);
     }
 
-    // Add event listeners for pagination
-    const prevButton = document.querySelector(`#${resourceType}TableContainer .prev-page`);
-    const nextButton = document.querySelector(`#${resourceType}TableContainer .next-page`);
-
-    if (prevButton) {
-        prevButton.onclick = () => {
-            if (window.app.state.resources[resourceType].currentPage > 1) {
-                window.app.state.resources[resourceType].currentPage--;
-                renderCurrentPage();
-            }
-        };
-    }
-
-    if (nextButton) {
-        nextButton.onclick = () => {
-            const { items, currentPage, pageSize } = window.app.state.resources[resourceType];
-            if (currentPage * pageSize < items.length) {
-                window.app.state.resources[resourceType].currentPage++;
-                renderCurrentPage();
-            }
-        };
-    }
-
-    // Render first page
-    renderCurrentPage();
+    // Render the current page
+    renderCurrentPage(resourceType);
 
     // Update loading state
     const loadingContainer = document.getElementById(`${resourceType}Loading`);
@@ -998,10 +936,14 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
         tableContainer.style.opacity = '1';
     }
 
-    // Update dashboard metrics if this is pods data
-    if (resourceType === 'pods') {
-        updateDashboardMetrics(data.data.items);
-    }
+    // Log performance info
+    const endTime = performance.now();
+    const fetchTime = processingStartTime - startTime;
+    const processTime = endTime - processingStartTime;
+    const totalTime = endTime - startTime;
+    console.log(`${resourceType} loaded in ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, process: ${processTime.toFixed(0)}ms)`);
+
+    return data;
 }
 
 // Show loading indicator for resource type
