@@ -859,12 +859,20 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
                 window.app.loadedResources = {};
             }
             window.app.loadedResources[resourceType] = true;
+            
+            // Update last fetch time
+            if (!window.app.state.lastFetch) {
+                window.app.state.lastFetch = {};
+            }
+            window.app.state.lastFetch[resourceType] = Date.now();
         })
         .catch(error => {
             clearTimeout(timeoutId);
             
             if (error.name === 'AbortError') {
                 console.log(`Request for ${resourceType} was cancelled`);
+                // Don't retry on abort, just show error
+                showError(resourceType, 'Request timed out. Please try again.');
                 return;
             }
             
@@ -882,24 +890,7 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
             }
             
             // Show error in UI after all retries failed
-            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-            if (tableBody) {
-                hideLoading(resourceType);
-                
-                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-                if (tableContainer) {
-                    tableContainer.style.opacity = '1';
-                    tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
-                        <i class="fas fa-exclamation-circle me-2"></i>
-                        Failed to load ${resourceType} after multiple attempts. 
-                        <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
-                            <i class="fas fa-sync-alt me-1"></i> Retry
-                        </button>
-                    </td></tr>`;
-                }
-            }
-            
-            throw error;
+            showError(resourceType, `Failed to load ${resourceType} after multiple attempts.`);
         })
         .finally(() => {
             if (window.app.state.activeRequests) {
@@ -909,6 +900,26 @@ function fetchResourceData(resourceType, namespace, criticalOnly = false) {
     }
 
     return fetchWithRetry();
+}
+
+// Helper function to show errors in the UI
+function showError(resourceType, message) {
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (tableBody) {
+        hideLoading(resourceType);
+        
+        const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+        if (tableContainer) {
+            tableContainer.style.opacity = '1';
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                ${message}
+                <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
+                    <i class="fas fa-sync-alt me-1"></i> Retry
+                </button>
+            </td></tr>`;
+        }
+    }
 }
 
 // Show loading indicator for resource type
