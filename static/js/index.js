@@ -416,22 +416,14 @@ function connectSocketListeners() {
 
 // Fetch data for all resource tabs
 function fetchResourcesForAllTabs() {
-    console.log('Initializing resources for all tabs...');
-    
-    // Make sure there's a global object to track loaded resources
-    if (!window.app.loadedResources) {
-        window.app.loadedResources = {};
-    }
-    
-    // Get active tab to determine which resource to load immediately
-    const activeTabId = document.querySelector('.tab-pane.active')?.id;
-    
-    // Only load data for visible tabs immediately, lazy load the rest
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
     
     // First load capacity information
     fetchClusterCapacity().then(() => {
-        // Load immediately if this is an active resource tab
+        // Get the active tab
+        const activeTabId = document.querySelector('.tab-pane.active')?.id;
+        
+        // Only load data for the active tab immediately
         if (activeTabId && resourceTypes.includes(activeTabId)) {
             console.log(`Loading active tab: ${activeTabId}`);
             fetchResourceData(activeTabId, 'all', false);
@@ -439,33 +431,23 @@ function fetchResourcesForAllTabs() {
         // Or if we're on the home tab, load the default (pods)
         else if (activeTabId === 'home' || !activeTabId) {
             console.log('On home tab, loading pods data');
-            // Check if there's an active resource tab
-            let activeResourceTab = null;
-            for (const tab of resourceTypes) {
-                const tabElement = document.getElementById(tab);
-                if (tabElement && tabElement.classList.contains('active')) {
-                    activeResourceTab = tab;
-                    break;
-                }
-            }
-            
-            // If no active resource tab, default to pods
-            if (!activeResourceTab) {
-                console.log('No active resource tab, defaulting to pods');
-                const podsTab = document.getElementById('pods');
-                const podsTabButton = document.getElementById('pods-tab');
-                if (podsTab && podsTabButton) {
-                    podsTab.classList.add('show', 'active');
-                    podsTabButton.classList.add('active');
-                }
-                fetchResourceData('pods', 'all', false);
-            } else {
-                console.log(`Loading active resource tab: ${activeResourceTab}`);
-                fetchResourceData(activeResourceTab, 'all', false);
-            }
+            fetchResourceData('pods', 'all', false);
         }
-    }).catch(err => {
-        console.error('Error initializing resources:', err);
+        
+        // Set up lazy loading for other tabs
+        resourceTypes.forEach(resourceType => {
+            if (resourceType !== activeTabId) {
+                const tabElement = document.querySelector(`#${resourceType}-tab`);
+                if (tabElement) {
+                    tabElement.addEventListener('click', () => {
+                        if (!window.app.loadedResources || !window.app.loadedResources[resourceType]) {
+                            console.log(`Lazy loading ${resourceType} data...`);
+                            fetchResourceData(resourceType, 'all', false);
+                        }
+                    });
+                }
+            }
+        });
     });
 }
 
@@ -809,11 +791,61 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
     // Advance to the finalizing step
     advanceLoadingStep(resourceType);
     
-    // Clear and populate the table
+    // Clear existing rows
     const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-    if (tableBody) {
+    if (!tableBody) return;
+
+    // Add pagination controls if not already present
+    const tableContainerElement = document.querySelector(`#${resourceType}TableContainer`);
+    if (tableContainerElement && !tableContainerElement.querySelector('.pagination-container')) {
+        const paginationContainer = document.createElement('div');
+        paginationContainer.className = 'pagination-container d-flex justify-content-between align-items-center mt-3';
+        paginationContainer.innerHTML = `
+            <div class="page-info">
+                Showing <span class="current-page">1</span> to <span class="page-size">10</span> of <span class="total-items">0</span> items
+            </div>
+            <div class="pagination">
+                <button class="btn btn-sm btn-outline-secondary prev-page" disabled>
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-secondary next-page">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        `;
+        tableContainerElement.appendChild(paginationContainer);
+    }
+
+    // Store the full dataset
+    window.app.state.resources[resourceType] = {
+        items: data.data.items,
+        currentPage: 1,
+        pageSize: 10
+    };
+
+    // Function to render current page
+    function renderCurrentPage() {
+        const { items, currentPage, pageSize } = window.app.state.resources[resourceType];
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+        const pageItems = items.slice(startIndex, endIndex);
+
+        // Update pagination info
+        const totalItems = document.querySelector(`#${resourceType}TableContainer .total-items`);
+        const currentPageSpan = document.querySelector(`#${resourceType}TableContainer .current-page`);
+        const pageSizeSpan = document.querySelector(`#${resourceType}TableContainer .page-size`);
+        const prevButton = document.querySelector(`#${resourceType}TableContainer .prev-page`);
+        const nextButton = document.querySelector(`#${resourceType}TableContainer .next-page`);
+
+        if (totalItems) totalItems.textContent = items.length;
+        if (currentPageSpan) currentPageSpan.textContent = startIndex + 1;
+        if (pageSizeSpan) pageSizeSpan.textContent = Math.min(endIndex, items.length);
+        if (prevButton) prevButton.disabled = currentPage === 1;
+        if (nextButton) nextButton.disabled = endIndex >= items.length;
+
+        // Clear and render current page
         tableBody.innerHTML = '';
-        data.data.items.forEach(item => {
+        pageItems.forEach(item => {
             const row = document.createElement('tr');
             switch (resourceType) {
                 case 'pods':
@@ -929,40 +961,47 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
             tableBody.appendChild(row);
         });
     }
-    
-    // After all table rows are added, update dashboard metrics if this is pods data
+
+    // Add event listeners for pagination
+    const prevButton = document.querySelector(`#${resourceType}TableContainer .prev-page`);
+    const nextButton = document.querySelector(`#${resourceType}TableContainer .next-page`);
+
+    if (prevButton) {
+        prevButton.onclick = () => {
+            if (window.app.state.resources[resourceType].currentPage > 1) {
+                window.app.state.resources[resourceType].currentPage--;
+                renderCurrentPage();
+            }
+        };
+    }
+
+    if (nextButton) {
+        nextButton.onclick = () => {
+            const { items, currentPage, pageSize } = window.app.state.resources[resourceType];
+            if (currentPage * pageSize < items.length) {
+                window.app.state.resources[resourceType].currentPage++;
+                renderCurrentPage();
+            }
+        };
+    }
+
+    // Render first page
+    renderCurrentPage();
+
+    // Update loading state
+    const loadingContainer = document.getElementById(`${resourceType}Loading`);
+    if (loadingContainer) {
+        loadingContainer.style.display = 'none';
+    }
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    if (tableContainer) {
+        tableContainer.style.opacity = '1';
+    }
+
+    // Update dashboard metrics if this is pods data
     if (resourceType === 'pods') {
-        console.log('Updating dashboard metrics from processed pods data');
         updateDashboardMetrics(data.data.items);
     }
-    
-    // Initialize dropdowns in the table
-    setTimeout(function() {
-        var dropdownElementList = [].slice.call(document.querySelectorAll(`#${resourceType}Table .dropdown-toggle`));
-        dropdownElementList.map(function(dropdownToggleEl) {
-            return new bootstrap.Dropdown(dropdownToggleEl);
-        });
-    }, 100);
-    
-    // Mark as loaded in the app state
-    if (!window.app.loadedResources) {
-        window.app.loadedResources = {};
-    }
-    window.app.loadedResources[resourceType] = true;
-    
-    // Log performance info
-    const endTime = performance.now();
-    const fetchTime = processingStartTime - startTime;
-    const processTime = endTime - processingStartTime;
-    const totalTime = endTime - startTime;
-    console.log(`${resourceType} loaded in ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, process: ${processTime.toFixed(0)}ms)`);
-    
-    // Hide loading indicator after all processing is complete
-    setTimeout(() => {
-        hideLoading(resourceType);
-    }, 1000);
-    
-    return data;
 }
 
 // Show loading indicator for resource type

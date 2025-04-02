@@ -1045,4 +1045,31 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 12px;
+}
+
+/* Pagination Styles */
+.pagination-container {
+    padding: 0.5rem 1rem;
+    background-color: var(--hpe-white);
+    border-top: 1px solid var(--hpe-light-gray);
+    border-radius: 0 0 8px 8px;
+}
+
+.page-info {
+    color: var(--hpe-text);
+    font-size: 0.875rem;
+}
+
+.pagination .btn {
+    padding: 0.25rem 0.5rem;
+    margin: 0 0.25rem;
+}
+
+.pagination .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination .btn:not(:disabled):hover {
+    background-color: var(--hpe-light-gray);
 } 
