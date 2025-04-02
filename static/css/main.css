@@ -556,12 +556,68 @@ body {
 .table-container {
   transition: opacity 0.5s ease-in-out;
   position: relative;
-  max-height: calc(100vh - 300px);
+  height: calc(100vh - 250px);
   overflow-y: auto;
+  background: white;
 }
 
 .table-responsive {
   overflow: visible;
+  height: 100%;
+}
+
+/* Ensure the table takes up the full height */
+.table {
+  width: 100%;
+  margin-bottom: 0;
+  background: white;
+}
+
+/* Ensure table header stays fixed while scrolling */
+.table thead th {
+  position: sticky;
+  top: 0;
+  background-color: var(--hpe-light-gray);
+  z-index: 10;
+  border-bottom: 1px solid var(--hpe-light-gray);
+}
+
+/* Add some padding to the bottom of the table for better scrolling experience */
+.table tbody {
+  background: white;
+}
+
+/* Ensure the refresh alert stays on top */
+.refresh-alert {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  margin: 0;
+  border-radius: 0;
+}
+
+/* Ensure proper spacing in table cells */
+.table td, .table th {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
+}
+
+/* Add a subtle shadow to the header while scrolling */
+.table thead::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 4px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0) 100%);
+  pointer-events: none;
+}
+
+/* Ensure dropdown menus appear above the table */
+.dropdown-menu {
+  z-index: 1050;
+  position: fixed;
 }
 
 /* Action Dropdown */
@@ -620,28 +676,6 @@ body {
   width: 1rem;
   text-align: center;
   color: var(--hpe-gray);
-}
-
-/* Ensure table header stays fixed while scrolling */
-.table thead th {
-  position: sticky;
-  top: 0;
-  background-color: var(--hpe-light-gray);
-  z-index: 10;
-}
-
-/* Add some padding to the bottom of the table for better scrolling experience */
-.table tbody {
-  padding-bottom: 1rem;
-}
-
-/* Ensure the refresh alert stays on top */
-.refresh-alert {
-  position: sticky;
-  top: 0;
-  z-index: 11;
-  margin: 0;
-  border-radius: 0;
 }
 
 /* Loading and Progress Styles */
