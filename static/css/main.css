@@ -1197,34 +1197,4 @@ body {
 
 .load-more-btn:hover i {
     transform: translateY(2px);
-}
-
-/* Infinite scroll styles */
-.scroll-sentinel {
-    height: 1px;
-    visibility: hidden;
-    margin: 0;
-    padding: 0;
-}
-
-.info-row td {
-    border-top: none;
-    padding: 0.5rem 1rem;
-    background-color: rgba(0, 0, 0, 0.02);
-    font-size: 0.85rem;
-}
-
-.end-indicator td {
-    border-top: none;
-    padding: 0.5rem 1rem;
-    background-color: rgba(0, 0, 0, 0.02);
-    font-size: 0.85rem;
-    border-top: 1px solid var(--hpe-light-gray);
-}
-
-.spinner-border-sm {
-    width: 1rem;
-    height: 1rem;
-    border-width: 0.15em;
-    vertical-align: middle;
 } 

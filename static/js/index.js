@@ -2867,21 +2867,18 @@ function renderCurrentPage(resourceType) {
     // Get the table container
     const tableContainer = document.getElementById(`${resourceType}TableContainer`);
     
-    // Remove existing loading sentinel if it exists
-    const existingSentinel = tableContainer.querySelector('.scroll-sentinel');
-    if (existingSentinel) {
-        existingSentinel.remove();
+    // Remove existing "Load More" button if it exists
+    const existingLoadMore = tableContainer.querySelector('.load-more-container');
+    if (existingLoadMore) {
+        existingLoadMore.remove();
     }
     
     // Calculate how many items to show
     const itemsToShow = items.slice(0, currentPage * pageSize);
     
-    // Clear the table body if this is the first page
-    if (currentPage === 1) {
-        tableBody.innerHTML = '';
-    }
+    // Clear the table body and render items
+    tableBody.innerHTML = '';
     
-    // Show "no items" message if there are no items
     if (itemsToShow.length === 0) {
         tableBody.innerHTML = `
             <tr>
@@ -2893,12 +2890,7 @@ function renderCurrentPage(resourceType) {
         return;
     }
     
-    // Get the start index to render (we only want to append new items)
-    const startIndex = (currentPage - 1) * pageSize;
-    const newItems = items.slice(startIndex, currentPage * pageSize);
-    
-    // Append new items to the table
-    newItems.forEach(item => {
+    itemsToShow.forEach(item => {
         const row = document.createElement('tr');
         switch (resourceType) {
             case 'pods':
@@ -2942,6 +2934,26 @@ function renderCurrentPage(resourceType) {
         tableBody.appendChild(row);
     });
     
+    // Check if we need to show the "Load More" button
+    if (itemsToShow.length < items.length) {
+        const loadMoreContainer = document.createElement('div');
+        loadMoreContainer.className = 'load-more-container text-center mt-3 mb-2';
+        loadMoreContainer.innerHTML = `
+            <button class="btn btn-outline-primary load-more-btn">
+                <i class="fas fa-chevron-down me-1"></i> 
+                Load More (showing ${itemsToShow.length} of ${items.length})
+            </button>
+        `;
+        tableContainer.appendChild(loadMoreContainer);
+        
+        // Add event listener to load more button
+        const loadMoreBtn = loadMoreContainer.querySelector('.load-more-btn');
+        loadMoreBtn.addEventListener('click', () => {
+            window.app.state.resources[resourceType].currentPage++;
+            renderCurrentPage(resourceType);
+        });
+    }
+    
     // Initialize all dropdowns
     setTimeout(() => {
         const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
@@ -2949,89 +2961,9 @@ function renderCurrentPage(resourceType) {
             return new bootstrap.Dropdown(dropdownToggleEl);
         });
     }, 100);
-    
-    // Create and add the sentinel element for the intersection observer
-    // Only add if there are more items to load
-    if (itemsToShow.length < items.length) {
-        const sentinel = document.createElement('div');
-        sentinel.className = 'scroll-sentinel';
-        sentinel.style.height = '10px';
-        sentinel.dataset.loading = 'false'; // Flag to prevent multiple loads
-        tableBody.appendChild(sentinel);
-        
-        // Add info row after the sentinel
-        const infoRow = document.createElement('tr');
-        infoRow.className = 'info-row';
-        infoRow.innerHTML = `
-            <td colspan="7" class="text-center py-2">
-                <small class="text-muted">Showing ${itemsToShow.length} of ${items.length} items</small>
-                <div class="spinner-border spinner-border-sm text-primary ms-2 d-none" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-            </td>
-        `;
-        tableBody.appendChild(infoRow);
-        
-        // Set up the intersection observer
-        observeTableBottom(sentinel, resourceType);
-    } else {
-        // Add an "end of list" indicator
-        const endRow = document.createElement('tr');
-        endRow.className = 'end-indicator';
-        endRow.innerHTML = `
-            <td colspan="7" class="text-center py-2">
-                <small class="text-muted">End of list - ${items.length} items total</small>
-            </td>
-        `;
-        tableBody.appendChild(endRow);
-    }
 }
 
-// Function to observe when user reaches the bottom of the table
-function observeTableBottom(sentinel, resourceType) {
-    // Check if IntersectionObserver is supported
-    if (!('IntersectionObserver' in window)) {
-        console.warn('IntersectionObserver not supported by this browser');
-        return;
-    }
-    
-    const options = {
-        root: document.getElementById(`${resourceType}TableContainer`),
-        rootMargin: '0px',
-        threshold: 0.1
-    };
-    
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                // Check if we're already loading (to prevent multiple triggers)
-                if (sentinel.dataset.loading === 'true') return;
-                
-                // Set loading state
-                sentinel.dataset.loading = 'true';
-                
-                // Show spinner
-                const spinner = sentinel.nextElementSibling?.querySelector('.spinner-border');
-                if (spinner) spinner.classList.remove('d-none');
-                
-                // Small delay to prevent accidental rapid scrolling triggers
-                setTimeout(() => {
-                    // Load more items
-                    window.app.state.resources[resourceType].currentPage++;
-                    renderCurrentPage(resourceType);
-                    
-                    // Disconnect this observer as it will be recreated with the new sentinel
-                    observer.disconnect();
-                }, 300);
-            }
-        });
-    }, options);
-    
-    // Start observing the sentinel
-    observer.observe(sentinel);
-}
-
-// Modify the filterResources function to work with infinite scroll
+// Modify the filterResources function to work with load more approach
 function filterResources(resourceType) {
     const searchInput = document.getElementById(`${resourceType}SearchInput`);
     const searchTerm = searchInput.value.toLowerCase();
