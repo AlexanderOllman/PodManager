@@ -595,37 +595,34 @@ function filterResources(resourceType, searchTerm) {
 
 // Helper function to render current page
 function renderCurrentPage(resourceType) {
-    const { items, currentPage, pageSize } = window.app.state.resources[resourceType];
+    const { items, currentPage, pageSize } = window.app.state.resources[resourceType] || {};
+    if (!items) return;
+
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const pageItems = items.slice(startIndex, endIndex);
+
     const tableBody = document.querySelector(`#${resourceType}Table tbody`);
     if (!tableBody) return;
 
-    // Get the table container
-    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-    
-    // Remove existing "Load More" indicator if it exists
-    const existingLoadMore = tableContainer.querySelector('.infinite-scroll-indicator');
-    if (existingLoadMore) {
-        existingLoadMore.remove();
-    }
-    
-    // Calculate how many items to show
-    const itemsToShow = items.slice(0, currentPage * pageSize);
-    
-    // Clear the table body and render items
+    // Clear existing rows
     tableBody.innerHTML = '';
-    
-    if (itemsToShow.length === 0) {
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="7" class="text-center text-muted py-4">
-                    <i class="fas fa-info-circle me-2"></i> No resources found
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    itemsToShow.forEach(item => {
+
+    // Update pagination info
+    const totalItems = document.querySelector(`#${resourceType}TableContainer .total-items`);
+    const currentPageSpan = document.querySelector(`#${resourceType}TableContainer .current-page`);
+    const pageSizeSpan = document.querySelector(`#${resourceType}TableContainer .page-size`);
+    const prevButton = document.querySelector(`#${resourceType}TableContainer .prev-page`);
+    const nextButton = document.querySelector(`#${resourceType}TableContainer .next-page`);
+
+    if (totalItems) totalItems.textContent = items.length;
+    if (currentPageSpan) currentPageSpan.textContent = startIndex + 1;
+    if (pageSizeSpan) pageSizeSpan.textContent = Math.min(endIndex, items.length);
+    if (prevButton) prevButton.disabled = currentPage === 1;
+    if (nextButton) nextButton.disabled = endIndex >= items.length;
+
+    // Render current page items
+    pageItems.forEach(item => {
         const row = document.createElement('tr');
         switch (resourceType) {
             case 'pods':
@@ -637,31 +634,7 @@ function renderCurrentPage(resourceType) {
                     <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
                     <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
                     <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
-                    <td class="text-center">
-                        <div class="dropdown action-dropdown">
-                            <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item pod-action" href="#" data-action="view" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
-                                    <i class="fas fa-search text-primary"></i> View Details
-                                </a></li>
-                                <li><a class="dropdown-item pod-action" href="#" data-action="describe" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
-                                    <i class="fas fa-info-circle text-info"></i> Describe
-                                </a></li>
-                                <li><a class="dropdown-item pod-action" href="#" data-action="logs" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
-                                    <i class="fas fa-file-alt text-success"></i> Logs
-                                </a></li>
-                                <li><a class="dropdown-item pod-action" href="#" data-action="access" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
-                                    <i class="fas fa-terminal text-warning"></i> Access
-                                </a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item pod-action" href="#" data-action="delete" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
-                                    <i class="fas fa-trash-alt text-danger"></i> Delete
-                                </a></li>
-                            </ul>
-                        </div>
-                    </td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                 `;
                 break;
             case 'services':
@@ -764,78 +737,6 @@ function renderCurrentPage(resourceType) {
         
         tableBody.appendChild(row);
     });
-    
-    // Add infinite scroll indicator if there are more items to load
-    if (itemsToShow.length < items.length) {
-        const scrollIndicator = document.createElement('div');
-        scrollIndicator.className = 'infinite-scroll-indicator';
-        scrollIndicator.innerHTML = `
-            <div class="text-center py-3">
-                <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
-                <span class="ms-2 text-muted">Loading more...</span>
-            </div>
-        `;
-        tableBody.appendChild(document.createElement('tr')).appendChild(document.createElement('td')).appendChild(scrollIndicator);
-        
-        // Set up intersection observer for infinite scrolling if not already set
-        setupInfiniteScroll(resourceType, tableContainer);
-    }
-    
-    // Initialize all dropdowns
-    setTimeout(() => {
-        const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
-        dropdownElementList.map(function(dropdownToggleEl) {
-            return new bootstrap.Dropdown(dropdownToggleEl);
-        });
-    }, 100);
-}
-
-// Set up infinite scroll for table
-function setupInfiniteScroll(resourceType, tableContainer) {
-    // Remove existing observer if any
-    if (window.app.infiniteScrollObservers && window.app.infiniteScrollObservers[resourceType]) {
-        window.app.infiniteScrollObservers[resourceType].disconnect();
-    }
-    
-    // Initialize observers object if not exists
-    if (!window.app.infiniteScrollObservers) {
-        window.app.infiniteScrollObservers = {};
-    }
-    
-    // Wait for the indicator to be added to the DOM
-    setTimeout(() => {
-        const indicator = tableContainer.querySelector('.infinite-scroll-indicator');
-        if (!indicator) return;
-        
-        // Create intersection observer
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    // Load more items when indicator comes into view
-                    const { items, currentPage, pageSize } = window.app.state.resources[resourceType];
-                    const totalItems = items.length;
-                    const loadedItems = currentPage * pageSize;
-                    
-                    // Check if there are more items to load
-                    if (loadedItems < totalItems) {
-                        // Increment page and re-render
-                        window.app.state.resources[resourceType].currentPage++;
-                        renderCurrentPage(resourceType);
-                    }
-                }
-            });
-        }, {
-            root: tableContainer,
-            rootMargin: '100px',
-            threshold: 0.1
-        });
-        
-        // Start observing the indicator
-        observer.observe(indicator);
-        
-        // Store the observer for later cleanup
-        window.app.infiniteScrollObservers[resourceType] = observer;
-    }, 100);
 }
 
 // Resource data fetching (for individual tab clicks or refresh button)
@@ -2956,3 +2857,229 @@ function startDataFreshnessChecker() {
 document.addEventListener('DOMContentLoaded', () => {
     startDataFreshnessChecker();
 });
+
+// Function to render page of items
+function renderCurrentPage(resourceType) {
+    const { items, currentPage, pageSize } = window.app.state.resources[resourceType];
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (!tableBody) return;
+
+    // Get the table container
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    
+    // Remove existing loading sentinel if it exists
+    const existingSentinel = tableContainer.querySelector('.scroll-sentinel');
+    if (existingSentinel) {
+        existingSentinel.remove();
+    }
+    
+    // Calculate how many items to show
+    const itemsToShow = items.slice(0, currentPage * pageSize);
+    
+    // Clear the table body if this is the first page
+    if (currentPage === 1) {
+        tableBody.innerHTML = '';
+    }
+    
+    // Show "no items" message if there are no items
+    if (itemsToShow.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                    <i class="fas fa-info-circle me-2"></i> No resources found
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    // Get the start index to render (we only want to append new items)
+    const startIndex = (currentPage - 1) * pageSize;
+    const newItems = items.slice(startIndex, currentPage * pageSize);
+    
+    // Append new items to the table
+    newItems.forEach(item => {
+        const row = document.createElement('tr');
+        switch (resourceType) {
+            case 'pods':
+                const resources = getResourceUsage(item);
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
+                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
+                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
+                    <td class="text-center">
+                        <div class="dropdown action-dropdown">
+                            <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item pod-action" href="#" data-action="view" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
+                                    <i class="fas fa-search text-primary"></i> View Details
+                                </a></li>
+                                <li><a class="dropdown-item pod-action" href="#" data-action="describe" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
+                                    <i class="fas fa-info-circle text-info"></i> Describe
+                                </a></li>
+                                <li><a class="dropdown-item pod-action" href="#" data-action="logs" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
+                                    <i class="fas fa-file-alt text-success"></i> Logs
+                                </a></li>
+                                <li><a class="dropdown-item pod-action" href="#" data-action="access" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
+                                    <i class="fas fa-terminal text-warning"></i> Access
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item pod-action" href="#" data-action="delete" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
+                                    <i class="fas fa-trash-alt text-danger"></i> Delete
+                                </a></li>
+                            </ul>
+                        </div>
+                    </td>
+                `;
+                break;
+            // ... other resource cases
+        }
+        tableBody.appendChild(row);
+    });
+    
+    // Initialize all dropdowns
+    setTimeout(() => {
+        const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }, 100);
+    
+    // Create and add the sentinel element for the intersection observer
+    // Only add if there are more items to load
+    if (itemsToShow.length < items.length) {
+        const sentinel = document.createElement('div');
+        sentinel.className = 'scroll-sentinel';
+        sentinel.style.height = '10px';
+        sentinel.dataset.loading = 'false'; // Flag to prevent multiple loads
+        tableBody.appendChild(sentinel);
+        
+        // Add info row after the sentinel
+        const infoRow = document.createElement('tr');
+        infoRow.className = 'info-row';
+        infoRow.innerHTML = `
+            <td colspan="7" class="text-center py-2">
+                <small class="text-muted">Showing ${itemsToShow.length} of ${items.length} items</small>
+                <div class="spinner-border spinner-border-sm text-primary ms-2 d-none" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </td>
+        `;
+        tableBody.appendChild(infoRow);
+        
+        // Set up the intersection observer
+        observeTableBottom(sentinel, resourceType);
+    } else {
+        // Add an "end of list" indicator
+        const endRow = document.createElement('tr');
+        endRow.className = 'end-indicator';
+        endRow.innerHTML = `
+            <td colspan="7" class="text-center py-2">
+                <small class="text-muted">End of list - ${items.length} items total</small>
+            </td>
+        `;
+        tableBody.appendChild(endRow);
+    }
+}
+
+// Function to observe when user reaches the bottom of the table
+function observeTableBottom(sentinel, resourceType) {
+    // Check if IntersectionObserver is supported
+    if (!('IntersectionObserver' in window)) {
+        console.warn('IntersectionObserver not supported by this browser');
+        return;
+    }
+    
+    const options = {
+        root: document.getElementById(`${resourceType}TableContainer`),
+        rootMargin: '0px',
+        threshold: 0.1
+    };
+    
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                // Check if we're already loading (to prevent multiple triggers)
+                if (sentinel.dataset.loading === 'true') return;
+                
+                // Set loading state
+                sentinel.dataset.loading = 'true';
+                
+                // Show spinner
+                const spinner = sentinel.nextElementSibling?.querySelector('.spinner-border');
+                if (spinner) spinner.classList.remove('d-none');
+                
+                // Small delay to prevent accidental rapid scrolling triggers
+                setTimeout(() => {
+                    // Load more items
+                    window.app.state.resources[resourceType].currentPage++;
+                    renderCurrentPage(resourceType);
+                    
+                    // Disconnect this observer as it will be recreated with the new sentinel
+                    observer.disconnect();
+                }, 300);
+            }
+        });
+    }, options);
+    
+    // Start observing the sentinel
+    observer.observe(sentinel);
+}
+
+// Modify the filterResources function to work with infinite scroll
+function filterResources(resourceType) {
+    const searchInput = document.getElementById(`${resourceType}SearchInput`);
+    const searchTerm = searchInput.value.toLowerCase();
+    
+    // Get the full dataset 
+    const fullDataset = window.app.cache.resources[resourceType].data.items;
+    
+    // Filter based on search term
+    const filteredItems = searchTerm 
+        ? fullDataset.filter(item => {
+            // Search in name and namespace
+            return item.metadata.name.toLowerCase().includes(searchTerm) || 
+                   item.metadata.namespace.toLowerCase().includes(searchTerm);
+        })
+        : fullDataset;
+    
+    // Update state with filtered items and reset to first page
+    window.app.state.resources[resourceType] = {
+        items: filteredItems,
+        currentPage: 1,
+        pageSize: 10
+    };
+    
+    // Render the first page
+    renderCurrentPage(resourceType);
+    
+    // Add no results message if needed
+    if (filteredItems.length === 0 && searchTerm) {
+        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-4">
+                        <i class="fas fa-search me-2 text-muted"></i>
+                        No resources found matching "<span class="fw-bold">${searchTerm}</span>".
+                        <button class="btn btn-sm btn-outline-secondary ms-3" onclick="clearSearch('${resourceType}')">
+                            <i class="fas fa-times me-1"></i> Clear Search
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+}
+
+// Add function to clear search
+function clearSearch(resourceType) {
+    const searchInput = document.getElementById(`${resourceType}SearchInput`);
+    searchInput.value = '';
+    filterResources(resourceType);
+}
