@@ -543,14 +543,91 @@ function capitalizeFirstLetter(string) {
 
 // Clear search field and reset table
 function clearSearch(resourceType) {
-    const searchInput = document.getElementById(`${resourceType}SearchInput`);
+    const searchInput = document.getElementById(`${resourceType}Search`);
     if (searchInput) {
         searchInput.value = '';
-        filterResources(resourceType);
+        filterResources(resourceType, '');
     }
 }
 
 // Filter resources based on search term
+function filterResources(resourceType) {
+    // Find the search input - check different possible IDs
+    let searchInput = document.getElementById(`${resourceType}SearchInput`);
+    
+    // If not found with the first ID pattern, try alternative (the search box in the screenshot)
+    if (!searchInput) {
+        searchInput = document.querySelector(`input[placeholder^="Filter ${resourceType}"]`);
+    }
+    
+    // If still not found, try a more generic selector
+    if (!searchInput) {
+        searchInput = document.querySelector(`#${resourceType} input[type="search"], #${resourceType} input[type="text"]`);
+    }
+    
+    // Default to empty string if we can't find the search input
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+    
+    // Get the full dataset - safely access the cache
+    const fullDataset = window.app.cache.resources?.[resourceType]?.data?.items || 
+                       window.app.state.resources?.[resourceType]?.items || [];
+    
+    // Filter based on search term
+    const filteredItems = searchTerm 
+        ? fullDataset.filter(item => {
+            // Search in name and namespace
+            return item.metadata.name.toLowerCase().includes(searchTerm) || 
+                   item.metadata.namespace.toLowerCase().includes(searchTerm);
+        })
+        : fullDataset;
+    
+    // Update state with filtered items and reset to first page
+    window.app.state.resources[resourceType] = {
+        items: filteredItems,
+        currentPage: 1,
+        pageSize: 10
+    };
+    
+    // Render the first page
+    renderCurrentPage(resourceType);
+    
+    // Add no results message if needed
+    if (filteredItems.length === 0 && searchTerm) {
+        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-4">
+                        <i class="fas fa-search me-2 text-muted"></i>
+                        No resources found matching "<span class="fw-bold">${searchTerm}</span>".
+                        <button class="btn btn-sm btn-outline-secondary ms-3" onclick="clearSearch('${resourceType}')">
+                            <i class="fas fa-times me-1"></i> Clear Search
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+}
+
+// Helper function to render current page
+function renderCurrentPage(resourceType) {
+    const { items, currentPage, pageSize } = window.app.state.resources[resourceType] || {};
+    if (!items) return;
+
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const pageItems = items.slice(startIndex, endIndex);
+
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (!tableBody) return;
+
+    // Clear existing rows
+    tableBody.innerHTML = '';
+
+    // Update pagination info
+    const totalItems = document.querySelector(`#${resourceType}TableContainer .total-items`);
+    const currentPageSpan = document.querySelector(`#${resourceType}TableContainer .current-page`);
     const pageSizeSpan = document.querySelector(`#${resourceType}TableContainer .page-size`);
     const prevButton = document.querySelector(`#${resourceType}TableContainer .prev-page`);
     const nextButton = document.querySelector(`#${resourceType}TableContainer .next-page`);
@@ -2904,33 +2981,26 @@ function renderCurrentPage(resourceType) {
 }
 
 // Modify the filterResources function to work with load more approach
-function filterResources(resourceType, providedSearchTerm) {
-    const searchInput = document.getElementById(`${resourceType}SearchInput`);
+function filterResources(resourceType) {
+    // Find the search input - check different possible IDs
+    let searchInput = document.getElementById(`${resourceType}SearchInput`);
     
-    // Determine search term from either the parameter or the input field
-    let searchTerm;
-    if (providedSearchTerm !== undefined) {
-        searchTerm = providedSearchTerm.toLowerCase();
-    } else if (searchInput) {
-        searchTerm = searchInput.value.toLowerCase();
-    } else {
-        console.error(`Search input element for ${resourceType} not found and no search term provided`);
-        searchTerm = '';
+    // If not found with the first ID pattern, try alternative (the search box in the screenshot)
+    if (!searchInput) {
+        searchInput = document.querySelector(`input[placeholder^="Filter ${resourceType}"]`);
     }
     
-    // Get the full dataset - handle the case where cache structure might vary
-    let fullDataset = [];
-    try {
-        if (window.app.cache.resources[resourceType]?.data?.items) {
-            fullDataset = window.app.cache.resources[resourceType].data.items;
-        } else if (window.app.state.resources[resourceType]?.items) {
-            // Fallback to state if cache is not structured as expected
-            fullDataset = window.app.state.resources[resourceType].items;
-        }
-    } catch (error) {
-        console.error(`Error accessing dataset for ${resourceType}:`, error);
-        return;
+    // If still not found, try a more generic selector
+    if (!searchInput) {
+        searchInput = document.querySelector(`#${resourceType} input[type="search"], #${resourceType} input[type="text"]`);
     }
+    
+    // Default to empty string if we can't find the search input
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+    
+    // Get the full dataset - safely access the cache
+    const fullDataset = window.app.cache.resources?.[resourceType]?.data?.items || 
+                       window.app.state.resources?.[resourceType]?.items || [];
     
     // Filter based on search term
     const filteredItems = searchTerm 
@@ -2940,12 +3010,6 @@ function filterResources(resourceType, providedSearchTerm) {
                    item.metadata.namespace.toLowerCase().includes(searchTerm);
         })
         : fullDataset;
-    
-    // Create or update the state object if it doesn't exist
-    if (!window.app.state.resources) {
-        window.app.state = window.app.state || {};
-        window.app.state.resources = window.app.state.resources || {};
-    }
     
     // Update state with filtered items and reset to first page
     window.app.state.resources[resourceType] = {
