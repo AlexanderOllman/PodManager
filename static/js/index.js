@@ -543,74 +543,14 @@ function capitalizeFirstLetter(string) {
 
 // Clear search field and reset table
 function clearSearch(resourceType) {
-    const searchInput = document.getElementById(`${resourceType}Search`);
+    const searchInput = document.getElementById(`${resourceType}SearchInput`);
     if (searchInput) {
         searchInput.value = '';
-        filterResources(resourceType, '');
+        filterResources(resourceType);
     }
 }
 
 // Filter resources based on search term
-function filterResources(resourceType, searchTerm) {
-    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-    if (!tableBody) return;
-    
-    // Get the full dataset from the app state
-    const fullData = window.app.state.resources[resourceType]?.items || [];
-    
-    // Filter the full dataset
-    const filteredItems = fullData.filter(item => {
-        const searchLower = searchTerm.toLowerCase();
-        return (
-            item.metadata.name.toLowerCase().includes(searchLower) ||
-            item.metadata.namespace.toLowerCase().includes(searchLower) ||
-            (item.status?.phase || '').toLowerCase().includes(searchLower)
-        );
-    });
-
-    // Update the app state with filtered items
-    if (window.app.state.resources[resourceType]) {
-        window.app.state.resources[resourceType].items = filteredItems;
-        window.app.state.resources[resourceType].currentPage = 1; // Reset to first page
-    }
-
-    // Re-render the current page with filtered data
-    renderCurrentPage(resourceType);
-
-    // Update the "no results" message if needed
-    const noResultsRow = document.createElement('tr');
-    noResultsRow.innerHTML = `<td colspan="7" class="text-center text-muted">No matching resources found</td>`;
-    
-    if (filteredItems.length === 0) {
-        tableBody.innerHTML = '';
-        tableBody.appendChild(noResultsRow);
-    }
-
-    // Update pagination info
-    const totalItems = document.querySelector(`#${resourceType}TableContainer .total-items`);
-    if (totalItems) {
-        totalItems.textContent = filteredItems.length;
-    }
-}
-
-// Helper function to render current page
-function renderCurrentPage(resourceType) {
-    const { items, currentPage, pageSize } = window.app.state.resources[resourceType] || {};
-    if (!items) return;
-
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const pageItems = items.slice(startIndex, endIndex);
-
-    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-    if (!tableBody) return;
-
-    // Clear existing rows
-    tableBody.innerHTML = '';
-
-    // Update pagination info
-    const totalItems = document.querySelector(`#${resourceType}TableContainer .total-items`);
-    const currentPageSpan = document.querySelector(`#${resourceType}TableContainer .current-page`);
     const pageSizeSpan = document.querySelector(`#${resourceType}TableContainer .page-size`);
     const prevButton = document.querySelector(`#${resourceType}TableContainer .prev-page`);
     const nextButton = document.querySelector(`#${resourceType}TableContainer .next-page`);
@@ -2964,12 +2904,33 @@ function renderCurrentPage(resourceType) {
 }
 
 // Modify the filterResources function to work with load more approach
-function filterResources(resourceType) {
+function filterResources(resourceType, providedSearchTerm) {
     const searchInput = document.getElementById(`${resourceType}SearchInput`);
-    const searchTerm = searchInput.value.toLowerCase();
     
-    // Get the full dataset 
-    const fullDataset = window.app.cache.resources[resourceType].data.items;
+    // Determine search term from either the parameter or the input field
+    let searchTerm;
+    if (providedSearchTerm !== undefined) {
+        searchTerm = providedSearchTerm.toLowerCase();
+    } else if (searchInput) {
+        searchTerm = searchInput.value.toLowerCase();
+    } else {
+        console.error(`Search input element for ${resourceType} not found and no search term provided`);
+        searchTerm = '';
+    }
+    
+    // Get the full dataset - handle the case where cache structure might vary
+    let fullDataset = [];
+    try {
+        if (window.app.cache.resources[resourceType]?.data?.items) {
+            fullDataset = window.app.cache.resources[resourceType].data.items;
+        } else if (window.app.state.resources[resourceType]?.items) {
+            // Fallback to state if cache is not structured as expected
+            fullDataset = window.app.state.resources[resourceType].items;
+        }
+    } catch (error) {
+        console.error(`Error accessing dataset for ${resourceType}:`, error);
+        return;
+    }
     
     // Filter based on search term
     const filteredItems = searchTerm 
@@ -2979,6 +2940,12 @@ function filterResources(resourceType) {
                    item.metadata.namespace.toLowerCase().includes(searchTerm);
         })
         : fullDataset;
+    
+    // Create or update the state object if it doesn't exist
+    if (!window.app.state.resources) {
+        window.app.state = window.app.state || {};
+        window.app.state.resources = window.app.state.resources || {};
+    }
     
     // Update state with filtered items and reset to first page
     window.app.state.resources[resourceType] = {
