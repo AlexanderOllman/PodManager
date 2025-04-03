@@ -1197,4 +1197,49 @@ body {
 
 .load-more-btn:hover i {
     transform: translateY(2px);
+}
+
+/* Sorting styles */
+.table th[data-sort] {
+    cursor: pointer;
+    position: relative;
+    padding-right: 1.5rem;
+}
+
+.table th[data-sort]:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+.table th .sort-icon {
+    margin-left: 0.25rem;
+    opacity: 0.3;
+    transition: all 0.2s ease;
+}
+
+.table th:hover .sort-icon {
+    opacity: 0.7;
+}
+
+.table th.sorting-asc .sort-icon,
+.table th.sorting-desc .sort-icon {
+    opacity: 1;
+    color: var(--hpe-primary);
+}
+
+.table th.sorting-asc, 
+.table th.sorting-desc {
+    background-color: rgba(1, 169, 130, 0.05);
+}
+
+/* Filter indicator styles */
+.filter-indicator {
+    background-color: rgba(0, 147, 213, 0.1);
+    border-left: 4px solid var(--hpe-info);
+    margin-bottom: 1rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+.filter-indicator i {
+    color: var(--hpe-info);
+    font-size: 1.1rem;
 } 

@@ -129,12 +129,12 @@
                         <table class="table table-hover table-striped table-sm border-bottom shadow-sm" id="podsTable">
                             <thead class="bg-light">
                                 <tr>
-                                    <th class="border-0">Namespace</th>
-                                    <th class="border-0">Name</th>
-                                    <th class="border-0">Status</th>
-                                    <th class="border-0">vCPU</th>
-                                    <th class="border-0">GPU</th>
-                                    <th class="border-0">Memory</th>
+                                    <th class="border-0" data-sort="namespace">Namespace</th>
+                                    <th class="border-0" data-sort="name">Name</th>
+                                    <th class="border-0" data-sort="status">Status</th>
+                                    <th class="border-0" data-sort="cpu">vCPU</th>
+                                    <th class="border-0" data-sort="gpu">GPU</th>
+                                    <th class="border-0" data-sort="memory">Memory</th>
                                     <th class="border-0 text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -160,13 +160,13 @@
                         <table class="table table-striped table-sm" id="servicesTable">
                             <thead>
                                 <tr>
-                                    <th>Namespace</th>
-                                    <th>Name</th>
-                                    <th>Type</th>
-                                    <th>Cluster-IP</th>
-                                    <th>External-IP</th>
-                                    <th>Ports</th>
-                                    <th>Age</th>
+                                    <th data-sort="namespace">Namespace</th>
+                                    <th data-sort="name">Name</th>
+                                    <th data-sort="type">Type</th>
+                                    <th data-sort="clusterip">Cluster-IP</th>
+                                    <th data-sort="externalip">External-IP</th>
+                                    <th data-sort="ports">Ports</th>
+                                    <th data-sort="age">Age</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -192,16 +192,16 @@
                         <table class="table table-striped table-sm" id="inferenceservicesTable">
                             <thead>
                                 <tr>
-                                    <th>Namespace</th>
-                                    <th>Name</th>
-                                    <th>URL</th>
-                                    <th>Ready</th>
-                                    <th>vCPU</th>
-                                    <th>GPU</th>
-                                    <th>Memory</th>
-                                    <th>Default Traffic</th>
-                                    <th>Canary Traffic</th>
-                                    <th>Age</th>
+                                    <th data-sort="namespace">Namespace</th>
+                                    <th data-sort="name">Name</th>
+                                    <th data-sort="url">URL</th>
+                                    <th data-sort="status">Status</th>
+                                    <th data-sort="cpu">vCPU</th>
+                                    <th data-sort="gpu">GPU</th>
+                                    <th data-sort="memory">Memory</th>
+                                    <th data-sort="traffic1">Traffic %</th>
+                                    <th data-sort="traffic2">Canary %</th>
+                                    <th data-sort="age">Age</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -227,12 +227,12 @@
                         <table class="table table-striped table-sm" id="deploymentsTable">
                             <thead>
                                 <tr>
-                                    <th>Namespace</th>
-                                    <th>Name</th>
-                                    <th>Ready</th>
-                                    <th>Up-to-date</th>
-                                    <th>Available</th>
-                                    <th>Age</th>
+                                    <th data-sort="namespace">Namespace</th>
+                                    <th data-sort="name">Name</th>
+                                    <th data-sort="ready">Ready</th>
+                                    <th data-sort="updated">Updated</th>
+                                    <th data-sort="available">Available</th>
+                                    <th data-sort="age">Age</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>

@@ -931,7 +931,9 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
     window.app.state.resources[resourceType] = {
         items: data.data.items,
         currentPage: 1,
-        pageSize: 10
+        pageSize: 10,
+        sortField: 'name',
+        sortDirection: 'asc'
     };
 
     // Always update dashboard metrics for pods, even when using cached data
@@ -940,6 +942,11 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
         updateDashboardMetrics(data.data.items);
     }
     
+    // Add sort functionality to the table
+    setTimeout(() => {
+        addSortingToResourceTable(resourceType);
+    }, 100);
+
     // Render the current page
     renderCurrentPage(resourceType);
 
@@ -952,14 +959,14 @@ function processResourceData(resourceType, data, startTime, processingStartTime 
     if (tableContainer) {
         tableContainer.style.opacity = '1';
     }
-    
+
     // Log performance info
     const endTime = performance.now();
     const fetchTime = processingStartTime - startTime;
     const processTime = endTime - processingStartTime;
     const totalTime = endTime - startTime;
     console.log(`${resourceType} loaded in ${totalTime.toFixed(0)}ms (fetch: ${fetchTime.toFixed(0)}ms, process: ${processTime.toFixed(0)}ms)`);
-    
+
     return data;
 }
 
@@ -2505,26 +2512,97 @@ function initializeGPUFilter() {
     }
 }
 
+// Fix the GPU filter functionality
 function applyGPUFilter() {
-    const activeTab = document.querySelector('#resourceTabs .nav-link.active');
-    if (activeTab && activeTab.id === 'pods-tab') {
-        filterResourceTable('pods');
+    const resourceType = 'pods'; // We only filter pods for GPU
+    
+    // Get the current items
+    const allItems = window.app.cache.resources?.[resourceType]?.data?.items || 
+                   window.app.state.resources?.[resourceType]?.items || [];
+    
+    // Filter to only show pods with GPU requests
+    const filteredItems = allItems.filter(item => {
+        const resources = getResourceUsage(item);
+        return resources.gpu && resources.gpu !== '0';
+    });
+    
+    // Update state with filtered items and reset to first page
+    window.app.state.resources[resourceType] = {
+        items: filteredItems,
+        currentPage: 1,
+        pageSize: 10
+    };
+    
+    // Render the filtered items
+    renderCurrentPage(resourceType);
+    
+    // Add indicator that filter is active
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    if (tableContainer) {
+        // Remove existing filter indicator if any
+        const existingIndicator = tableContainer.querySelector('.filter-indicator');
+        if (existingIndicator) {
+            existingIndicator.remove();
+        }
+        
+        // Add filter indicator
+        const indicator = document.createElement('div');
+        indicator.className = 'filter-indicator alert alert-info d-flex align-items-center mb-3';
+        indicator.innerHTML = `
+            <i class="fas fa-filter me-2"></i>
+            <div class="flex-grow-1">
+                Showing only pods with GPU requests (${filteredItems.length} of ${allItems.length} pods)
+            </div>
+            <button class="btn btn-sm btn-outline-info ms-3" onclick="clearGPUFilter()">
+                <i class="fas fa-times me-1"></i> Clear Filter
+            </button>
+        `;
+        tableContainer.insertBefore(indicator, tableContainer.firstChild);
+    }
+    
+    // Show no pods message if needed
+    if (filteredItems.length === 0) {
+        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-4">
+                        <i class="fas fa-microchip me-2 text-muted"></i>
+                        No pods with GPU requests found.
+                        <button class="btn btn-sm btn-outline-secondary ms-3" onclick="clearGPUFilter()">
+                            <i class="fas fa-times me-1"></i> Clear Filter
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
     }
 }
 
-// Clear GPU filter directly (for use in the "Clear Filter" button)
+// Update the clearGPUFilter function
 function clearGPUFilter() {
-    const gpuCard = document.getElementById('gpuCard');
-    if (gpuCard) {
-        window.gpuFilterActive = false;
-        gpuCard.classList.remove('filter-active');
-        
-        // Update UI
-        document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
-        document.getElementById('clearGPUFilter').style.display = 'none';
-        
-        // Clear filter in the table
-        applyGPUFilter();
+    const resourceType = 'pods';
+    
+    // Restore all items from cache
+    const allItems = window.app.cache.resources?.[resourceType]?.data?.items || [];
+    
+    // Update state
+    window.app.state.resources[resourceType] = {
+        items: allItems,
+        currentPage: 1,
+        pageSize: 10
+    };
+    
+    // Render all items
+    renderCurrentPage(resourceType);
+    
+    // Remove filter indicator if any
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    if (tableContainer) {
+        const indicator = tableContainer.querySelector('.filter-indicator');
+        if (indicator) {
+            indicator.remove();
+        }
     }
 }
 
@@ -2919,31 +2997,7 @@ function renderCurrentPage(resourceType) {
                     <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
                     <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
                     <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
-                    <td class="text-center">
-                        <div class="dropdown action-dropdown">
-                            <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-ellipsis-v"></i>
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item pod-action" href="#" data-action="view" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
-                                    <i class="fas fa-search text-primary"></i> View Details
-                                </a></li>
-                                <li><a class="dropdown-item pod-action" href="#" data-action="describe" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
-                                    <i class="fas fa-info-circle text-info"></i> Describe
-                                </a></li>
-                                <li><a class="dropdown-item pod-action" href="#" data-action="logs" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
-                                    <i class="fas fa-file-alt text-success"></i> Logs
-                                </a></li>
-                                <li><a class="dropdown-item pod-action" href="#" data-action="access" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
-                                    <i class="fas fa-terminal text-warning"></i> Access
-                                </a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item pod-action" href="#" data-action="delete" data-namespace="${item.metadata.namespace}" data-pod="${item.metadata.name}">
-                                    <i class="fas fa-trash-alt text-danger"></i> Delete
-                                </a></li>
-                            </ul>
-                        </div>
-                    </td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                 `;
                 break;
             // ... other resource cases
@@ -3045,4 +3099,130 @@ function clearSearch(resourceType) {
     const searchInput = document.getElementById(`${resourceType}SearchInput`);
     searchInput.value = '';
     filterResources(resourceType);
+}
+
+// Add sortResources function to enable sorting on the main tables
+function sortResources(resourceType, sortField) {
+    // Get the current items
+    const items = window.app.state.resources[resourceType]?.items || [];
+    
+    // Check if we're reversing the current sort
+    let sortDirection = 'asc';
+    if (window.app.state.resources[resourceType]?.sortField === sortField) {
+        sortDirection = window.app.state.resources[resourceType]?.sortDirection === 'asc' ? 'desc' : 'asc';
+    }
+    
+    // Sort the items
+    const sortedItems = [...items].sort((a, b) => {
+        let valueA, valueB;
+        
+        // Get the values based on field
+        switch (sortField) {
+            case 'name':
+                valueA = a.metadata.name;
+                valueB = b.metadata.name;
+                break;
+            case 'namespace':
+                valueA = a.metadata.namespace;
+                valueB = b.metadata.namespace;
+                break;
+            case 'status':
+                valueA = a.status?.phase || '';
+                valueB = b.status?.phase || '';
+                break;
+            case 'cpu':
+                const resourcesA = getResourceUsage(a);
+                const resourcesB = getResourceUsage(b);
+                valueA = parseFloat(resourcesA.cpu || '0');
+                valueB = parseFloat(resourcesB.cpu || '0');
+                break;
+            case 'gpu':
+                const resourcesGpuA = getResourceUsage(a);
+                const resourcesGpuB = getResourceUsage(b);
+                valueA = parseFloat(resourcesGpuA.gpu || '0');
+                valueB = parseFloat(resourcesGpuB.gpu || '0');
+                break;
+            case 'memory':
+                const resourcesMemA = getResourceUsage(a);
+                const resourcesMemB = getResourceUsage(b);
+                // Convert memory to numeric value for comparison
+                valueA = parseFloat(resourcesMemA.memory?.replace(/[^0-9.]/g, '') || '0');
+                valueB = parseFloat(resourcesMemB.memory?.replace(/[^0-9.]/g, '') || '0');
+                
+                // Adjust for units
+                if (resourcesMemA.memory?.includes('Gi')) valueA *= 1024;
+                if (resourcesMemB.memory?.includes('Gi')) valueB *= 1024;
+                break;
+            default:
+                valueA = a.metadata.name;
+                valueB = b.metadata.name;
+        }
+        
+        // Compare the values
+        if (typeof valueA === 'number' && typeof valueB === 'number') {
+            return sortDirection === 'asc' ? valueA - valueB : valueB - valueA;
+        } else {
+            const strA = String(valueA).toLowerCase();
+            const strB = String(valueB).toLowerCase();
+            return sortDirection === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
+        }
+    });
+    
+    // Update state with sorted items
+    window.app.state.resources[resourceType] = {
+        ...window.app.state.resources[resourceType],
+        items: sortedItems,
+        sortField: sortField,
+        sortDirection: sortDirection,
+        currentPage: 1 // Reset to first page
+    };
+    
+    // Update sort indicators in the table headers
+    updateSortIndicators(resourceType, sortField, sortDirection);
+    
+    // Re-render the current page
+    renderCurrentPage(resourceType);
+}
+
+// Add function to update sort indicators in table headers
+function updateSortIndicators(resourceType, sortField, sortDirection) {
+    // Remove all existing sort indicators
+    const allHeaders = document.querySelectorAll(`#${resourceType}Table th`);
+    allHeaders.forEach(header => {
+        const icon = header.querySelector('i.sort-icon');
+        if (icon) {
+            icon.remove();
+        }
+        header.classList.remove('sorting-asc', 'sorting-desc');
+    });
+    
+    // Find the header for the current sort field
+    const header = document.querySelector(`#${resourceType}Table th[data-sort="${sortField}"]`);
+    if (header) {
+        // Add the appropriate sort indicator
+        const icon = document.createElement('i');
+        icon.className = `fas fa-sort-${sortDirection === 'asc' ? 'up' : 'down'} ms-1 sort-icon`;
+        header.appendChild(icon);
+        header.classList.add(`sorting-${sortDirection}`);
+    }
+}
+
+// Function to add sort functionality to table headers
+function addSortingToResourceTable(resourceType) {
+    const headers = document.querySelectorAll(`#${resourceType}Table th[data-sort]`);
+    headers.forEach(header => {
+        header.style.cursor = 'pointer';
+        
+        // Add click event listener
+        header.addEventListener('click', () => {
+            const sortField = header.getAttribute('data-sort');
+            sortResources(resourceType, sortField);
+        });
+        
+        // Add sort icon container if not already present
+        if (!header.querySelector('.sort-icon')) {
+            const text = header.textContent;
+            header.innerHTML = `${text} <i class="sort-icon"></i>`;
+        }
+    });
 }
