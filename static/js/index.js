@@ -180,9 +180,6 @@ function initializeHomePage() {
     // Initialize GPU filter card
     initializeGPUFilter();
     
-    // Initialize GPU Dashboard tables
-    initializeGpuDashboard();
-    
     // Add controls to each resource tab
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
     resourceTypes.forEach(resourceType => {
@@ -1645,60 +1642,49 @@ document.addEventListener('click', function(e) {
 
 // Setup tab click handlers
 function setupTabClickHandlers() {
-    // Set up click handlers for main tabs to manage loading states
-    document.querySelectorAll('a[data-bs-toggle="tab"]').forEach(tabButton => {
-        tabButton.addEventListener('click', function(e) {
-            const targetTabId = e.target.getAttribute('data-bs-target').substring(1);
-            console.log(`Tab clicked: ${targetTabId}`);
-            
-            // If navigating to a tab that needs data loading
-            if (targetTabId === 'home') {
-                if (typeof initializeHomePage === 'function') {
-                    setTimeout(() => {
-                        initializeHomePage();
-                    }, 100);
+    console.log('Setting up tab click handlers');
+    
+    // Setup for each resource type
+    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+    
+    // Add refresh button and search bar to each resource tab
+    resourceTypes.forEach(resourceType => {
+        // Add resource controls to each tab
+        addResourceControls(resourceType);
+        
+        // Set up tab click handlers to load data on demand
+        const tabElement = document.querySelector(`#${resourceType}-tab`);
+        if (tabElement) {
+            tabElement.addEventListener('click', () => {
+                // Always fetch fresh data when tab is clicked
+                console.log(`Tab ${resourceType} clicked, fetching fresh data...`);
+                
+                // Get current namespace selection
+                const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
+                const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+                
+                // Force fetch by clearing the cached state
+                if (window.app.loadedResources) {
+                    delete window.app.loadedResources[resourceType];
                 }
-            } else if (targetTabId === 'namespaces') {
-                loadNamespaces();
-            } else if (targetTabId === 'cli') {
-                setTimeout(() => {
-                    if (window.app.terminal) {
-                        window.app.terminal.focus();
-                    }
-                }, 100);
-            } else if (targetTabId === 'resources') {
-                if (typeof initializeResourcesPage === 'function') {
-                    setTimeout(() => {
-                        initializeResourcesPage();
-                    }, 100);
+                
+                if (window.app.state.resources) {
+                    delete window.app.state.resources[resourceType];
                 }
-            }
-        });
+                
+                fetchResourceData(resourceType, currentNamespace);
+            });
+        }
     });
     
-    // Add event listeners for tab switching on home page to update URL
-    const homeTabs = document.querySelectorAll('#resourceTabs button[data-bs-toggle="tab"]');
-    homeTabs.forEach(tab => {
-        tab.addEventListener('shown.bs.tab', function(e) {
-            const targetTabId = e.target.getAttribute('data-bs-target').substring(1);
-            console.log(`Home page resource tab changed to: ${targetTabId}`);
-            
-            // Set global state for active resource tab
-            if (!window.app.state) window.app.state = {};
-            window.app.state.activeResourceTab = targetTabId;
-        });
-    });
-    
-    // Add event listeners for tab switching on resources page
-    const resourcesTabs = document.querySelectorAll('#resourcesTabTabs button[data-bs-toggle="tab"]');
-    resourcesTabs.forEach(tab => {
-        tab.addEventListener('shown.bs.tab', function(e) {
-            const targetTabId = e.target.getAttribute('data-bs-target').substring(1);
-            console.log(`Resources page tab changed to: ${targetTabId}`);
-            
-            // Set global state for active resources tab
-            if (!window.app.state) window.app.state = {};
-            window.app.state.activeResourcesTab = targetTabId;
+    // Handle switching between main sections (Home, CLI, Upload YAML, etc.)
+    const mainNavLinks = document.querySelectorAll('.sidebar .nav-link');
+    mainNavLinks.forEach(link => {
+        link.addEventListener('click', event => {
+            // The actual navigation is handled by the navigateToTab function
+            // This is just for any additional setup needed
+            const tabId = link.getAttribute('data-bs-target').replace('#', '');
+            console.log(`Main navigation clicked: ${tabId}`);
         });
     });
 }
@@ -1707,6 +1693,1346 @@ function setupTabClickHandlers() {
 function getResourceUsage(item) {
     let cpu = 0;
     let gpu = 0;
+    let memory = '0';
+    
+    // Function to convert memory to standardized format (Mi)
+    function standardizeMemory(memStr) {
+        if (!memStr) return '0Mi';
+        
+        // Remove any whitespace
+        memStr = memStr.trim();
+        
+        // Check if memory is in Ki format
+        if (memStr.endsWith('Ki')) {
+            const valueInKi = parseFloat(memStr.slice(0, -2));
+            return (valueInKi / 1024).toFixed(1) + 'Mi';
+        }
+        
+        // Check if memory is in Mi format
+        if (memStr.endsWith('Mi')) {
+            return memStr;
+        }
+        
+        // Check if memory is in Gi format
+        if (memStr.endsWith('Gi')) {
+            const valueInGi = parseFloat(memStr.slice(0, -2));
+            return (valueInGi * 1024).toFixed(0) + 'Mi';
+        }
+        
+        // Check if memory is in bytes (no unit)
+        if (!isNaN(memStr)) {
+            const valueInBytes = parseFloat(memStr);
+            return (valueInBytes / (1024 * 1024)).toFixed(1) + 'Mi';
+        }
+        
+        // Default case: just return the original string
+        return memStr;
+    }
+    
+    // If this is a pod, extract resource data from containers
+    if (item.spec && item.spec.containers) {
+        item.spec.containers.forEach(container => {
+            if (container.resources && container.resources.requests) {
+                // Add CPU requests if available
+                if (container.resources.requests.cpu) {
+                    const cpuRequest = container.resources.requests.cpu;
+                    if (cpuRequest.endsWith('m')) {
+                        // Convert millicpu to CPU
+                        cpu += parseInt(cpuRequest.slice(0, -1)) / 1000;
+                    } else {
+                        // Direct CPU value
+                        cpu += parseFloat(cpuRequest);
+                    }
+                }
+                
+                // Add GPU resources if available
+                if (container.resources.requests['nvidia.com/gpu']) {
+                    gpu += parseInt(container.resources.requests['nvidia.com/gpu']);
+                } else if (container.resources.requests['gpu']) {
+                    gpu += parseInt(container.resources.requests['gpu']);
+                }
+                
+                // Add memory requests if available
+                if (container.resources.requests.memory) {
+                    const memRequest = standardizeMemory(container.resources.requests.memory);
+                    // Extract numeric value from memory string
+                    const memValue = parseFloat(memRequest);
+                    memory = memValue + 'Mi';
+                }
+            }
+        });
+    }
+    
+    return {
+        cpu: cpu.toFixed(2),
+        gpu: gpu.toString(),
+        memory: memory
+    };
+}
+
+// Helper function to get status icon based on phase
+function getStatusIcon(phase) {
+    if (!phase) return '';
+    
+    phase = phase.toLowerCase();
+    switch (phase) {
+        case 'running':
+        case 'true':
+            return '<i class="fas fa-check-circle text-success me-1"></i>';
+        case 'succeeded':
+            return '<i class="fas fa-check-square text-primary me-1"></i>';
+        case 'pending':
+            return '<i class="fas fa-clock text-warning me-1"></i>';
+        case 'failed':
+        case 'false':
+            return '<i class="fas fa-times-circle text-danger me-1"></i>';
+        case 'unknown':
+            return '<i class="fas fa-question-circle text-muted me-1"></i>';
+        default:
+            return '<i class="fas fa-info-circle text-info me-1"></i>';
+    }
+}
+
+// Fetch cluster capacity information
+function fetchClusterCapacity() {
+    console.log('Fetching cluster capacity information...');
+    
+    // Initialize capacity object if it doesn't exist
+    if (!window.clusterCapacity) {
+        window.clusterCapacity = {
+            cpu: 256, // Default values
+            memory: 1024,
+            gpu: 8
+        };
+    }
+    
+    // Update loading detail when this runs during a load process
+    const podsLoadingDetails = document.getElementById('podsLoadingDetails');
+    if (podsLoadingDetails && document.getElementById('podsLoading').style.display !== 'none') {
+        podsLoadingDetails.textContent = 'Fetching cluster capacity information...';
+    }
+    
+    return fetch('/get_cluster_capacity')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to fetch cluster capacity: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Update values only if they exist in the response and are valid numbers
+            if (data.cpu && !isNaN(parseFloat(data.cpu))) {
+                window.clusterCapacity.cpu = parseFloat(data.cpu);
+            }
+            if (data.memory && !isNaN(parseFloat(data.memory))) {
+                window.clusterCapacity.memory = parseFloat(data.memory);
+            }
+            if (data.gpu !== undefined && !isNaN(parseInt(data.gpu))) {
+                window.clusterCapacity.gpu = parseInt(data.gpu);
+            }
+            
+            console.log(`Cluster capacity loaded: ${window.clusterCapacity.cpu} CPU cores, ${window.clusterCapacity.memory} Gi memory, ${window.clusterCapacity.gpu} GPUs`);
+            
+            // Update capacity display in the UI
+            const cpuCapacityElement = document.getElementById('totalCPUCapacity');
+            if (cpuCapacityElement) {
+                cpuCapacityElement.textContent = window.clusterCapacity.cpu;
+            }
+            
+            // If we already have pod data, recalculate the metrics with the new capacity
+            if (window.app.state && window.app.state.resources && window.app.state.resources.pods) {
+                console.log('Recalculating metrics with updated capacity');
+                updateDashboardMetrics(window.app.state.resources.pods.data.items);
+            }
+            
+            // Update loading detail if we're in the middle of loading
+            if (podsLoadingDetails && document.getElementById('podsLoading').style.display !== 'none') {
+                podsLoadingDetails.textContent = 'Cluster capacity information loaded';
+            }
+            
+            return data;
+        })
+        .catch(error => {
+            console.warn(`Error fetching cluster capacity: ${error.message}. Using default values.`);
+            
+            // Make sure default values are set
+            window.clusterCapacity = window.clusterCapacity || {
+                cpu: 256,
+                memory: 1024,
+                gpu: 8
+            };
+            
+            // Update capacity display in the UI with defaults
+            const cpuCapacityElement = document.getElementById('totalCPUCapacity');
+            if (cpuCapacityElement) {
+                cpuCapacityElement.textContent = window.clusterCapacity.cpu;
+            }
+            
+            // Update loading detail if we're in the middle of loading
+            if (podsLoadingDetails && document.getElementById('podsLoading').style.display !== 'none') {
+                podsLoadingDetails.textContent = 'Using default cluster capacity values';
+            }
+            
+            return window.clusterCapacity;
+        });
+}
+
+// Namespaces functionality
+$(document).ready(function() {
+    // Initialize namespaces tab
+    $('a[data-bs-toggle="tab"][data-bs-target="#namespaces"]').on('shown.bs.tab', function (e) {
+        loadNamespaces();
+    });
+
+    // Refresh namespaces button
+    $('#refreshNamespaces').on('click', function() {
+        loadNamespaces();
+    });
+
+    // Filter namespaces
+    $('#namespaceSearchInput').on('keyup', function() {
+        filterNamespaces();
+    });
+
+    // Sort namespaces
+    $('.sort-option').on('click', function(e) {
+        e.preventDefault();
+        const sortBy = $(this).data('sort');
+        sortNamespaces(sortBy);
+    });
+
+    // Handle namespace actions
+    $(document).on('click', '.namespace-action', function() {
+        const action = $(this).data('action');
+        const namespace = $(this).data('namespace');
+        
+        if (action === 'events') {
+            openNamespaceModal(namespace, 'events');
+        } else if (action === 'describe') {
+            openNamespaceModal(namespace, 'describe');
+        } else if (action === 'edit') {
+            openNamespaceModal(namespace, 'edit');
+        } else if (action === 'delete') {
+            openNamespaceModal(namespace, 'delete');
+        }
+    });
+
+    // Save namespace changes
+    $('#saveNamespaceChanges').on('click', function() {
+        saveNamespaceChanges();
+    });
+
+    // Handle namespace delete confirmation input
+    $('#namespaceDeleteConfirm').on('input', function() {
+        const inputValue = $(this).val();
+        const namespaceName = $('#currentNamespaceName').text();
+        
+        if (inputValue === namespaceName) {
+            $('#confirmNamespaceDelete').prop('disabled', false);
+        } else {
+            $('#confirmNamespaceDelete').prop('disabled', true);
+        }
+    });
+    
+    // Handle namespace delete button
+    $('#confirmNamespaceDelete').on('click', function() {
+        deleteNamespace();
+    });
+
+    // Switch tabs in namespace modal
+    $('#namespaceDetailTabs button').on('shown.bs.tab', function (e) {
+        const tabId = $(e.target).attr('id');
+        if (tabId === 'edit-tab') {
+            $('#saveNamespaceChanges').show();
+        } else {
+            $('#saveNamespaceChanges').hide();
+        }
+    });
+});
+
+// Load namespaces data
+function loadNamespaces() {
+    // Show loading indicator
+    $('#namespacesLoading').show();
+    $('#namespacesTableCard').hide();
+    $('#noNamespacesMessage').hide();
+
+    // Fetch namespaces data
+    $.ajax({
+        url: '/get_namespace_details',
+        type: 'GET',
+        success: function(response) {
+            if (response.hasOwnProperty('namespaces')) {
+                // Store the namespaces data for filtering/sorting
+                window.namespacesData = response.namespaces;
+                
+                // Render the namespaces
+                renderNamespaces(window.namespacesData);
+            } else {
+                showNoNamespaces('Error loading namespaces');
+            }
+        },
+        error: function() {
+            showNoNamespaces('Failed to fetch namespaces data');
+        },
+        complete: function() {
+            $('#namespacesLoading').hide();
+        }
+    });
+}
+
+// Render namespaces table
+function renderNamespaces(namespaces) {
+    const tableBody = $('#namespacesTableBody');
+    tableBody.empty();
+
+    if (namespaces.length === 0) {
+        showNoNamespaces();
+        return;
+    }
+
+    namespaces.forEach(function(ns) {
+        const row = $('<tr>');
+        
+        // Name column
+        row.append(`<td>
+            <div class="d-flex align-items-center">
+                <div class="avatar-sm rounded bg-info me-3">
+                    <span class="avatar-title rounded">
+                        <i class="fas fa-project-diagram text-white"></i>
+                    </span>
+                </div>
+                <div>
+                    <h6 class="mb-0">${ns.name}</h6>
+                    <small class="text-muted">${getCreationTime(ns)}</small>
+                </div>
+            </div>
+        </td>`);
+        
+        // Pod count column
+        row.append(`<td class="text-center">
+            <span class="fw-bold">${ns.podCount}</span>
+        </td>`);
+        
+        // vCPU usage column
+        row.append(`<td class="text-center resource-cell cpu-cell">
+            <span class="fw-bold">${ns.resources.cpu}</span> vCPUs
+        </td>`);
+        
+        // GPU usage column
+        row.append(`<td class="text-center resource-cell gpu-cell">
+            <span class="fw-bold">${ns.resources.gpu}</span> GPUs
+        </td>`);
+        
+        // Memory usage column
+        row.append(`<td class="text-center resource-cell memory-cell">
+            <span class="fw-bold">${ns.resources.memory}</span> MB
+        </td>`);
+        
+        // Status column
+        const status = getNamespaceStatus(ns);
+        row.append(`<td class="text-center">
+            <span class="badge bg-${status.color}">${status.text}</span>
+        </td>`);
+        
+        // Actions column
+        row.append(`<td class="text-center">
+            <div class="dropdown action-dropdown">
+                <button class="btn dropdown-toggle" type="button" id="namespace-dropdown-${ns.name}" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="namespace-dropdown-${ns.name}">
+                    <li><a class="dropdown-item namespace-action" href="#" data-action="events" data-namespace="${ns.name}">
+                        <i class="fas fa-clock text-info"></i> Events
+                    </a></li>
+                    <li><a class="dropdown-item namespace-action" href="#" data-action="describe" data-namespace="${ns.name}">
+                        <i class="fas fa-info-circle text-primary"></i> Describe
+                    </a></li>
+                    <li><a class="dropdown-item namespace-action" href="#" data-action="edit" data-namespace="${ns.name}">
+                        <i class="fas fa-edit text-warning"></i> Edit
+                    </a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item namespace-action" href="#" data-action="delete" data-namespace="${ns.name}">
+                        <i class="fas fa-trash-alt text-danger"></i> Delete
+                    </a></li>
+                </ul>
+            </div>
+        </td>`);
+        
+        tableBody.append(row);
+    });
+
+    $('#namespacesTableCard').show();
+    
+    // Reinitialize dropdowns
+    setTimeout(function() {
+        var dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }, 100);
+}
+
+// Filter namespaces based on search input
+function filterNamespaces() {
+    const searchTerm = $('#namespaceSearchInput').val().toLowerCase();
+    
+    if (!window.namespacesData) return;
+    
+    const filteredNamespaces = window.namespacesData.filter(function(ns) {
+        return ns.name.toLowerCase().includes(searchTerm);
+    });
+    
+    renderNamespaces(filteredNamespaces);
+}
+
+// Sort namespaces based on selected option
+function sortNamespaces(sortBy) {
+    if (!window.namespacesData) return;
+    
+    const sortedNamespaces = [...window.namespacesData];
+    
+    switch (sortBy) {
+        case 'name':
+            sortedNamespaces.sort((a, b) => a.name.localeCompare(b.name));
+            break;
+        case 'name-desc':
+            sortedNamespaces.sort((a, b) => b.name.localeCompare(a.name));
+            break;
+        case 'pods':
+            sortedNamespaces.sort((a, b) => b.podCount - a.podCount);
+            break;
+        case 'cpu':
+            sortedNamespaces.sort((a, b) => b.resources.cpu - a.resources.cpu);
+            break;
+        case 'gpu':
+            sortedNamespaces.sort((a, b) => b.resources.gpu - a.resources.gpu);
+            break;
+        case 'memory':
+            sortedNamespaces.sort((a, b) => b.resources.memory - a.resources.memory);
+            break;
+        default:
+            break;
+    }
+    
+    renderNamespaces(sortedNamespaces);
+}
+
+// Show message when no namespaces are found
+function showNoNamespaces(message = 'No namespaces found') {
+    $('#namespacesTableCard').hide();
+    $('#noNamespacesMessage').show();
+    $('#noNamespacesMessage h5').text(message);
+}
+
+// Get namespace creation time
+function getCreationTime(namespace) {
+    if (namespace.metadata && namespace.metadata.creationTimestamp) {
+        const date = new Date(namespace.metadata.creationTimestamp);
+        return `Created ${date.toLocaleDateString()}`;
+    }
+    return '';
+}
+
+// Get namespace status
+function getNamespaceStatus(namespace) {
+    if (namespace.metadata && namespace.metadata.status && namespace.metadata.status.phase) {
+        const phase = namespace.metadata.status.phase;
+        switch (phase) {
+            case 'Active':
+                return { text: 'Active', color: 'success' };
+            case 'Terminating':
+                return { text: 'Terminating', color: 'warning' };
+            default:
+                return { text: phase, color: 'secondary' };
+        }
+    }
+    // Default to active if status not found
+    return { text: 'Active', color: 'success' };
+}
+
+// Open namespace modal with specified tab
+function openNamespaceModal(namespace, initialTab = 'events') {
+    // Set current namespace name
+    $('#currentNamespaceName').text(namespace);
+    $('#deleteNamespaceConfirmName').text(namespace);
+    
+    // Reset delete confirmation input
+    $('#namespaceDeleteConfirm').val('');
+    $('#confirmNamespaceDelete').prop('disabled', true);
+    
+    // Show loading indicators and hide content
+    $('#namespaceEventsLoading').show();
+    $('#namespaceEventsOutput').hide();
+    $('#namespaceDescribeLoading').show();
+    $('#namespaceDescribeOutput').hide();
+    $('#namespaceEditLoading').show();
+    $('#namespaceEditContent').hide();
+    $('#saveNamespaceChanges').hide();
+    
+    // Activate the correct tab
+    $(`#${initialTab}-tab`).tab('show');
+    
+    // Show the modal
+    $('#namespaceEditModal').modal('show');
+    
+    // Load the data for each tab
+    loadNamespaceEvents(namespace);
+    loadNamespaceDescribe(namespace);
+    loadNamespaceEdit(namespace);
+}
+
+// Load namespace events data
+function loadNamespaceEvents(namespace) {
+    $.ajax({
+        url: '/api/namespace/events',
+        type: 'POST',
+        data: { namespace: namespace },
+        success: function(response) {
+            if (response.hasOwnProperty('output')) {
+                $('#namespaceEventsOutput').text(response.output);
+                $('#namespaceEventsOutput').show();
+            } else {
+                $('#namespaceEventsOutput').text('Error: ' + response.error);
+                $('#namespaceEventsOutput').show();
+            }
+        },
+        error: function() {
+            $('#namespaceEventsOutput').text('Failed to fetch namespace events');
+            $('#namespaceEventsOutput').show();
+        },
+        complete: function() {
+            $('#namespaceEventsLoading').hide();
+        }
+    });
+}
+
+// Load namespace describe data
+function loadNamespaceDescribe(namespace) {
+    $.ajax({
+        url: '/api/namespace/describe',
+        type: 'POST',
+        data: { namespace: namespace },
+        success: function(response) {
+            if (response.hasOwnProperty('output')) {
+                $('#namespaceDescribeOutput').text(response.output);
+                $('#namespaceDescribeOutput').show();
+            } else {
+                $('#namespaceDescribeOutput').text('Error: ' + response.error);
+                $('#namespaceDescribeOutput').show();
+            }
+        },
+        error: function() {
+            $('#namespaceDescribeOutput').text('Failed to fetch namespace description');
+            $('#namespaceDescribeOutput').show();
+        },
+        complete: function() {
+            $('#namespaceDescribeLoading').hide();
+        }
+    });
+}
+
+// Delete namespace
+function deleteNamespace() {
+    const namespace = $('#currentNamespaceName').text();
+    
+    // Show confirmation dialog
+    if (!confirm(`Are you ABSOLUTELY SURE you want to delete the namespace "${namespace}" and ALL resources within it? This action CANNOT be undone!`)) {
+        return;
+    }
+    
+    // Disable the delete button and show a loading message
+    $('#confirmNamespaceDelete').prop('disabled', true);
+    $('#confirmNamespaceDelete').html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deleting...');
+    
+    $.ajax({
+        url: '/api/namespace/delete',
+        type: 'POST',
+        data: { namespace: namespace },
+        success: function(response) {
+            if (response.hasOwnProperty('output')) {
+                alert(`Namespace "${namespace}" has been deleted.`);
+                // Close the modal and refresh the namespaces list
+                $('#namespaceEditModal').modal('hide');
+                loadNamespaces();
+            } else {
+                alert('Error: ' + response.error);
+                // Re-enable the delete button
+                $('#confirmNamespaceDelete').prop('disabled', false);
+                $('#confirmNamespaceDelete').html('<i class="fas fa-trash-alt me-2"></i> Permanently Delete Namespace');
+            }
+        },
+        error: function() {
+            alert('Failed to delete namespace. Please try again.');
+            // Re-enable the delete button
+            $('#confirmNamespaceDelete').prop('disabled', false);
+            $('#confirmNamespaceDelete').html('<i class="fas fa-trash-alt me-2"></i> Permanently Delete Namespace');
+        }
+    });
+}
+
+// Load namespace edit data
+function loadNamespaceEdit(namespace) {
+    $.ajax({
+        url: '/api/namespace/edit',
+        type: 'POST',
+        data: { namespace: namespace },
+        success: function(response) {
+            if (response.hasOwnProperty('yaml')) {
+                $('#namespaceYamlEditor').val(response.yaml);
+                $('#namespaceEditContent').show();
+            } else {
+                $('#namespaceYamlEditor').val('Error: ' + response.error);
+                $('#namespaceEditContent').show();
+            }
+        },
+        error: function() {
+            $('#namespaceYamlEditor').val('Failed to fetch namespace data for editing');
+            $('#namespaceEditContent').show();
+        },
+        complete: function() {
+            $('#namespaceEditLoading').hide();
+        }
+    });
+}
+
+// Save namespace changes
+function saveNamespaceChanges() {
+    const namespace = $('#currentNamespaceName').text();
+    const yaml = $('#namespaceYamlEditor').val();
+    
+    // Show loading
+    $('#namespaceEditContent').hide();
+    $('#namespaceEditLoading').show();
+    
+    $.ajax({
+        url: '/api/namespace/update',
+        type: 'POST',
+        data: { 
+            namespace: namespace,
+            yaml: yaml
+        },
+        success: function(response) {
+            if (response.hasOwnProperty('output')) {
+                // Show success message
+                alert('Namespace updated successfully.');
+                
+                // Refresh the data
+                loadNamespaceEdit(namespace);
+                loadNamespaceDescribe(namespace);
+                loadNamespaces();
+            } else {
+                alert('Error: ' + response.error);
+                $('#namespaceEditContent').show();
+            }
+        },
+        error: function() {
+            alert('Failed to update namespace. Please try again.');
+            $('#namespaceEditContent').show();
+        },
+        complete: function() {
+            $('#namespaceEditLoading').hide();
+        }
+    });
+}
+
+// Dashboard Metrics Functions
+function updateDashboardMetrics(pods) {
+    console.log('Updating dashboard metrics with data from', pods.length, 'pods');
+    
+    // Count all pods
+    const totalPods = pods.length;
+    
+    // Count pods by status (correctly accessing the status phase)
+    const runningPods = pods.filter(pod => pod.status && pod.status.phase && pod.status.phase.toLowerCase() === 'running').length;
+    const succeededPods = pods.filter(pod => pod.status && pod.status.phase && pod.status.phase.toLowerCase() === 'succeeded').length;
+    const errorPods = pods.filter(pod => {
+        if (!pod.status || !pod.status.phase) return false;
+        const phase = pod.status.phase.toLowerCase();
+        return phase === 'failed' || phase === 'error' || phase === 'unknown' || 
+            // Check for container statuses with specific error conditions
+            (pod.status.containerStatuses && pod.status.containerStatuses.some(status => 
+                status.state && (
+                    (status.state.waiting && ['crashloopbackoff', 'error', 'errimagepull', 'imagepullbackoff', 'createcontainererror'].includes(status.state.waiting.reason?.toLowerCase())) ||
+                    (status.state.terminated && status.state.terminated.exitCode !== 0)
+                )
+            ));
+    }).length;
+    
+    // Update the UI
+    document.getElementById('totalPodsCount').textContent = totalPods;
+    document.getElementById('runningPodsCount').textContent = runningPods;
+    document.getElementById('succeededPodsCount').textContent = succeededPods;
+    document.getElementById('errorPodsCount').textContent = errorPods;
+    
+    // Calculate and display CPU usage
+    const totalCPURequest = pods.reduce((total, pod) => {
+        // Get CPU from each container in the pod
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests && container.resources.requests.cpu) {
+                    const cpuRequest = container.resources.requests.cpu;
+                    if (cpuRequest.endsWith('m')) {
+                        // Convert millicpu to CPU
+                        total += parseInt(cpuRequest.slice(0, -1)) / 1000;
+                    } else {
+                        // Direct CPU value
+                        total += parseFloat(cpuRequest);
+                    }
+                }
+            });
+        }
+        return total;
+    }, 0);
+    
+    // For debugging
+    console.log(`Total CPU request: ${totalCPURequest.toFixed(1)} cores`);
+    console.log(`Cluster capacity: ${window.clusterCapacity ? window.clusterCapacity.cpu : 'unknown'} cores`);
+    
+    const cpuPercentage = window.clusterCapacity && window.clusterCapacity.cpu ? 
+        Math.round((totalCPURequest / window.clusterCapacity.cpu) * 100) : 0;
+    
+    document.getElementById('totalCPUCount').textContent = totalCPURequest.toFixed(1);
+    document.getElementById('totalCPUPercentage').textContent = cpuPercentage;
+    
+    // Update CPU progress bar
+    const cpuProgressBar = document.getElementById('cpuProgressBar');
+    if (cpuProgressBar) {
+        cpuProgressBar.style.width = `${cpuPercentage}%`;
+        
+        // Update color based on usage
+        if (cpuPercentage >= 90) {
+            cpuProgressBar.style.background = 'linear-gradient(to right, #f5f5f5, #ff5a5a)';
+        } else if (cpuPercentage >= 75) {
+            cpuProgressBar.style.background = 'linear-gradient(to right, #f5f5f5, #ffb800)';
+        } else {
+            cpuProgressBar.style.background = 'linear-gradient(to right, #f5f5f5, #01a982)';
+        }
+    }
+    
+    // Count GPU resources
+    const gpuPods = pods.filter(pod => {
+        let hasGPU = false;
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests) {
+                    if (container.resources.requests['nvidia.com/gpu'] || container.resources.requests.gpu) {
+                        hasGPU = true;
+                    }
+                }
+            });
+        }
+        return hasGPU;
+    });
+    
+    const totalGPURequest = gpuPods.reduce((total, pod) => {
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                if (container.resources && container.resources.requests) {
+                    if (container.resources.requests['nvidia.com/gpu']) {
+                        total += parseInt(container.resources.requests['nvidia.com/gpu']);
+                    } else if (container.resources.requests.gpu) {
+                        total += parseInt(container.resources.requests.gpu);
+                    }
+                }
+            });
+        }
+        return total;
+    }, 0);
+    
+    // Set GPU count in the dashboard
+    const gpuCountElement = document.getElementById('totalGPUCount');
+    if (gpuCountElement) {
+        gpuCountElement.textContent = totalGPURequest.toFixed(0);
+    }
+    
+    // Store pods with GPU for filtering
+    window.gpuPodNames = gpuPods.map(pod => `${pod.metadata.namespace}/${pod.metadata.name}`);
+    // Also store the full pod objects for use in the filter function
+    window.podsWithGPUs = gpuPods;
+    
+    // Reset GPU filter text based on state
+    if (window.gpuFilterActive) {
+        document.getElementById('gpuFilterStatus').innerHTML = `<span class="badge bg-success"><i class="fas fa-filter"></i> Filtered</span>`;
+        document.getElementById('clearGPUFilter').style.display = 'inline-block';
+    } else {
+        document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+        document.getElementById('clearGPUFilter').style.display = 'none';
+    }
+}
+
+// GPU Filter Functionality
+function initializeGPUFilter() {
+    console.log('Initializing GPU filter');
+    window.gpuFilterActive = false;
+    
+    // Add event listener to GPU card for filtering
+    const gpuCard = document.getElementById('gpuCard');
+    const clearFilter = document.getElementById('clearGPUFilter');
+    
+    if (gpuCard) {
+        gpuCard.addEventListener('click', function(e) {
+            // Don't trigger if clicking on the clear button
+            if (e.target.closest('#clearGPUFilter')) {
+                return;
+            }
+            
+            window.gpuFilterActive = !window.gpuFilterActive;
+            
+            // Apply the filter
+            applyGPUFilter();
+            
+            // Update UI to show filter state
+            gpuCard.classList.toggle('filter-active', window.gpuFilterActive);
+            
+            if (window.gpuFilterActive) {
+                document.getElementById('gpuFilterStatus').innerHTML = `<span class="badge bg-success"><i class="fas fa-filter"></i> Filtered</span>`;
+                clearFilter.style.display = 'inline-block';
+            } else {
+                document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+                clearFilter.style.display = 'none';
+            }
+        });
+    }
+    
+    if (clearFilter) {
+        clearFilter.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent triggering the card click
+            
+            window.gpuFilterActive = false;
+            
+            // Clear the filter
+            applyGPUFilter();
+            
+            // Update UI
+            gpuCard.classList.remove('filter-active');
+            document.getElementById('gpuFilterStatus').textContent = 'Click to filter';
+            clearFilter.style.display = 'none';
+        });
+    }
+}
+
+// Fix the GPU filter functionality
+function applyGPUFilter() {
+    const resourceType = 'pods'; // We only filter pods for GPU
+    
+    // Get the current items
+    const allItems = window.app.cache.resources?.[resourceType]?.data?.items || 
+                   window.app.state.resources?.[resourceType]?.items || [];
+    
+    // Filter to only show pods with GPU requests
+    const filteredItems = allItems.filter(item => {
+        const resources = getResourceUsage(item);
+        return resources.gpu && resources.gpu !== '0';
+    });
+    
+    // Update state with filtered items and reset to first page
+    window.app.state.resources[resourceType] = {
+        items: filteredItems,
+        currentPage: 1,
+        pageSize: 10
+    };
+    
+    // Render the filtered items
+    renderCurrentPage(resourceType);
+    
+    // Add indicator that filter is active
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    if (tableContainer) {
+        // Remove existing filter indicator if any
+        const existingIndicator = tableContainer.querySelector('.filter-indicator');
+        if (existingIndicator) {
+            existingIndicator.remove();
+        }
+        
+        // Add filter indicator
+        const indicator = document.createElement('div');
+        indicator.className = 'filter-indicator alert alert-info d-flex align-items-center mb-3';
+        indicator.innerHTML = `
+            <i class="fas fa-filter me-2"></i>
+            <div class="flex-grow-1">
+                Showing only pods with GPU requests (${filteredItems.length} of ${allItems.length} pods)
+            </div>
+            <button class="btn btn-sm btn-outline-info ms-3" onclick="clearGPUFilter()">
+                <i class="fas fa-times me-1"></i> Clear Filter
+            </button>
+        `;
+        tableContainer.insertBefore(indicator, tableContainer.firstChild);
+    }
+    
+    // Show no pods message if needed
+    if (filteredItems.length === 0) {
+        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-4">
+                        <i class="fas fa-microchip me-2 text-muted"></i>
+                        No pods with GPU requests found.
+                        <button class="btn btn-sm btn-outline-secondary ms-3" onclick="clearGPUFilter()">
+                            <i class="fas fa-times me-1"></i> Clear Filter
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+}
+
+// Update the clearGPUFilter function
+function clearGPUFilter() {
+    const resourceType = 'pods';
+    
+    // Restore all items from cache
+    const allItems = window.app.cache.resources?.[resourceType]?.data?.items || [];
+    
+    // Update state
+    window.app.state.resources[resourceType] = {
+        items: allItems,
+        currentPage: 1,
+        pageSize: 10
+    };
+    
+    // Render all items
+    renderCurrentPage(resourceType);
+    
+    // Remove filter indicator if any
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    if (tableContainer) {
+        const indicator = tableContainer.querySelector('.filter-indicator');
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+}
+
+// Initialize namespace functionality separately to ensure it works regardless of jQuery load order
+function initializeNamespaceFunctionality() {
+    console.log('Initializing namespace functionality');
+    // Initialize namespaces tab
+    $(document).ready(function() {
+        // Initialize namespaces tab
+        $('a[data-bs-toggle="tab"][data-bs-target="#namespaces"]').on('shown.bs.tab', function (e) {
+            loadNamespaces();
+        });
+
+        // Refresh namespaces button
+        $('#refreshNamespaces').on('click', function() {
+            loadNamespaces();
+        });
+
+        // Filter namespaces
+        $('#namespaceSearchInput').on('keyup', function() {
+            filterNamespaces();
+        });
+
+        // Sort namespaces
+        $('.sort-option').on('click', function(e) {
+            e.preventDefault();
+            const sortOption = $(this).data('sort');
+            sortNamespaces(sortOption);
+        });
+    });
+}
+
+// Add call to initialize namespace functionality in the main initialization
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait a short moment to ensure jQuery is fully loaded
+    setTimeout(initializeNamespaceFunctionality, 500);
+});
+
+// Load namespaces for the selector dropdown
+function loadNamespacesForSelector(resourceType) {
+    // Skip if namespaces are already loaded globally
+    if (window.namespaces) {
+        populateNamespaceSelector(resourceType, window.namespaces);
+        return;
+    }
+    
+    fetch('/get_namespaces')
+        .then(response => response.json())
+        .then(data => {
+            if (data.namespaces) {
+                // Cache namespaces globally
+                window.namespaces = data.namespaces;
+                populateNamespaceSelector(resourceType, data.namespaces);
+                
+                // Dispatch custom event when namespaces are loaded
+                document.dispatchEvent(new CustomEvent('namespacesLoaded'));
+            } else {
+                console.error('Failed to load namespaces:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading namespaces:', error);
+        });
+}
+
+// Populate namespace dropdown with options
+function populateNamespaceSelector(resourceType, namespaces) {
+    const selector = document.getElementById(`${resourceType}Namespace`);
+    if (!selector) return;
+    
+    // Clear existing options, keeping only the "All Namespaces" option
+    const allOption = selector.querySelector('option[value="all"]');
+    selector.innerHTML = '';
+    selector.appendChild(allOption);
+    
+    // Ensure namespaces is an array
+    if (!namespaces) {
+        console.warn(`No namespaces provided for ${resourceType}`);
+        return;
+    }
+    
+    // Convert to array if it's not already one
+    const namespacesArray = Array.isArray(namespaces) ? namespaces : 
+                           (typeof namespaces === 'object' ? Object.keys(namespaces) : []);
+    
+    // Add namespace options
+    namespacesArray.forEach(ns => {
+        const option = document.createElement('option');
+        option.value = ns;
+        option.textContent = ns;
+        selector.appendChild(option);
+    });
+}
+
+// Handle namespace selection change
+function namespaceChanged(resourceType) {
+    const selector = document.getElementById(`${resourceType}Namespace`);
+    if (!selector) return;
+    
+    const selectedNamespace = selector.value;
+    console.log(`Namespace changed to ${selectedNamespace} for ${resourceType}`);
+    
+    // Force refresh data with new namespace
+    if (window.loadedResources) {
+        delete window.loadedResources[resourceType];
+    }
+    
+    fetchResourceData(resourceType, selectedNamespace);
+}
+
+function loadResourcesForTab(tabId) {
+    console.log(`Loading resources for tab from index.js: ${tabId}`);
+    window.app.currentTab = tabId;
+
+    // Special handling for 'home' tab - need to load the active resource tab
+    if (tabId === 'home') {
+        console.log("Home tab detected in index.js, finding active resource tab to load");
+        // Find the first active resource tab
+        const resourceTabs = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+        
+        // First check if any tab is already active
+        let activeResourceTab = null;
+        for (const tab of resourceTabs) {
+            const tabElement = document.getElementById(tab);
+            if (tabElement && tabElement.classList.contains('active')) {
+                activeResourceTab = tab;
+                console.log(`Found active resource tab in index.js: ${activeResourceTab}`);
+                break;
+            }
+        }
+        
+        // If no active tab found, default to 'pods'
+        if (!activeResourceTab) {
+            activeResourceTab = 'pods';
+            // Activate the pods tab
+            const podsTab = document.getElementById('pods');
+            const podsTabButton = document.getElementById('pods-tab');
+            if (podsTab && podsTabButton) {
+                podsTab.classList.add('show', 'active');
+                podsTabButton.classList.add('active');
+                console.log("No active resource tab found in index.js, defaulting to pods");
+            }
+        }
+        
+        // Load the active resource tab's data
+        loadResourcesForTab(activeResourceTab);
+        return;
+    }
+    
+    // Clear any existing content
+    const tableBody = document.querySelector(`#${tabId}Table tbody`);
+    if (tableBody) {
+        tableBody.innerHTML = '';
+    }
+
+    // Show loading indicator for the tab
+    const loadingElement = document.getElementById(`${tabId}Loading`);
+    if (loadingElement) {
+        loadingElement.style.display = 'block';
+    }
+
+    // Load resources based on tab type
+    if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
+        // First load critical data (status and basic info)
+        fetchResourceData(tabId, 'all', true)
+            .then(() => {
+                // Then load full details in background
+                if (window.app.currentTab === tabId) {  // Only if still on same tab
+                    return fetchResourceData(tabId, 'all', false);
+                }
+            })
+            .catch(error => {
+                console.error(`Error loading ${tabId}:`, error);
+            });
+    } else if (tabId === 'namespaces') {
+        if (typeof loadNamespaces === 'function') {
+            loadNamespaces();
+        }
+    } else if (tabId === 'charts') {
+        if (typeof refreshCharts === 'function') {
+            refreshCharts();
+        }
+    }
+}
+
+// Add cache management at the top of the file
+window.app = window.app || {};
+window.app.cache = {
+    resources: {},
+    timestamps: {},
+    STALE_THRESHOLD: 2 * 60 * 1000 // 2 minutes in milliseconds
+};
+
+// Add refresh alert container after loading container
+function addRefreshAlert(resourceType) {
+    const container = document.getElementById(`${resourceType}TableContainer`);
+    if (!container) return;
+
+    // Remove existing alert if any
+    const existingAlert = container.querySelector('.refresh-alert');
+    if (existingAlert) {
+        existingAlert.remove();
+    }
+
+    const alert = document.createElement('div');
+    alert.className = 'refresh-alert alert alert-warning d-flex align-items-center mb-3';
+    alert.style.display = 'none';
+    alert.innerHTML = `
+        <i class="fas fa-exclamation-circle me-2"></i>
+        <div class="flex-grow-1">
+            This data is more than 2 minutes old and may be outdated.
+        </div>
+        <button class="btn btn-sm btn-warning ms-3" onclick="fetchResourceData('${resourceType}')">
+            <i class="fas fa-sync-alt me-1"></i> Refresh Now
+        </button>
+    `;
+    container.insertBefore(alert, container.firstChild);
+    return alert;
+}
+
+// Modify the fetchResourceData function to include caching
+function fetchResourceData(resourceType, attempt = 1) {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000; // 1 second
+
+    function fetchWithRetry() {
+        // Check cache first
+        const cachedData = window.app.cache.resources[resourceType];
+        const lastFetch = window.app.cache.timestamps[resourceType];
+        
+        if (cachedData && lastFetch) {
+            const timeSinceLastFetch = Date.now() - lastFetch;
+            
+            // If data exists and is less than STALE_THRESHOLD old, use it
+            if (timeSinceLastFetch < window.app.cache.STALE_THRESHOLD) {
+                console.log(`Using cached data for ${resourceType}`);
+                processResourceData(resourceType, cachedData, lastFetch);
+                return Promise.resolve(cachedData);
+            } else {
+                // Show the refresh alert
+                const alert = addRefreshAlert(resourceType);
+                if (alert) {
+                    alert.style.display = 'flex';
+                }
+            }
+        }
+
+        // Show loading state
+        showLoading(resourceType);
+        
+        // Set processing start time
+        let processingStartTime;
+        
+        return fetch('/get_resources', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `resource_type=${resourceType}`
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Cache the new data
+            window.app.cache.resources[resourceType] = data;
+            window.app.cache.timestamps[resourceType] = Date.now();
+            
+            processingStartTime = performance.now();
+            
+            // Process the data
+            processResourceData(resourceType, data, Date.now(), processingStartTime);
+            
+            return data;
+        })
+        .catch(error => {
+            if (error.name === 'AbortError') {
+                console.log(`Request for ${resourceType} was cancelled`);
+                return;
+            }
+            
+            // Store error state
+            window.app.state.errors[resourceType] = error;
+            
+            // Retry logic
+            if (attempt < MAX_RETRIES) {
+                console.log(`Retrying ${resourceType} fetch attempt ${attempt + 1}...`);
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve(fetchResourceData(resourceType, attempt + 1));
+                    }, RETRY_DELAY * Math.pow(2, attempt));
+                });
+            }
+            
+            // Show error in UI after all retries failed
+            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+            if (tableBody) {
+                hideLoading(resourceType);
+                
+                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+                if (tableContainer) {
+                    tableContainer.style.opacity = '1';
+                    tableBody.innerHTML = `
+                        <tr><td colspan="7" class="text-center text-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            Failed to load ${resourceType} after multiple attempts. 
+                            <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
+                                <i class="fas fa-sync-alt me-1"></i> Retry
+                            </button>
+                        </td></tr>
+                    `;
+                }
+            }
+            
+            throw error;
+        });
+    }
+    
+    return fetchWithRetry();
+}
+
+// Add a function to check data freshness periodically
+function startDataFreshnessChecker() {
+    setInterval(() => {
+        const activeTab = document.querySelector('#resourceTabs .nav-link.active');
+        if (activeTab) {
+            const resourceType = activeTab.getAttribute('data-bs-target').replace('#', '');
+            const lastFetch = window.app.cache.timestamps[resourceType];
+            
+            if (lastFetch) {
+                const timeSinceLastFetch = Date.now() - lastFetch;
+                if (timeSinceLastFetch >= window.app.cache.STALE_THRESHOLD) {
+                    const alert = addRefreshAlert(resourceType);
+                    if (alert) {
+                        alert.style.display = 'flex';
+                    }
+                }
+            }
+        }
+    }, 30000); // Check every 30 seconds
+}
+
+// Initialize the freshness checker when the document is ready
+document.addEventListener('DOMContentLoaded', () => {
+    startDataFreshnessChecker();
+});
+
+// Function to render page of items
+function renderCurrentPage(resourceType) {
+    const { items, currentPage, pageSize } = window.app.state.resources[resourceType];
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (!tableBody) return;
+
+    // Get the table container
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    
+    // Remove existing "Load More" button if it exists
+    const existingLoadMore = tableContainer.querySelector('.load-more-container');
+    if (existingLoadMore) {
+        existingLoadMore.remove();
+    }
+    
+    // Calculate how many items to show
+    const itemsToShow = items.slice(0, currentPage * pageSize);
+    
+    // Clear the table body and render items
+    tableBody.innerHTML = '';
+    
+    if (itemsToShow.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                    <i class="fas fa-info-circle me-2"></i> No resources found
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    itemsToShow.forEach(item => {
+        const row = document.createElement('tr');
+        switch (resourceType) {
+            case 'pods':
+                const resources = getResourceUsage(item);
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
+                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
+                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+            // ... other resource cases
+        }
+        tableBody.appendChild(row);
+    });
+    
+    // Check if we need to show the "Load More" button
+    if (itemsToShow.length < items.length) {
+        const loadMoreContainer = document.createElement('div');
+        loadMoreContainer.className = 'load-more-container text-center mt-3 mb-2';
+        loadMoreContainer.innerHTML = `
+            <button class="btn btn-outline-primary load-more-btn">
+                <i class="fas fa-chevron-down me-1"></i> 
+                Load More (showing ${itemsToShow.length} of ${items.length})
+            </button>
+        `;
+        tableContainer.appendChild(loadMoreContainer);
+        
+        // Add event listener to load more button
+        const loadMoreBtn = loadMoreContainer.querySelector('.load-more-btn');
+        loadMoreBtn.addEventListener('click', () => {
+            window.app.state.resources[resourceType].currentPage++;
+            renderCurrentPage(resourceType);
+        });
+    }
+    
+    // Initialize all dropdowns
+    setTimeout(() => {
+        const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }, 100);
+}
 
 // Modify the filterResources function to work with load more approach
 function filterResources(resourceType) {
@@ -1897,378 +3223,6 @@ function addSortingToResourceTable(resourceType) {
         if (!header.querySelector('.sort-icon')) {
             const text = header.textContent;
             header.innerHTML = `${text} <i class="sort-icon"></i>`;
-        }
-    });
-}
-
-// Initialize the GPU Dashboard with high GPU utilization namespaces and pods with GPUs
-function initializeGpuDashboard() {
-    console.log('Initializing GPU Dashboard...');
-    
-    // Set up refresh button
-    const refreshButton = document.getElementById('refreshGPUDashboard');
-    if (refreshButton) {
-        refreshButton.addEventListener('click', function() {
-            refreshGpuDashboard();
-        });
-    }
-    
-    // Initial load
-    loadGpuDashboardData();
-}
-
-// Load data for both GPU dashboard tables
-function loadGpuDashboardData() {
-    // Load high GPU namespaces
-    loadHighGpuNamespaces();
-    
-    // Load pods with GPUs
-    loadPodsWithGpus();
-}
-
-// Refresh both tables
-function refreshGpuDashboard() {
-    // Show loading indicators
-    document.getElementById('highGpuNamespacesTableBody').innerHTML = `
-        <tr>
-            <td colspan="4" class="text-center py-3 text-muted">
-                <div class="spinner-border spinner-border-sm me-2" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                Refreshing namespaces...
-            </td>
-        </tr>
-    `;
-    
-    document.getElementById('gpuPodsTableBody').innerHTML = `
-        <tr>
-            <td colspan="5" class="text-center py-3 text-muted">
-                <div class="spinner-border spinner-border-sm me-2" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                Refreshing pods...
-            </td>
-        </tr>
-    `;
-    
-    // Reload the data
-    loadGpuDashboardData();
-}
-
-// Load and display namespaces with high GPU utilization
-function loadHighGpuNamespaces() {
-    fetch('/get_namespace_details')
-        .then(response => response.json())
-        .then(data => {
-            if (data.namespaces) {
-                // Filter namespaces with GPU usage > 0
-                const gpuNamespaces = data.namespaces.filter(ns => ns.resources.gpu > 0);
-                
-                // Sort by GPU usage (highest first)
-                gpuNamespaces.sort((a, b) => b.resources.gpu - a.resources.gpu);
-                
-                // Update count badge
-                document.getElementById('highGpuNamespacesCount').textContent = gpuNamespaces.length;
-                
-                // Render namespaces table
-                renderHighGpuNamespaces(gpuNamespaces);
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching namespace details:', error);
-            document.getElementById('highGpuNamespacesTableBody').innerHTML = `
-                <tr>
-                    <td colspan="4" class="text-center py-3 text-danger">
-                        <i class="fas fa-exclamation-circle me-2"></i>
-                        Error loading namespace data
-                    </td>
-                </tr>
-            `;
-        });
-}
-
-// Render the high GPU utilization namespaces table
-function renderHighGpuNamespaces(namespaces) {
-    const tableBody = document.getElementById('highGpuNamespacesTableBody');
-    
-    // Clear table
-    tableBody.innerHTML = '';
-    
-    if (namespaces.length === 0) {
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="4" class="text-center py-3 text-muted">
-                    <i class="fas fa-info-circle me-2"></i>
-                    No namespaces with GPU usage found
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    // Add rows for each namespace
-    namespaces.forEach(ns => {
-        const row = document.createElement('tr');
-        
-        // Namespace name
-        const nameCell = document.createElement('td');
-        nameCell.innerHTML = `<span class="fw-medium">${ns.name}</span>`;
-        row.appendChild(nameCell);
-        
-        // Pod count
-        const podCountCell = document.createElement('td');
-        podCountCell.className = 'text-center';
-        podCountCell.innerHTML = `<span class="badge bg-secondary">${ns.podCount}</span>`;
-        row.appendChild(podCountCell);
-        
-        // GPU usage
-        const gpuCell = document.createElement('td');
-        gpuCell.className = 'text-center';
-        
-        // Use different colors based on usage
-        let badgeClass = 'bg-success';
-        if (ns.resources.gpu > 4) {
-            badgeClass = 'bg-danger';
-        } else if (ns.resources.gpu > 2) {
-            badgeClass = 'bg-warning';
-        }
-        
-        gpuCell.innerHTML = `<span class="badge ${badgeClass}">${ns.resources.gpu}</span>`;
-        row.appendChild(gpuCell);
-        
-        // Actions
-        const actionsCell = document.createElement('td');
-        actionsCell.className = 'text-center';
-        actionsCell.innerHTML = `
-            <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-outline-primary" onclick="openNamespaceModal('${ns.name}')">
-                    <i class="fas fa-info-circle"></i>
-                </button>
-                <button type="button" class="btn btn-outline-secondary" onclick="applyNamespaceFilter('${ns.name}')">
-                    <i class="fas fa-filter"></i>
-                </button>
-            </div>
-        `;
-        row.appendChild(actionsCell);
-        
-        tableBody.appendChild(row);
-    });
-}
-
-// Filter by namespace - function called from the namespace GPU table
-function applyNamespaceFilter(namespace) {
-    // Find all namespace selectors and set them to this namespace
-    const selectors = document.querySelectorAll('select[id$="Namespace"]');
-    selectors.forEach(selector => {
-        if (selector.querySelector(`option[value="${namespace}"]`)) {
-            selector.value = namespace;
-            
-            // Trigger change event to reload the data
-            const event = new Event('change');
-            selector.dispatchEvent(event);
-        }
-    });
-    
-    // Show a toast notification
-    Swal.fire({
-        toast: true,
-        position: 'top-end',
-        icon: 'info',
-        title: `Filtered to namespace: ${namespace}`,
-        showConfirmButton: false,
-        timer: 3000
-    });
-}
-
-// Load and display pods with GPUs assigned
-function loadPodsWithGpus() {
-    fetch('/get_resources', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: 'resource_type=pods'
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.data && data.data.items) {
-                // Filter pods with GPU requests
-                const gpuPods = [];
-                
-                data.data.items.forEach(pod => {
-                    let gpuCount = 0;
-                    
-                    // Check each container for GPU resources
-                    if (pod.spec && pod.spec.containers) {
-                        pod.spec.containers.forEach(container => {
-                            if (container.resources) {
-                                // Check for nvidia.com/gpu in both requests and limits
-                                if (container.resources.requests && container.resources.requests['nvidia.com/gpu']) {
-                                    gpuCount += parseFloat(container.resources.requests['nvidia.com/gpu']);
-                                }
-                                if (container.resources.limits && container.resources.limits['nvidia.com/gpu']) {
-                                    // Use the larger value between requests and limits
-                                    gpuCount = Math.max(gpuCount, parseFloat(container.resources.limits['nvidia.com/gpu']));
-                                }
-                            }
-                        });
-                    }
-                    
-                    if (gpuCount > 0) {
-                        gpuPods.push({
-                            name: pod.metadata.name,
-                            namespace: pod.metadata.namespace,
-                            gpuCount: gpuCount,
-                            status: pod.status ? pod.status.phase : 'Unknown'
-                        });
-                    }
-                });
-                
-                // Sort by GPU count (highest first)
-                gpuPods.sort((a, b) => b.gpuCount - a.gpuCount);
-                
-                // Update count badge
-                document.getElementById('gpuPodsCount').textContent = gpuPods.length;
-                
-                // Render pods table
-                renderGpuPods(gpuPods);
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching pods:', error);
-            document.getElementById('gpuPodsTableBody').innerHTML = `
-                <tr>
-                    <td colspan="5" class="text-center py-3 text-danger">
-                        <i class="fas fa-exclamation-circle me-2"></i>
-                        Error loading pod data
-                    </td>
-                </tr>
-            `;
-        });
-}
-
-// Render the pods with GPUs table
-function renderGpuPods(pods) {
-    const tableBody = document.getElementById('gpuPodsTableBody');
-    
-    // Clear table
-    tableBody.innerHTML = '';
-    
-    if (pods.length === 0) {
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="5" class="text-center py-3 text-muted">
-                    <i class="fas fa-info-circle me-2"></i>
-                    No pods with GPU resources found
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    // Add rows for each pod
-    pods.forEach(pod => {
-        const row = document.createElement('tr');
-        
-        // Pod name
-        const nameCell = document.createElement('td');
-        nameCell.innerHTML = `<span class="fw-medium">${pod.name}</span>`;
-        row.appendChild(nameCell);
-        
-        // Namespace
-        const namespaceCell = document.createElement('td');
-        namespaceCell.innerHTML = pod.namespace;
-        row.appendChild(namespaceCell);
-        
-        // GPU count
-        const gpuCell = document.createElement('td');
-        gpuCell.className = 'text-center';
-        
-        // Use different colors based on usage
-        let badgeClass = 'bg-success';
-        if (pod.gpuCount > 4) {
-            badgeClass = 'bg-danger';
-        } else if (pod.gpuCount > 2) {
-            badgeClass = 'bg-warning';
-        }
-        
-        gpuCell.innerHTML = `<span class="badge ${badgeClass}">${pod.gpuCount}</span>`;
-        row.appendChild(gpuCell);
-        
-        // Status
-        const statusCell = document.createElement('td');
-        statusCell.className = 'text-center';
-        
-        let statusIcon, statusClass;
-        switch (pod.status) {
-            case 'Running':
-                statusIcon = 'fa-check-circle';
-                statusClass = 'text-success';
-                break;
-            case 'Pending':
-                statusIcon = 'fa-clock';
-                statusClass = 'text-warning';
-                break;
-            case 'Succeeded':
-                statusIcon = 'fa-flag-checkered';
-                statusClass = 'text-info';
-                break;
-            case 'Failed':
-                statusIcon = 'fa-times-circle';
-                statusClass = 'text-danger';
-                break;
-            default:
-                statusIcon = 'fa-question-circle';
-                statusClass = 'text-secondary';
-        }
-        
-        statusCell.innerHTML = `
-            <span class="${statusClass}">
-                <i class="fas ${statusIcon}" title="${pod.status}"></i>
-                ${pod.status}
-            </span>
-        `;
-        row.appendChild(statusCell);
-        
-        // Actions
-        const actionsCell = document.createElement('td');
-        actionsCell.className = 'text-center';
-        actionsCell.innerHTML = createActionButton('pods', pod.namespace, pod.name);
-        row.appendChild(actionsCell);
-        
-        tableBody.appendChild(row);
-    });
-}
-
-// Resources page initialization
-function initializeResourcesPage() {
-    console.log('Initializing resources page...');
-    
-    // Add controls to each resource tab
-    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
-    resourceTypes.forEach(resourceType => {
-        // Add "resources-" prefix to all IDs in the Resources page
-        const resourcesId = `resources-${resourceType}`;
-        addResourceControls(resourcesId);
-        
-        // Set up tab click handlers to load data on demand
-        const tabElement = document.querySelector(`#${resourcesId}-tab`);
-        if (tabElement) {
-            tabElement.addEventListener('click', () => {
-                console.log(`Resources tab ${resourceType} clicked, fetching fresh data...`);
-                
-                // Get current namespace selection (with resources- prefix)
-                const namespaceSelector = document.getElementById(`${resourcesId}Namespace`);
-                const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
-                
-                // Force fetch by clearing the cached state
-                if (window.loadedResources) {
-                    window.loadedResources[resourcesId] = false;
-                }
-                
-                // Fetch data for this resource type
-                fetchResourceData(resourcesId, currentNamespace);
-            });
         }
     });
 }
