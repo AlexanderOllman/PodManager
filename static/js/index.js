@@ -226,11 +226,13 @@ function initializeTerminal() {
         try {
             console.log('Initializing terminal...');
             
-            // Create terminal with basic settings
+            // Create terminal with FitAddon for proper sizing
             const terminal = new Terminal({
                 cursorBlink: true,
                 fontFamily: 'monospace',
                 fontSize: 14,
+                convertEol: true,
+                scrollback: 1000,
                 theme: {
                     background: '#000000',
                     foreground: '#ffffff'
@@ -258,48 +260,64 @@ function initializeTerminal() {
             terminal.onKey(({ key, domEvent }) => {
                 const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.ctrlKey && !domEvent.metaKey;
                 
+                // Handle special keys
                 if (domEvent.keyCode === 13) { // Enter key
-                    terminal.write('\r\n');
+                    // Send command to server
                     if (currentLine.trim()) {
+                        // Add to history
                         commandHistory.push(currentLine);
                         historyIndex = commandHistory.length;
+                        
+                        // Execute command via REST API
                         executeCliCommand(currentLine);
+                        
+                        // Visual feedback
+                        terminal.write('\r\n');
                         currentLine = '';
                     } else {
-                        terminal.write('$ ');
+                        // Empty command, just show new prompt
+                        terminal.write('\r\n$ ');
                     }
                 } else if (domEvent.keyCode === 8) { // Backspace
                     if (currentLine.length > 0) {
                         currentLine = currentLine.slice(0, -1);
-                        terminal.write('\b \b');
+                        terminal.write('\b \b'); // Erase character
                     }
-                } else if (domEvent.keyCode === 38) { // Up arrow
-                    if (historyIndex > 0 && commandHistory.length > 0) {
+                } else if (domEvent.keyCode === 38) { // Up arrow - history
+                    if (historyIndex > 0) {
                         historyIndex--;
+                        // Clear current line
                         terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                        // Display command from history
                         currentLine = commandHistory[historyIndex];
                         terminal.write(currentLine);
                     }
-                } else if (domEvent.keyCode === 40) { // Down arrow
+                } else if (domEvent.keyCode === 40) { // Down arrow - history
                     if (historyIndex < commandHistory.length - 1) {
                         historyIndex++;
+                        // Clear current line
                         terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                        // Display next command from history
                         currentLine = commandHistory[historyIndex];
                         terminal.write(currentLine);
                     } else if (historyIndex === commandHistory.length - 1) {
                         historyIndex = commandHistory.length;
+                        // Clear current line
                         terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
                         currentLine = '';
                     }
                 } else if (printable) {
+                    // Regular printable character
                     currentLine += key;
                     terminal.write(key);
                 }
             });
             
-            console.log('Terminal initialized successfully');
+            console.log('Terminal initialized successfully with REST mode');
         } catch (error) {
             console.error('Failed to initialize terminal:', error);
+            const terminalElement = document.getElementById('terminal');
+            terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
         }
     }
 }
@@ -321,16 +339,14 @@ function executeCliCommand(command) {
     .then(data => {
         if (data.output) {
             window.app.terminal.writeln(data.output);
-        } else if (data.error) {
-            window.app.terminal.writeln(`Error: ${data.error}`);
         } else {
             window.app.terminal.writeln('Command executed with no output.');
         }
         window.app.terminal.write('\r\n$ ');
     })
     .catch(error => {
-        console.error('Error executing command:', error);
-        window.app.terminal.writeln(`Error: ${error.message}`);
+        console.error('Error:', error);
+        window.app.terminal.writeln('Error executing command.');
         window.app.terminal.write('\r\n$ ');
     });
 }
@@ -1272,71 +1288,71 @@ function fetchEvents(namespace) {
 }
 
 // GitHub update function
-// function updateFromGithub() {
-//     const repoUrl = document.getElementById('githubRepo').value;
-//     const statusDiv = document.getElementById('updateStatus');
+function updateFromGithub() {
+    const repoUrl = document.getElementById('githubRepo').value;
+    const statusDiv = document.getElementById('updateStatus');
     
-//     if (!statusDiv) return;
+    if (!statusDiv) return;
     
-//     statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
+    statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
     
-//     // First update from GitHub
-//     fetch('/update_from_github', {
-//         method: 'POST',
-//         headers: {
-//             'Content-Type': 'application/json',
-//         },
-//         body: JSON.stringify({
-//             repo_url: repoUrl
-//         })
-//     })
-//     .then(response => response.json())
-//     .then(data => {
-//         if (data.status === 'success') {
-//             statusDiv.innerHTML = 'Update successful. Initiating application restart...';
+    // First update from GitHub
+    fetch('/update_from_github', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            repo_url: repoUrl
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            statusDiv.innerHTML = 'Update successful. Initiating application restart...';
             
-//             // Then restart the application
-//             fetch('/restart', {
-//                 method: 'POST'
-//             })
-//             .then(response => {
-//                 if (response.ok) {
-//                     return response.json();
-//                 } else {
-//                     // If the server is already restarting, we might get an error response
-//                     // This is normal, so handle it gracefully
-//                     statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
-//                     waitForApplicationRestart(statusDiv);
-//                     throw new Error('restart_in_progress');
-//                 }
-//             })
-//             .then(data => {
-//                 if (data.status === 'success') {
-//                     statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
-//                     waitForApplicationRestart(statusDiv);
-//                 }
-//             })
-//             .catch(error => {
-//                 if (error.message !== 'restart_in_progress') {
-//                     console.error('Error during restart:', error);
-//                     statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
-//                     waitForApplicationRestart(statusDiv);
-//                 }
-//             });
-//         } else {
-//             statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
-//             throw new Error(data.message);
-//         }
-//     })
-//     .catch(error => {
-//         if (error.message !== 'restart_in_progress') {
-//             console.error('Error:', error);
-//             if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
-//                 statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-//             }
-//         }
-//     });
-// }
+            // Then restart the application
+            fetch('/restart', {
+                method: 'POST'
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    // If the server is already restarting, we might get an error response
+                    // This is normal, so handle it gracefully
+                    statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
+                    waitForApplicationRestart(statusDiv);
+                    throw new Error('restart_in_progress');
+                }
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
+                    waitForApplicationRestart(statusDiv);
+                }
+            })
+            .catch(error => {
+                if (error.message !== 'restart_in_progress') {
+                    console.error('Error during restart:', error);
+                    statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
+                    waitForApplicationRestart(statusDiv);
+                }
+            });
+        } else {
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
+            throw new Error(data.message);
+        }
+    })
+    .catch(error => {
+        if (error.message !== 'restart_in_progress') {
+            console.error('Error:', error);
+            if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
+                statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            }
+        }
+    });
+}
 
 // Application refresh function (for the refresh button)
 function refreshApplication() {
@@ -3210,41 +3226,3 @@ function addSortingToResourceTable(resourceType) {
         }
     });
 }
-
-// Check terminal health and reinitialize if needed
-function checkTerminalHealth() {
-    // Check if we have a terminal instance but it's not properly working
-    if (window.app && window.app.terminal) {
-        try {
-            // Test if we can write to the terminal
-            window.app.terminal.write('');
-            console.log('Terminal check: Terminal is responsive');
-        } catch (error) {
-            console.error('Terminal check: Terminal is not responsive, reinitializing...', error);
-            // Reinitialize terminal
-            const terminalElement = document.getElementById('terminal');
-            if (terminalElement) {
-                // Clear the terminal element
-                terminalElement.innerHTML = '';
-                // Reinitialize
-                initializeTerminal();
-            }
-        }
-    } else if (document.getElementById('terminal')) {
-        // Terminal element exists but no terminal instance
-        console.log('Terminal check: No terminal instance, initializing...');
-        initializeTerminal();
-    }
-}
-
-// Add terminal check when CLI tab is clicked
-document.addEventListener('DOMContentLoaded', function() {
-    const cliTab = document.querySelector('a[data-bs-target="#cli"]');
-    if (cliTab) {
-        cliTab.addEventListener('click', function() {
-            console.log('CLI tab clicked, checking terminal...');
-            // Short delay to allow tab content to become visible
-            setTimeout(checkTerminalHealth, 100);
-        });
-    }
-});

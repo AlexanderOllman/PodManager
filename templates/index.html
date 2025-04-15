@@ -786,22 +786,5 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-
-// Initialize or reinitialize terminal when CLI tab is shown
-document.addEventListener('DOMContentLoaded', function() {
-    const cliTab = document.querySelector('a[data-bs-target="#cli"]');
-    if (cliTab) {
-        cliTab.addEventListener('shown.bs.tab', function (e) {
-            console.log('CLI tab shown, initializing terminal...');
-            // Remove existing terminal if any
-            const terminalElement = document.getElementById('terminal');
-            if (terminalElement) {
-                terminalElement.innerHTML = '';
-                // Initialize a new terminal
-                initializeTerminal();
-            }
-        });
-    }
-});
 </script>
 {% endblock %}
