@@ -226,13 +226,11 @@ function initializeTerminal() {
         try {
             console.log('Initializing terminal...');
             
-            // Create terminal with FitAddon for proper sizing
+            // Create terminal with basic settings
             const terminal = new Terminal({
                 cursorBlink: true,
                 fontFamily: 'monospace',
                 fontSize: 14,
-                convertEol: true,
-                scrollback: 1000,
                 theme: {
                     background: '#000000',
                     foreground: '#ffffff'
@@ -260,66 +258,48 @@ function initializeTerminal() {
             terminal.onKey(({ key, domEvent }) => {
                 const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.ctrlKey && !domEvent.metaKey;
                 
-                // Handle special keys
                 if (domEvent.keyCode === 13) { // Enter key
-                    // Send command to server
+                    terminal.write('\r\n');
                     if (currentLine.trim()) {
-                        // Add to history
                         commandHistory.push(currentLine);
                         historyIndex = commandHistory.length;
-                        
-                        // Execute command via REST API
                         executeCliCommand(currentLine);
-                        
-                        // Visual feedback
-                        terminal.write('\r\n');
                         currentLine = '';
                     } else {
-                        // Empty command, just show new prompt
-                        terminal.write('\r\n$ ');
+                        terminal.write('$ ');
                     }
                 } else if (domEvent.keyCode === 8) { // Backspace
                     if (currentLine.length > 0) {
                         currentLine = currentLine.slice(0, -1);
-                        terminal.write('\b \b'); // Erase character
+                        terminal.write('\b \b');
                     }
-                } else if (domEvent.keyCode === 38) { // Up arrow - history
-                    if (historyIndex > 0) {
+                } else if (domEvent.keyCode === 38) { // Up arrow
+                    if (historyIndex > 0 && commandHistory.length > 0) {
                         historyIndex--;
-                        // Clear current line
                         terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                        // Display command from history
                         currentLine = commandHistory[historyIndex];
                         terminal.write(currentLine);
                     }
-                } else if (domEvent.keyCode === 40) { // Down arrow - history
+                } else if (domEvent.keyCode === 40) { // Down arrow
                     if (historyIndex < commandHistory.length - 1) {
                         historyIndex++;
-                        // Clear current line
                         terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                        // Display next command from history
                         currentLine = commandHistory[historyIndex];
                         terminal.write(currentLine);
                     } else if (historyIndex === commandHistory.length - 1) {
                         historyIndex = commandHistory.length;
-                        // Clear current line
                         terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
                         currentLine = '';
                     }
                 } else if (printable) {
-                    // Regular printable character
                     currentLine += key;
                     terminal.write(key);
                 }
             });
             
-            console.log('Terminal initialized successfully with REST mode');
+            console.log('Terminal initialized successfully');
         } catch (error) {
             console.error('Failed to initialize terminal:', error);
-            const terminalElement = document.getElementById('terminal');
-            if (terminalElement) {
-                terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
-            }
         }
     }
 }
@@ -327,9 +307,6 @@ function initializeTerminal() {
 // Function to execute commands via REST API
 function executeCliCommand(command) {
     if (!command) return;
-    
-    // Show loading indicator in terminal
-    window.app.terminal.write('\r\nExecuting command...');
     
     fetch('/api/cli/exec', {
         method: 'POST',
@@ -340,17 +317,8 @@ function executeCliCommand(command) {
             command: command
         })
     })
-    .then(response => {
-        // Check if response is ok before processing JSON
-        if (!response.ok) {
-            throw new Error(`Server responded with status: ${response.status}`);
-        }
-        return response.json();
-    })
+    .then(response => response.json())
     .then(data => {
-        // Clear the loading message
-        window.app.terminal.write('\r\x1b[2K');
-        
         if (data.output) {
             window.app.terminal.writeln(data.output);
         } else if (data.error) {
@@ -362,9 +330,7 @@ function executeCliCommand(command) {
     })
     .catch(error => {
         console.error('Error executing command:', error);
-        // Clear the loading message
-        window.app.terminal.write('\r\x1b[2K');
-        window.app.terminal.writeln(`\r\nError: ${error.message}`);
+        window.app.terminal.writeln(`Error: ${error.message}`);
         window.app.terminal.write('\r\n$ ');
     });
 }

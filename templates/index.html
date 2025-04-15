@@ -521,7 +521,7 @@
             <button class="btn btn-primary" onclick="updateFromGithub()">Update from GitHub</button>
              -->
             <!-- New Refresh Button Section -->
-            <div class="mt-4 border-top pt-3">
+            <div class="mt-4 pt-3 mb-4">
                 <h4>Application Refresh</h4>
                 <p class="text-muted">
                     This will stop the application, perform a hard pull on the GitHub repository, 
@@ -783,6 +783,23 @@ document.addEventListener('DOMContentLoaded', function() {
     if (chartsTab) {
         chartsTab.addEventListener('shown.bs.tab', function (e) {
             refreshCharts();
+        });
+    }
+});
+
+// Initialize or reinitialize terminal when CLI tab is shown
+document.addEventListener('DOMContentLoaded', function() {
+    const cliTab = document.querySelector('a[data-bs-target="#cli"]');
+    if (cliTab) {
+        cliTab.addEventListener('shown.bs.tab', function (e) {
+            console.log('CLI tab shown, initializing terminal...');
+            // Remove existing terminal if any
+            const terminalElement = document.getElementById('terminal');
+            if (terminalElement) {
+                terminalElement.innerHTML = '';
+                // Initialize a new terminal
+                initializeTerminal();
+            }
         });
     }
 });

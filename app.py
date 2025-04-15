@@ -753,19 +753,26 @@ def api_cli_exec():
         
         if not command:
             return jsonify({"error": "Missing command parameter"}), 400
-         
-        app.logger.info(f"Executing CLI command: {command}")
             
-        # Run the command directly in the current environment
-        result = run_kubectl_command(command)
+        # Run the command directly using subprocess
+        result = subprocess.run(
+            command, 
+            shell=True, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+            timeout=30
+        )
         
-        # Log success for debugging
-        app.logger.info(f"Command executed successfully with output length: {len(result)}")
-        
-        return jsonify({"output": result})
+        # Get output from both stdout and stderr
+        output = result.stdout.decode('utf-8')
+        if result.stderr:
+            output += result.stderr.decode('utf-8')
+            
+        return jsonify({"output": output})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Command timed out after 30 seconds"}), 500
     except Exception as e:
-        app.logger.error(f"Error in api_cli_exec: {str(e)}")
-        return jsonify({"error": f"Error executing command: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/charts/list', methods=['GET'])
 def list_charts():
