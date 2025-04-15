@@ -43,10 +43,29 @@ github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/Alexande
 
 def run_kubectl_command(command):
     try:
-        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return result.stdout.decode('utf-8')
+        app.logger.debug(f"Executing kubectl command: {command}")
+        # Add timeout and ensure both stdout and stderr are captured
+        result = subprocess.run(
+            command, 
+            shell=True, 
+            check=True, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+            timeout=30  # Add 30 second timeout
+        )
+        output = result.stdout.decode('utf-8')
+        app.logger.debug(f"Command executed successfully, output length: {len(output)}")
+        return output
     except subprocess.CalledProcessError as e:
-        return f"Error: {e.stderr.decode('utf-8')}"
+        error_output = e.stderr.decode('utf-8')
+        app.logger.error(f"Command failed with exit code {e.returncode}: {error_output}")
+        return f"Error: {error_output}"
+    except subprocess.TimeoutExpired:
+        app.logger.error(f"Command timed out after 30 seconds: {command}")
+        return "Error: Command timed out after 30 seconds"
+    except Exception as e:
+        app.logger.error(f"Unexpected error executing command: {str(e)}")
+        return f"Error: {str(e)}"
 
 @app.route('/')
 def index():
@@ -734,13 +753,19 @@ def api_cli_exec():
         
         if not command:
             return jsonify({"error": "Missing command parameter"}), 400
+         
+        app.logger.info(f"Executing CLI command: {command}")
             
         # Run the command directly in the current environment
         result = run_kubectl_command(command)
+        
+        # Log success for debugging
+        app.logger.info(f"Command executed successfully with output length: {len(result)}")
+        
         return jsonify({"output": result})
     except Exception as e:
         app.logger.error(f"Error in api_cli_exec: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Error executing command: {str(e)}"}), 500
 
 @app.route('/api/charts/list', methods=['GET'])
 def list_charts():

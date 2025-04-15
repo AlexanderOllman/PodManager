@@ -317,7 +317,9 @@ function initializeTerminal() {
         } catch (error) {
             console.error('Failed to initialize terminal:', error);
             const terminalElement = document.getElementById('terminal');
-            terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
+            if (terminalElement) {
+                terminalElement.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal: ' + error.message + '</div>';
+            }
         }
     }
 }
@@ -325,6 +327,9 @@ function initializeTerminal() {
 // Function to execute commands via REST API
 function executeCliCommand(command) {
     if (!command) return;
+    
+    // Show loading indicator in terminal
+    window.app.terminal.write('\r\nExecuting command...');
     
     fetch('/api/cli/exec', {
         method: 'POST',
@@ -335,18 +340,31 @@ function executeCliCommand(command) {
             command: command
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        // Check if response is ok before processing JSON
+        if (!response.ok) {
+            throw new Error(`Server responded with status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
+        // Clear the loading message
+        window.app.terminal.write('\r\x1b[2K');
+        
         if (data.output) {
             window.app.terminal.writeln(data.output);
+        } else if (data.error) {
+            window.app.terminal.writeln(`Error: ${data.error}`);
         } else {
             window.app.terminal.writeln('Command executed with no output.');
         }
         window.app.terminal.write('\r\n$ ');
     })
     .catch(error => {
-        console.error('Error:', error);
-        window.app.terminal.writeln('Error executing command.');
+        console.error('Error executing command:', error);
+        // Clear the loading message
+        window.app.terminal.write('\r\x1b[2K');
+        window.app.terminal.writeln(`\r\nError: ${error.message}`);
         window.app.terminal.write('\r\n$ ');
     });
 }
@@ -3226,3 +3244,41 @@ function addSortingToResourceTable(resourceType) {
         }
     });
 }
+
+// Check terminal health and reinitialize if needed
+function checkTerminalHealth() {
+    // Check if we have a terminal instance but it's not properly working
+    if (window.app && window.app.terminal) {
+        try {
+            // Test if we can write to the terminal
+            window.app.terminal.write('');
+            console.log('Terminal check: Terminal is responsive');
+        } catch (error) {
+            console.error('Terminal check: Terminal is not responsive, reinitializing...', error);
+            // Reinitialize terminal
+            const terminalElement = document.getElementById('terminal');
+            if (terminalElement) {
+                // Clear the terminal element
+                terminalElement.innerHTML = '';
+                // Reinitialize
+                initializeTerminal();
+            }
+        }
+    } else if (document.getElementById('terminal')) {
+        // Terminal element exists but no terminal instance
+        console.log('Terminal check: No terminal instance, initializing...');
+        initializeTerminal();
+    }
+}
+
+// Add terminal check when CLI tab is clicked
+document.addEventListener('DOMContentLoaded', function() {
+    const cliTab = document.querySelector('a[data-bs-target="#cli"]');
+    if (cliTab) {
+        cliTab.addEventListener('click', function() {
+            console.log('CLI tab clicked, checking terminal...');
+            // Short delay to allow tab content to become visible
+            setTimeout(checkTerminalHealth, 100);
+        });
+    }
+});
