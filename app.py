@@ -11,7 +11,6 @@ import time
 import signal
 import atexit
 import psutil
-import traceback
 
 # We'll check for git availability at runtime rather than import time
 git_available = False
@@ -42,30 +41,12 @@ socketio = SocketIO(
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
 
-def run_kubectl_command(command, timeout=30):
+def run_kubectl_command(command):
     try:
-        app.logger.debug(f"Running kubectl command: {command}")
-        result = subprocess.run(
-            command, 
-            shell=True, 
-            check=True, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE,
-            timeout=timeout  # Add timeout to prevent hanging
-        )
-        output = result.stdout.decode('utf-8')
-        app.logger.debug(f"Command completed successfully, output length: {len(output)}")
-        return output
+        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return result.stdout.decode('utf-8')
     except subprocess.CalledProcessError as e:
-        error_output = e.stderr.decode('utf-8')
-        app.logger.error(f"Command failed with exit code {e.returncode}: {error_output}")
-        return f"Error: {error_output}"
-    except subprocess.TimeoutExpired as e:
-        app.logger.error(f"Command timed out after {timeout} seconds: {command}")
-        return f"Error: Command timed out after {timeout} seconds"
-    except Exception as e:
-        app.logger.error(f"Unexpected error running command: {str(e)}", exc_info=True)
-        return f"Error: {str(e)}"
+        return f"Error: {e.stderr.decode('utf-8')}"
 
 @app.route('/')
 def index():
@@ -164,14 +145,19 @@ def run_action():
     return jsonify(format='text', output=output)
 
 def run_command(command, sid):
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
     while True:
         output = process.stdout.readline()
-        if output == b'' and process.poll() is not None:
+        if output == '' and process.poll() is not None:
             break
         if output:
-            socketio.emit('output', {'data': output.decode('utf-8')}, room=sid)
-    socketio.emit('output', {'data': 'Command finished.'}, room=sid)
+            socketio.emit('terminal_output', {'data': output}, room=sid)
+    
+    error_output = process.stderr.read()
+    if error_output:
+        socketio.emit('terminal_output', {'data': f"\nError: {error_output}", 'error': True}, room=sid)
+    
+    socketio.emit('terminal_output', {'data': '\nCommand completed.', 'complete': True}, room=sid)
 
 @app.route('/run_cli_command', methods=['POST'])
 def run_cli_command():
@@ -744,6 +730,28 @@ def get_cluster_capacity():
             "error": str(e)
         }), 500
 
+@socketio.on('connect')
+def handle_connect():
+    print(f'Client connected: {request.sid}')
+    return None
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f'Client disconnected: {request.sid}')
+    return None
+
+@socketio.on('terminal_command')
+def handle_terminal_command(data):
+    command = data.get('command', '')
+    if not command:
+        return
+    
+    print(f"Executing command: {command}")
+    sid = request.sid
+    thread = threading.Thread(target=run_command, args=(command, sid))
+    thread.daemon = True
+    thread.start()
+
 @app.route('/api/cli/exec', methods=['POST'])
 def api_cli_exec():
     try:
@@ -751,30 +759,15 @@ def api_cli_exec():
         data = request.get_json() if request.is_json else request.form
         command = data.get('command', '')
         
-        app.logger.info(f"Received CLI command: {command}")
-        
         if not command:
-            app.logger.warning("Missing command parameter in CLI exec request")
             return jsonify({"error": "Missing command parameter"}), 400
-        
-        # First, check kubectl connectivity
-        check_command = "kubectl version --client"
-        app.logger.info("Checking kubectl connectivity")
-        check_result = subprocess.run(check_command, shell=True, capture_output=True, text=True, timeout=5)
-        
-        if check_result.returncode != 0:
-            app.logger.error(f"kubectl connectivity check failed: {check_result.stderr}")
-            return jsonify({"output": f"Error: kubectl connectivity check failed. Please ensure the service has the correct permissions.\nDetails: {check_result.stderr}"}), 200
-        
-        # Run the command with a shorter timeout for responsiveness
-        app.logger.info(f"Executing kubectl command: {command}")
-        result = run_kubectl_command(command, timeout=15)
-        app.logger.info(f"Command result length: {len(result)}")
-        
+            
+        # Run the command directly in the current environment
+        result = run_kubectl_command(command)
         return jsonify({"output": result})
     except Exception as e:
-        app.logger.error(f"Error in api_cli_exec: {str(e)}", exc_info=True)
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+        app.logger.error(f"Error in api_cli_exec: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/charts/list', methods=['GET'])
 def list_charts():
@@ -870,48 +863,6 @@ def delete_chart():
             'success': False,
             'error': str(e)
         })
-
-@app.route('/api/cli/check_pods', methods=['GET'])
-def api_cli_check_pods():
-    """Check if there are any pods that could be used for CLI access"""
-    try:
-        command = "kubectl get pods --all-namespaces -o json"
-        app.logger.info("Getting pods for potential CLI access")
-        result = run_kubectl_command(command, timeout=10)
-        
-        try:
-            pods_data = json.loads(result)
-            running_pods = []
-            
-            # Look for running pods that might be suitable for CLI access
-            for pod in pods_data.get('items', []):
-                pod_status = pod.get('status', {}).get('phase', '')
-                if pod_status == 'Running':
-                    running_pods.append({
-                        'name': pod.get('metadata', {}).get('name', ''),
-                        'namespace': pod.get('metadata', {}).get('namespace', '')
-                    })
-            
-            # If we found potential pods, return the first one for CLI access
-            if running_pods:
-                return jsonify({
-                    'success': True,
-                    'pod': running_pods[0],
-                    'message': f"Found {len(running_pods)} possible pods for CLI access"
-                })
-            else:
-                return jsonify({
-                    'success': False,
-                    'message': "No running pods found that could be used for CLI access"
-                })
-            
-        except json.JSONDecodeError:
-            app.logger.error("Failed to parse pods JSON")
-            return jsonify({'success': False, 'message': "Failed to parse pods data"})
-            
-    except Exception as e:
-        app.logger.error(f"Error checking for CLI pods: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'message': f"Error checking for pods: {str(e)}"})
 
 # Add error handlers for Socket.IO
 @socketio.on_error_default

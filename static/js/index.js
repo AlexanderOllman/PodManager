@@ -143,12 +143,6 @@ function initializeApp() {
     // Initialize terminal if available
     initializeTerminal();
     
-    // Wire up the kubectl check button if it exists
-    const checkKubectlButton = document.getElementById('checkKubectlButton');
-    if (checkKubectlButton) {
-        checkKubectlButton.addEventListener('click', checkKubectlConnection);
-    }
-    
     // Connect socket event listeners
     connectSocketListeners();
     
@@ -245,11 +239,16 @@ function initializeTerminal() {
                 }
             });
             
+            // Create FitAddon for proper sizing
+            const fitAddon = new FitAddon.FitAddon();
+            terminal.loadAddon(fitAddon);
+            
             // Store terminal in global state
             window.app.terminal = terminal;
             
             // Open terminal
             terminal.open(document.getElementById('terminal'));
+            fitAddon.fit();
             
             // Setup command input handling
             let currentLine = '';
@@ -261,6 +260,40 @@ function initializeTerminal() {
             terminal.writeln('Type commands directly in this window and press Enter to execute.');
             terminal.writeln('');
             terminal.write('$ ');
+            
+            // Ensure the socket is available
+            if (!window.app.socket) {
+                // Create a socket connection if needed
+                window.app.socket = io();
+                
+                console.log('Created new socket connection for terminal');
+                
+                // Set up reconnection logic
+                window.app.socket.on('connect', function() {
+                    console.log('Socket connected');
+                    terminal.writeln('\r\nReconnected to server.');
+                    terminal.write('$ ');
+                });
+                
+                window.app.socket.on('connect_error', function(error) {
+                    console.error('Socket connection error:', error);
+                    terminal.writeln('\r\nConnection error: ' + error);
+                    terminal.write('$ ');
+                });
+            }
+            
+            // Listen for command output
+            window.app.socket.on('terminal_output', function(data) {
+                if (data.data) {
+                    // Display the output
+                    terminal.write(data.data);
+                    
+                    // If command is complete, show a new prompt
+                    if (data.complete) {
+                        terminal.write('\r\n$ ');
+                    }
+                }
+            });
             
             // Handle user input
             terminal.onKey(({ key, domEvent }) => {
@@ -274,8 +307,8 @@ function initializeTerminal() {
                         commandHistory.push(currentLine);
                         historyIndex = commandHistory.length;
                         
-                        // Execute command via REST API
-                        executeCliCommand(currentLine);
+                        // Execute command via WebSocket
+                        window.app.socket.emit('terminal_command', { command: currentLine });
                         
                         // Visual feedback
                         terminal.write('\r\n');
@@ -319,7 +352,12 @@ function initializeTerminal() {
                 }
             });
             
-            console.log('Terminal initialized successfully with REST mode');
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                fitAddon.fit();
+            });
+            
+            console.log('Terminal initialized successfully with WebSocket mode');
         } catch (error) {
             console.error('Failed to initialize terminal:', error);
             const terminalElement = document.getElementById('terminal');
@@ -328,143 +366,41 @@ function initializeTerminal() {
     }
 }
 
-// Function to execute commands via REST API
+// This function is now deprecated as we use WebSockets directly
+// Keeping it for backward compatibility
 function executeCliCommand(command) {
     if (!command) return;
     
-    console.log("Executing CLI command:", command);
-    
-    // Global to track if we're using fallback mode
-    window.app.usingPodFallback = window.app.usingPodFallback || false;
-    
-    // If we already know we need to use the pod fallback, go straight to it
-    if (window.app.usingPodFallback && window.app.fallbackPod) {
-        executeCliCommandViaPod(command);
-        return;
-    }
-    
-    // Try direct CLI execution first
-    fetch('/api/cli/exec', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            command: command
+    // Check if socket is available
+    if (window.app.socket) {
+        // Use WebSocket mode
+        window.app.socket.emit('terminal_command', { command: command });
+    } else {
+        // Fallback to REST API
+        fetch('/api/cli/exec', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                command: command
+            })
         })
-    })
-    .then(response => {
-        console.log("CLI command response status:", response.status);
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        console.log("CLI command response data:", data);
-        
-        // Check if we need to use the fallback approach
-        if (data.output && (data.output.startsWith('Error:') || data.output.includes('connection refused'))) {
-            console.log("Direct CLI execution failed, attempting pod fallback");
-            // Only try fallback if we haven't already tried to find a pod
-            if (!window.app.triedFallback) {
-                window.app.triedFallback = true;
-                findFallbackPod(command);
-            } else {
-                window.app.terminal.writeln("Error: " + data.output);
-                window.app.terminal.write('\r\n$ ');
-            }
-        } else {
-            // Direct CLI execution worked
+        .then(response => response.json())
+        .then(data => {
             if (data.output) {
-                // Split and write each line separately to ensure proper line breaks
-                const lines = data.output.split('\n');
-                for (const line of lines) {
-                    window.app.terminal.writeln(line);
-                }
+                window.app.terminal.writeln(data.output);
             } else {
                 window.app.terminal.writeln('Command executed with no output.');
             }
             window.app.terminal.write('\r\n$ ');
-        }
-    })
-    .catch(error => {
-        console.error('Error executing CLI command:', error);
-        window.app.terminal.writeln(`Error executing command: ${error.message}`);
-        // Try fallback approach if we get an error
-        if (!window.app.triedFallback) {
-            window.app.triedFallback = true;
-            findFallbackPod(command);
-        } else {
-            window.app.terminal.write('\r\n$ ');
-        }
-    });
-}
-
-// Find a pod to use for CLI fallback
-function findFallbackPod(originalCommand) {
-    window.app.terminal.writeln('Direct CLI execution failed, attempting to find a pod for command execution...');
-    
-    fetch('/api/cli/check_pods')
-    .then(response => response.json())
-    .then(data => {
-        if (data.success && data.pod) {
-            // Save the pod details for future commands
-            window.app.fallbackPod = data.pod;
-            window.app.usingPodFallback = true;
-            window.app.terminal.writeln(`Using pod ${data.pod.name} in namespace ${data.pod.namespace} for command execution.`);
-            
-            // Execute the original command via the pod
-            executeCliCommandViaPod(originalCommand);
-        } else {
-            window.app.terminal.writeln('Could not find a suitable pod for command execution. CLI commands may not work properly.');
-            window.app.terminal.write('\r\n$ ');
-        }
-    })
-    .catch(error => {
-        console.error('Error finding fallback pod:', error);
-        window.app.terminal.writeln('Error finding a suitable pod for command execution.');
-        window.app.terminal.write('\r\n$ ');
-    });
-}
-
-// Execute CLI command via a pod
-function executeCliCommandViaPod(command) {
-    if (!window.app.fallbackPod) {
-        window.app.terminal.writeln('Error: No fallback pod available for command execution.');
-        window.app.terminal.write('\r\n$ ');
-        return;
-    }
-    
-    fetch('/api/pod/exec', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            namespace: window.app.fallbackPod.namespace,
-            pod_name: window.app.fallbackPod.name,
-            command: command
         })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.output) {
-            // Split and write each line separately to ensure proper line breaks
-            const lines = data.output.split('\n');
-            for (const line of lines) {
-                window.app.terminal.writeln(line);
-            }
-        } else {
-            window.app.terminal.writeln('Command executed with no output.');
-        }
-        window.app.terminal.write('\r\n$ ');
-    })
-    .catch(error => {
-        console.error('Error executing command via pod:', error);
-        window.app.terminal.writeln('Error executing command via pod.');
-        window.app.terminal.write('\r\n$ ');
-    });
+        .catch(error => {
+            console.error('Error:', error);
+            window.app.terminal.writeln('Error executing command.');
+            window.app.terminal.write('\r\n$ ');
+        });
+    }
 }
 
 // Socket event listeners
@@ -474,6 +410,19 @@ function connectSocketListeners() {
         console.warn('Socket not available for event listeners');
         return;
     }
+    
+    // Terminal output listener
+    socket.on('terminal_output', function(data) {
+        if (window.app.terminal && data.data) {
+            // Handle terminal output
+            window.app.terminal.write(data.data);
+            
+            // If command is complete, show a new prompt
+            if (data.complete) {
+                window.app.terminal.write('\r\n$ ');
+            }
+        }
+    });
     
     // Refresh log listener for the settings page
     const refreshLog = document.getElementById('refreshLog');
@@ -1210,21 +1159,6 @@ function createActionButton(resourceType, namespace, name) {
     `;
 }
 
-// CLI command execution - no longer needed as we type directly in terminal
-function runCliCommand() {
-    // For backward compatibility with any buttons that might still call this
-    const command = document.getElementById('cliCommand');
-    
-    if (command && command.value) {
-        const cmd = command.value.trim();
-        if (cmd) {
-            // Use the new function instead of socket
-            executeCliCommand(cmd);
-            command.value = '';
-        }
-    }
-}
-
 // YAML deployment
 function deployYaml() {
     const fileInput = document.querySelector('.drop-zone__input');
@@ -1497,7 +1431,7 @@ function refreshApplication() {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            repo_url: document.getElementById('githubRepo').value || undefined  // Only send if user provided a value
+            repo_url: undefined // This is a placeholder value, not used in the refresh process
         })
     })
     .then(response => {
@@ -3341,44 +3275,4 @@ function addSortingToResourceTable(resourceType) {
             header.innerHTML = `${text} <i class="sort-icon"></i>`;
         }
     });
-}
-
-// Add just before the initializeTerminal function
-// Check kubectl connectivity
-function checkKubectlConnection() {
-    const statusSpan = document.getElementById('kubectlStatus');
-    
-    if (statusSpan) {
-        statusSpan.innerHTML = '<span class="text-info"><i class="fas fa-spinner fa-spin"></i> Checking connection...</span>';
-        
-        fetch('/api/cli/exec', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                command: 'kubectl version --client'
-            })
-        })
-        .then(response => {
-            console.log("Check kubectl response status:", response.status);
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log("Check kubectl response data:", data);
-            if (data.output && !data.output.startsWith('Error:')) {
-                statusSpan.innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> kubectl connection working</span>';
-            } else {
-                statusSpan.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle"></i> kubectl connection failed</span>';
-                console.error("kubectl check failed:", data.output);
-            }
-        })
-        .catch(error => {
-            console.error('Error checking kubectl:', error);
-            statusSpan.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle"></i> Connection check failed</span>';
-        });
-    }
 }
