@@ -26,9 +26,9 @@
     <!-- Top Navigation Bar -->
     <nav class="navbar top-navbar">
         <div class="container-fluid">
-            <button class="sidebar-toggle" id="sidebarToggle">
+            <!-- <button class="sidebar-toggle" id="sidebarToggle">
                 <i class="fas fa-bars"></i>
-            </button>
+            </button> -->
             <a class="navbar-brand" href="#">
                 <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
                 HPE Private Cloud AI Resource Manager
@@ -57,7 +57,7 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#yaml" onclick="event.preventDefault(); navigateToTab('yaml'); return false;">
-                                <i class="fas fa-file-upload"></i> <span class="menu-text">Apply Manifests</span>
+                                <i class="fas fa-file-upload"></i> <span class="menu-text"> Apply Manifests</span>
                             </a>
                         </li>
                         <li class="nav-item">
@@ -67,7 +67,7 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#charts" onclick="event.preventDefault(); navigateToTab('charts'); return false;">
-                                <i class="fas fa-chart-line"></i> <span class="menu-text">Charts</span>
+                                <i class="fas fa-layer-group"></i> <span class="menu-text">Chart Library</span>
                             </a>
                         </li>
                         <li class="nav-item">
@@ -468,7 +468,7 @@
     {% block page_scripts %}{% endblock %}
 
     <!-- Add sidebar toggle functionality -->
-    <script>
+    <!-- <script>
         // Add sidebar toggle functionality
         document.addEventListener('DOMContentLoaded', function() {
             const sidebarToggle = document.getElementById('sidebarToggle');
@@ -512,7 +512,7 @@
             checkScreenSize();
             window.addEventListener('resize', checkScreenSize);
         });
-    </script>
+    </script> -->
     
     <!-- Utility for executing scripts in dynamically loaded content -->
     <script>
