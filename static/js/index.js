@@ -722,148 +722,208 @@ function filterResources(resourceType) {
 
 // Helper function to render current page
 function renderCurrentPage(resourceType) {
-    const { items, currentPage, pageSize } = window.app.state.resources[resourceType] || {};
-    if (!items) return;
-
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const pageItems = items.slice(startIndex, endIndex);
-
+    const resourceData = window.app.state.resources[resourceType];
+    if (!resourceData || !resourceData.items) {
+        console.error(`No data available for ${resourceType}`);
+        return;
+    }
+    
+    const { items, currentPage, pageSize } = resourceData;
     const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-    if (!tableBody) return;
+    if (!tableBody) {
+        console.error(`Table body not found for ${resourceType}`);
+        return;
+    }
 
-    // Clear existing rows
+    // Get the table container
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    
+    // Remove existing "Load More" button if it exists
+    const existingLoadMore = tableContainer.querySelector('.load-more-container');
+    if (existingLoadMore) {
+        existingLoadMore.remove();
+    }
+    
+    // Calculate how many items to show
+    const itemsToShow = items.slice(0, currentPage * pageSize);
+    
+    // Clear the table body
     tableBody.innerHTML = '';
-
-    // Update pagination info
-    const totalItems = document.querySelector(`#${resourceType}TableContainer .total-items`);
-    const currentPageSpan = document.querySelector(`#${resourceType}TableContainer .current-page`);
-    const pageSizeSpan = document.querySelector(`#${resourceType}TableContainer .page-size`);
-    const prevButton = document.querySelector(`#${resourceType}TableContainer .prev-page`);
-    const nextButton = document.querySelector(`#${resourceType}TableContainer .next-page`);
-
-    if (totalItems) totalItems.textContent = items.length;
-    if (currentPageSpan) currentPageSpan.textContent = startIndex + 1;
-    if (pageSizeSpan) pageSizeSpan.textContent = Math.min(endIndex, items.length);
-    if (prevButton) prevButton.disabled = currentPage === 1;
-    if (nextButton) nextButton.disabled = endIndex >= items.length;
-
-    // Render current page items
-    pageItems.forEach(item => {
+    
+    // If no items, show empty state
+    if (itemsToShow.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                    <i class="fas fa-info-circle me-2"></i> No ${resourceType} found
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    // Render items based on resource type
+    itemsToShow.forEach(item => {
         const row = document.createElement('tr');
+        
         switch (resourceType) {
             case 'pods':
-                const resources = getResourceUsage(item);
+                const podResources = getResourceUsage(item);
                 row.innerHTML = `
                     <td>${item.metadata.namespace}</td>
                     <td>${item.metadata.name}</td>
                     <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
-                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
-                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
+                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${podResources.cpu || '0'}</td>
+                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${podResources.gpu || '0'}</td>
+                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${podResources.memory || '0Mi'}</td>
                     <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                 `;
                 break;
+                
             case 'services':
+                // Get service type and ports
+                const serviceType = item.spec?.type || 'ClusterIP';
+                const clusterIP = item.spec?.clusterIP || '-';
+                const externalIP = item.status?.loadBalancer?.ingress?.[0]?.ip || '-';
+                
+                // Format ports as a string
+                let ports = '';
+                if (item.spec?.ports && item.spec.ports.length > 0) {
+                    ports = item.spec.ports.map(port => {
+                        return `${port.port}${port.targetPort ? ':'+port.targetPort : ''}/${port.protocol || 'TCP'}`;
+                    }).join(', ');
+                } else {
+                    ports = '-';
+                }
+                
+                // Calculate age
+                const creationTime = new Date(item.metadata.creationTimestamp);
+                const now = new Date();
+                const ageInDays = Math.floor((now - creationTime) / (1000 * 60 * 60 * 24));
+                const age = ageInDays > 0 ? `${ageInDays}d` : `${Math.floor((now - creationTime) / (1000 * 60 * 60))}h`;
+                
                 row.innerHTML = `
                     <td>${item.metadata.namespace}</td>
                     <td>${item.metadata.name}</td>
-                    <td>${item.spec.type}</td>
-                    <td>${item.spec.clusterIP}</td>
-                    <td>${item.spec.externalIP || 'N/A'}</td>
-                    <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
-                    <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                    <td>${serviceType}</td>
+                    <td>${clusterIP}</td>
+                    <td>${externalIP}</td>
+                    <td>${ports}</td>
+                    <td>${age}</td>
                     <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                 `;
                 break;
+                
             case 'inferenceservices':
-                // For InferenceServices, get resources from spec.predictor
-                let infResources = { cpu: '0', gpu: '0', memory: '0Mi' };
-                if (item.spec && item.spec.predictor) {
-                    if (item.spec.predictor.tensorflow || item.spec.predictor.triton || 
-                        item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
-                        item.spec.predictor.xgboost || item.spec.predictor.custom) {
-                        // Get the appropriate predictor implementation
-                        const predictorImpl = item.spec.predictor.tensorflow || item.spec.predictor.triton || 
-                                             item.spec.predictor.pytorch || item.spec.predictor.sklearn || 
-                                             item.spec.predictor.xgboost || item.spec.predictor.custom;
-                        
-                        if (predictorImpl.resources) {
-                            if (predictorImpl.resources.requests) {
-                                // CPU
-                                if (predictorImpl.resources.requests.cpu) {
-                                    const cpuReq = predictorImpl.resources.requests.cpu;
-                                    if (cpuReq.endsWith('m')) {
-                                        infResources.cpu = (parseInt(cpuReq.slice(0, -1)) / 1000).toFixed(2);
-        } else {
-                                        infResources.cpu = parseFloat(cpuReq).toFixed(2);
-                                    }
-                                }
-                                
-                                // GPU
-                                if (predictorImpl.resources.requests['nvidia.com/gpu']) {
-                                    infResources.gpu = predictorImpl.resources.requests['nvidia.com/gpu'];
-                                } else if (predictorImpl.resources.requests.gpu) {
-                                    infResources.gpu = predictorImpl.resources.requests.gpu;
-                                }
-                                
-                                // Memory
-                                if (predictorImpl.resources.requests.memory) {
-                                    infResources.memory = predictorImpl.resources.requests.memory;
-                                }
-                            }
-                        }
-                    }
+                // Handle InferenceService rendering
+                const isvcStatus = item.status?.conditions?.[0]?.status === 'True' ? 'Ready' : 'Not Ready';
+                const isvcStatusIcon = isvcStatus === 'Ready' ? 
+                    '<i class="fas fa-check-circle text-success me-1"></i>' : 
+                    '<i class="fas fa-times-circle text-danger me-1"></i>';
+                
+                // Try to extract URL
+                let url = '-';
+                if (item.status?.url) {
+                    url = `<a href="${item.status.url}" target="_blank">${item.status.url}</a>`;
                 }
                 
                 row.innerHTML = `
                     <td>${item.metadata.namespace}</td>
                     <td>${item.metadata.name}</td>
-                    <td>${item.status.url || 'N/A'}</td>
-                    <td>${getStatusIcon(item.status.conditions[0].status)}${item.status.conditions[0].status}</td>
-                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${infResources.cpu}</td>
-                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${infResources.gpu}</td>
-                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${infResources.memory}</td>
-                    <td>${item.status.traffic ? item.status.traffic[0].percent : 'N/A'}</td>
-                    <td>${item.status.traffic && item.status.traffic.length > 1 ? item.status.traffic[1].percent : 'N/A'}</td>
-                    <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                    <td>${url}</td>
+                    <td>${isvcStatusIcon}${isvcStatus}</td>
+                    <td>${getResourceUsage(item).cpu || '-'}</td>
+                    <td>${getResourceUsage(item).gpu || '-'}</td>
+                    <td>${getResourceUsage(item).memory || '-'}</td>
                     <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                 `;
                 break;
+                
             case 'deployments':
+                // Handle Deployment rendering
+                const readyReplicas = item.status?.readyReplicas || 0;
+                const totalReplicas = item.status?.replicas || 0;
+                const deploymentStatus = readyReplicas === totalReplicas ? 'Available' : 'Progressing';
+                const deploymentStatusIcon = deploymentStatus === 'Available' ? 
+                    '<i class="fas fa-check-circle text-success me-1"></i>' : 
+                    '<i class="fas fa-sync text-warning me-1"></i>';
+                
                 row.innerHTML = `
                     <td>${item.metadata.namespace}</td>
                     <td>${item.metadata.name}</td>
-                    <td>${item.status.readyReplicas || 0}/${item.status.replicas}</td>
-                    <td>${item.status.updatedReplicas}</td>
-                    <td>${item.status.availableReplicas}</td>
-                    <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                    <td>${readyReplicas}/${totalReplicas}</td>
+                    <td>${deploymentStatusIcon}${deploymentStatus}</td>
+                    <td>${getResourceUsage(item).cpu || '-'}</td>
+                    <td>${getResourceUsage(item).memory || '-'}</td>
                     <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                 `;
                 break;
+                
             case 'configmaps':
+                // Handle ConfigMap rendering
+                const dataCount = Object.keys(item.data || {}).length;
+                
                 row.innerHTML = `
                     <td>${item.metadata.namespace}</td>
                     <td>${item.metadata.name}</td>
-                    <td>${Object.keys(item.data || {}).length}</td>
-                    <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                    <td>${dataCount} items</td>
                     <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                 `;
                 break;
+                
             case 'secrets':
+                // Handle Secret rendering
+                const secretType = item.type || 'Opaque';
+                const secretDataCount = Object.keys(item.data || {}).length;
+                
                 row.innerHTML = `
                     <td>${item.metadata.namespace}</td>
                     <td>${item.metadata.name}</td>
-                    <td>${item.type}</td>
-                    <td>${Object.keys(item.data || {}).length}</td>
-                    <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
+                    <td>${secretType}</td>
+                    <td>${secretDataCount} items</td>
                     <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                 `;
                 break;
+                
+            default:
+                // Generic handling for other resource types
+                row.innerHTML = `
+                    <td>${item.metadata.namespace || '-'}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
         }
         
         tableBody.appendChild(row);
     });
+    
+    // Check if we need to show the "Load More" button
+    if (itemsToShow.length < items.length) {
+        const loadMoreContainer = document.createElement('div');
+        loadMoreContainer.className = 'load-more-container text-center mt-3 mb-2';
+        loadMoreContainer.innerHTML = `
+            <button class="btn btn-outline-primary load-more-btn">
+                <i class="fas fa-chevron-down me-1"></i> 
+                Load More (showing ${itemsToShow.length} of ${items.length})
+            </button>
+        `;
+        tableContainer.appendChild(loadMoreContainer);
+        
+        // Add event listener to load more button
+        const loadMoreBtn = loadMoreContainer.querySelector('.load-more-btn');
+        loadMoreBtn.addEventListener('click', () => {
+            window.app.state.resources[resourceType].currentPage++;
+            renderCurrentPage(resourceType);
+        });
+    }
+    
+    // Initialize all dropdowns
+    setTimeout(() => {
+        const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }, 100);
 }
 
 // Resource data fetching (for individual tab clicks or refresh button)
@@ -904,7 +964,10 @@ function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false
         formData.append('namespace', namespace);
         formData.append('critical_only', criticalOnly.toString());
         
-        fetch('/get_resources', {
+        // Use helper function to ensure URL is relative
+        const url = window.app.getRelativeUrl('/get_resources');
+        
+        fetch(url, {
             method: 'POST',
             body: formData
         })
@@ -1608,11 +1671,20 @@ function setupTabClickHandlers() {
                 const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
                 const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
                 
-                // Fetch resource data, forcing a refresh
+                // Fetch resource data, forcing a refresh by removing from loaded resources
                 window.app.loadedResources = window.app.loadedResources || {};
                 delete window.app.loadedResources[resourceType];
                 
-                fetchResourceData(resourceType, currentNamespace);
+                // Clear existing cache for this resource type
+                const cacheKey = `${resourceType}-${currentNamespace}-full`;
+                if (window.app.state.resources && window.app.state.resources[cacheKey]) {
+                    delete window.app.state.resources[cacheKey];
+                }
+                if (window.app.state.lastFetch && window.app.state.lastFetch[cacheKey]) {
+                    delete window.app.state.lastFetch[cacheKey];
+                }
+                
+                fetchResourceData(resourceType, currentNamespace, false);
             });
         }
     });
@@ -2661,12 +2733,13 @@ function loadResourcesForTab(tabId) {
             const returningFromPodView = sessionStorage.getItem('returning_from_pod_view') === 'true';
             if (returningFromPodView || !window.app.loadedResources || !window.app.loadedResources[resourceTabId]) {
                 // Fetch resource data
-                fetchResourceData(resourceTabId, currentNamespace);
+                console.log(`Loading ${resourceTabId} data with namespace ${currentNamespace}`);
+                fetchResourceData(resourceTabId, currentNamespace, false);
             }
         } else {
             // Default to pods if no tab is active
             console.log('No active resource tab found, defaulting to pods');
-            fetchResourceData('pods', 'all');
+            fetchResourceData('pods', 'all', false);
         }
         
         // Also initialize GPU filter
@@ -2731,116 +2804,12 @@ function addRefreshAlert(resourceType) {
         <div class="flex-grow-1">
             This data is more than 2 minutes old and may be outdated.
         </div>
-        <button class="btn btn-sm btn-warning ms-3" onclick="fetchResourceData('${resourceType}')">
+        <button class="btn btn-sm btn-warning ms-3" onclick="fetchResourceData('${resourceType}', 'all', false)">
             <i class="fas fa-sync-alt me-1"></i> Refresh Now
         </button>
     `;
     container.insertBefore(alert, container.firstChild);
     return alert;
-}
-
-// Modify the fetchResourceData function to include caching
-function fetchResourceData(resourceType, attempt = 1) {
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY = 1000; // 1 second
-
-    function fetchWithRetry() {
-        // Check cache first
-        const cachedData = window.app.cache.resources[resourceType];
-        const lastFetch = window.app.cache.timestamps[resourceType];
-        
-        if (cachedData && lastFetch) {
-            const timeSinceLastFetch = Date.now() - lastFetch;
-            
-            // If data exists and is less than STALE_THRESHOLD old, use it
-            if (timeSinceLastFetch < window.app.cache.STALE_THRESHOLD) {
-                console.log(`Using cached data for ${resourceType}`);
-                processResourceData(resourceType, cachedData, lastFetch);
-                return Promise.resolve(cachedData);
-            } else {
-                // Show the refresh alert
-                const alert = addRefreshAlert(resourceType);
-                if (alert) {
-                    alert.style.display = 'flex';
-                }
-            }
-        }
-
-        // Show loading state
-        showLoading(resourceType);
-        
-        // Set processing start time
-        let processingStartTime;
-        
-        return fetch('/get_resources', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `resource_type=${resourceType}`
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            // Cache the new data
-            window.app.cache.resources[resourceType] = data;
-            window.app.cache.timestamps[resourceType] = Date.now();
-            
-            processingStartTime = performance.now();
-            
-            // Process the data
-            processResourceData(resourceType, data, Date.now(), processingStartTime);
-            
-            return data;
-        })
-        .catch(error => {
-            if (error.name === 'AbortError') {
-                console.log(`Request for ${resourceType} was cancelled`);
-                return;
-            }
-            
-            // Store error state
-            window.app.state.errors[resourceType] = error;
-            
-            // Retry logic
-            if (attempt < MAX_RETRIES) {
-                console.log(`Retrying ${resourceType} fetch attempt ${attempt + 1}...`);
-                return new Promise(resolve => {
-                    setTimeout(() => {
-                        resolve(fetchResourceData(resourceType, attempt + 1));
-                    }, RETRY_DELAY * Math.pow(2, attempt));
-                });
-            }
-            
-            // Show error in UI after all retries failed
-            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-            if (tableBody) {
-                hideLoading(resourceType);
-                
-                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-                if (tableContainer) {
-                    tableContainer.style.opacity = '1';
-                    tableBody.innerHTML = `
-                        <tr><td colspan="7" class="text-center text-danger">
-                            <i class="fas fa-exclamation-circle me-2"></i>
-                            Failed to load ${resourceType} after multiple attempts. 
-                            <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
-                                <i class="fas fa-sync-alt me-1"></i> Retry
-                            </button>
-                        </td></tr>
-                    `;
-                }
-            }
-            
-            throw error;
-        });
-    }
-    
-    return fetchWithRetry();
 }
 
 // Add a function to check data freshness periodically
@@ -2849,7 +2818,9 @@ function startDataFreshnessChecker() {
         const activeTab = document.querySelector('#resourceTabs .nav-link.active');
         if (activeTab) {
             const resourceType = activeTab.getAttribute('data-bs-target').replace('#', '');
-            const lastFetch = window.app.cache.timestamps[resourceType];
+            const currentNamespace = document.getElementById(`${resourceType}Namespace`)?.value || 'all';
+            const cacheKey = `${resourceType}-${currentNamespace}-full`;
+            const lastFetch = window.app.state.lastFetch[cacheKey];
             
             if (lastFetch) {
                 const timeSinceLastFetch = Date.now() - lastFetch;
@@ -2868,277 +2839,3 @@ function startDataFreshnessChecker() {
 document.addEventListener('DOMContentLoaded', () => {
     startDataFreshnessChecker();
 });
-
-// Function to render page of items
-function renderCurrentPage(resourceType) {
-    const { items, currentPage, pageSize } = window.app.state.resources[resourceType];
-    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-    if (!tableBody) return;
-
-    // Get the table container
-    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-    
-    // Remove existing "Load More" button if it exists
-    const existingLoadMore = tableContainer.querySelector('.load-more-container');
-    if (existingLoadMore) {
-        existingLoadMore.remove();
-    }
-    
-    // Calculate how many items to show
-    const itemsToShow = items.slice(0, currentPage * pageSize);
-    
-    // Clear the table body and render items
-    tableBody.innerHTML = '';
-    
-    if (itemsToShow.length === 0) {
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="7" class="text-center text-muted py-4">
-                    <i class="fas fa-info-circle me-2"></i> No resources found
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    itemsToShow.forEach(item => {
-        const row = document.createElement('tr');
-        switch (resourceType) {
-            case 'pods':
-                const resources = getResourceUsage(item);
-                row.innerHTML = `
-                    <td>${item.metadata.namespace}</td>
-                    <td>${item.metadata.name}</td>
-                    <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${resources.cpu || '0'}</td>
-                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${resources.gpu || '0'}</td>
-                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${resources.memory || '0Mi'}</td>
-                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                `;
-                break;
-            // ... other resource cases
-        }
-        tableBody.appendChild(row);
-    });
-    
-    // Check if we need to show the "Load More" button
-    if (itemsToShow.length < items.length) {
-        const loadMoreContainer = document.createElement('div');
-        loadMoreContainer.className = 'load-more-container text-center mt-3 mb-2';
-        loadMoreContainer.innerHTML = `
-            <button class="btn btn-outline-primary load-more-btn">
-                <i class="fas fa-chevron-down me-1"></i> 
-                Load More (showing ${itemsToShow.length} of ${items.length})
-            </button>
-        `;
-        tableContainer.appendChild(loadMoreContainer);
-        
-        // Add event listener to load more button
-        const loadMoreBtn = loadMoreContainer.querySelector('.load-more-btn');
-        loadMoreBtn.addEventListener('click', () => {
-            window.app.state.resources[resourceType].currentPage++;
-            renderCurrentPage(resourceType);
-        });
-    }
-    
-    // Initialize all dropdowns
-    setTimeout(() => {
-        const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
-        dropdownElementList.map(function(dropdownToggleEl) {
-            return new bootstrap.Dropdown(dropdownToggleEl);
-        });
-    }, 100);
-}
-
-// Modify the filterResources function to work with load more approach
-function filterResources(resourceType) {
-    // Find the search input - check different possible IDs
-    let searchInput = document.getElementById(`${resourceType}SearchInput`);
-    
-    // If not found with the first ID pattern, try alternative (the search box in the screenshot)
-    if (!searchInput) {
-        searchInput = document.querySelector(`input[placeholder^="Filter ${resourceType}"]`);
-    }
-    
-    // If still not found, try a more generic selector
-    if (!searchInput) {
-        searchInput = document.querySelector(`#${resourceType} input[type="search"], #${resourceType} input[type="text"]`);
-    }
-    
-    // Default to empty string if we can't find the search input
-    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
-    
-    // Get the full dataset - safely access the cache
-    const fullDataset = window.app.cache.resources?.[resourceType]?.data?.items || 
-                       window.app.state.resources?.[resourceType]?.items || [];
-    
-    // Filter based on search term
-    const filteredItems = searchTerm 
-        ? fullDataset.filter(item => {
-            // Search in name and namespace
-            return item.metadata.name.toLowerCase().includes(searchTerm) || 
-                   item.metadata.namespace.toLowerCase().includes(searchTerm);
-        })
-        : fullDataset;
-    
-    // Update state with filtered items and reset to first page
-    window.app.state.resources[resourceType] = {
-        items: filteredItems,
-        currentPage: 1,
-        pageSize: 10
-    };
-    
-    // Render the first page
-    renderCurrentPage(resourceType);
-    
-    // Add no results message if needed
-    if (filteredItems.length === 0 && searchTerm) {
-        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-        if (tableBody) {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center py-4">
-                        <i class="fas fa-search me-2 text-muted"></i>
-                        No resources found matching "<span class="fw-bold">${searchTerm}</span>".
-                        <button class="btn btn-sm btn-outline-secondary ms-3" onclick="clearSearch('${resourceType}')">
-                            <i class="fas fa-times me-1"></i> Clear Search
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }
-    }
-}
-
-// Add function to clear search
-function clearSearch(resourceType) {
-    const searchInput = document.getElementById(`${resourceType}SearchInput`);
-    searchInput.value = '';
-    filterResources(resourceType);
-}
-
-// Add sortResources function to enable sorting on the main tables
-function sortResources(resourceType, sortField) {
-    // Get the current items
-    const items = window.app.state.resources[resourceType]?.items || [];
-    
-    // Check if we're reversing the current sort
-    let sortDirection = 'asc';
-    if (window.app.state.resources[resourceType]?.sortField === sortField) {
-        sortDirection = window.app.state.resources[resourceType]?.sortDirection === 'asc' ? 'desc' : 'asc';
-    }
-    
-    // Sort the items
-    const sortedItems = [...items].sort((a, b) => {
-        let valueA, valueB;
-        
-        // Get the values based on field
-        switch (sortField) {
-            case 'name':
-                valueA = a.metadata.name;
-                valueB = b.metadata.name;
-                break;
-            case 'namespace':
-                valueA = a.metadata.namespace;
-                valueB = b.metadata.namespace;
-                break;
-            case 'status':
-                valueA = a.status?.phase || '';
-                valueB = b.status?.phase || '';
-                break;
-            case 'cpu':
-                const resourcesA = getResourceUsage(a);
-                const resourcesB = getResourceUsage(b);
-                valueA = parseFloat(resourcesA.cpu || '0');
-                valueB = parseFloat(resourcesB.cpu || '0');
-                break;
-            case 'gpu':
-                const resourcesGpuA = getResourceUsage(a);
-                const resourcesGpuB = getResourceUsage(b);
-                valueA = parseFloat(resourcesGpuA.gpu || '0');
-                valueB = parseFloat(resourcesGpuB.gpu || '0');
-                break;
-            case 'memory':
-                const resourcesMemA = getResourceUsage(a);
-                const resourcesMemB = getResourceUsage(b);
-                // Convert memory to numeric value for comparison
-                valueA = parseFloat(resourcesMemA.memory?.replace(/[^0-9.]/g, '') || '0');
-                valueB = parseFloat(resourcesMemB.memory?.replace(/[^0-9.]/g, '') || '0');
-                
-                // Adjust for units
-                if (resourcesMemA.memory?.includes('Gi')) valueA *= 1024;
-                if (resourcesMemB.memory?.includes('Gi')) valueB *= 1024;
-                break;
-            default:
-                valueA = a.metadata.name;
-                valueB = b.metadata.name;
-        }
-        
-        // Compare the values
-        if (typeof valueA === 'number' && typeof valueB === 'number') {
-            return sortDirection === 'asc' ? valueA - valueB : valueB - valueA;
-        } else {
-            const strA = String(valueA).toLowerCase();
-            const strB = String(valueB).toLowerCase();
-            return sortDirection === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
-        }
-    });
-    
-    // Update state with sorted items
-    window.app.state.resources[resourceType] = {
-        ...window.app.state.resources[resourceType],
-        items: sortedItems,
-        sortField: sortField,
-        sortDirection: sortDirection,
-        currentPage: 1 // Reset to first page
-    };
-    
-    // Update sort indicators in the table headers
-    updateSortIndicators(resourceType, sortField, sortDirection);
-    
-    // Re-render the current page
-    renderCurrentPage(resourceType);
-}
-
-// Add function to update sort indicators in table headers
-function updateSortIndicators(resourceType, sortField, sortDirection) {
-    // Remove all existing sort indicators
-    const allHeaders = document.querySelectorAll(`#${resourceType}Table th`);
-    allHeaders.forEach(header => {
-        const icon = header.querySelector('i.sort-icon');
-        if (icon) {
-            icon.remove();
-        }
-        header.classList.remove('sorting-asc', 'sorting-desc');
-    });
-    
-    // Find the header for the current sort field
-    const header = document.querySelector(`#${resourceType}Table th[data-sort="${sortField}"]`);
-    if (header) {
-        // Add the appropriate sort indicator
-        const icon = document.createElement('i');
-        icon.className = `fas fa-sort-${sortDirection === 'asc' ? 'up' : 'down'} ms-1 sort-icon`;
-        header.appendChild(icon);
-        header.classList.add(`sorting-${sortDirection}`);
-    }
-}
-
-// Function to add sort functionality to table headers
-function addSortingToResourceTable(resourceType) {
-    const headers = document.querySelectorAll(`#${resourceType}Table th[data-sort]`);
-    headers.forEach(header => {
-        header.style.cursor = 'pointer';
-        
-        // Add click event listener
-        header.addEventListener('click', () => {
-            const sortField = header.getAttribute('data-sort');
-            sortResources(resourceType, sortField);
-        });
-        
-        // Add sort icon container if not already present
-        if (!header.querySelector('.sort-icon')) {
-            const text = header.textContent;
-            header.innerHTML = `${text} <i class="sort-icon"></i>`;
-        }
-    });
-}
