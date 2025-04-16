@@ -2878,3 +2878,132 @@ function startDataFreshnessChecker() {
 document.addEventListener('DOMContentLoaded', () => {
     startDataFreshnessChecker();
 });
+
+// Add sorting functionality to resource tables
+function addSortingToResourceTable(resourceType) {
+    // Get the table headers
+    const tableHeaders = document.querySelectorAll(`#${resourceType}Table thead th[data-sort]`);
+    
+    // If no sortable headers, return early
+    if (!tableHeaders || tableHeaders.length === 0) {
+        return;
+    }
+    
+    // Add click listeners to sortable headers
+    tableHeaders.forEach(header => {
+        // Remove existing event listeners by cloning
+        const newHeader = header.cloneNode(true);
+        header.parentNode.replaceChild(newHeader, header);
+        
+        // Add sort indicators if not already present
+        if (!newHeader.querySelector('.sort-indicator')) {
+            const sortIndicator = document.createElement('span');
+            sortIndicator.className = 'sort-indicator ms-1';
+            sortIndicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
+            newHeader.appendChild(sortIndicator);
+        }
+        
+        // Add click event listener
+        newHeader.addEventListener('click', () => {
+            // Get sort field and current direction
+            const sortField = newHeader.getAttribute('data-sort');
+            let sortDirection = 'asc';
+            
+            // Toggle sort direction if already sorted by this field
+            if (window.app.state.resources[resourceType].sortField === sortField) {
+                sortDirection = window.app.state.resources[resourceType].sortDirection === 'asc' ? 'desc' : 'asc';
+            }
+            
+            // Update sort indicators for all headers
+            tableHeaders.forEach(h => {
+                const indicator = h.querySelector('.sort-indicator');
+                if (indicator) {
+                    indicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
+                }
+            });
+            
+            // Update indicator for this header
+            const indicator = newHeader.querySelector('.sort-indicator');
+            if (indicator) {
+                indicator.innerHTML = sortDirection === 'asc' 
+                    ? '<i class="fas fa-sort-up text-primary"></i>' 
+                    : '<i class="fas fa-sort-down text-primary"></i>';
+            }
+            
+            // Save sort settings
+            window.app.state.resources[resourceType].sortField = sortField;
+            window.app.state.resources[resourceType].sortDirection = sortDirection;
+            
+            // Sort the data
+            sortResourceData(resourceType, sortField, sortDirection);
+            
+            // Re-render the current page
+            renderCurrentPage(resourceType);
+        });
+    });
+}
+
+// Helper function to sort resource data
+function sortResourceData(resourceType, sortField, sortDirection) {
+    const resources = window.app.state.resources[resourceType];
+    if (!resources || !resources.items || !resources.items.length) {
+        return;
+    }
+    
+    resources.items.sort((a, b) => {
+        let valueA, valueB;
+        
+        // Extract values based on sort field
+        switch(sortField) {
+            case 'name':
+                valueA = a.metadata?.name || '';
+                valueB = b.metadata?.name || '';
+                break;
+            case 'namespace':
+                valueA = a.metadata?.namespace || '';
+                valueB = b.metadata?.namespace || '';
+                break;
+            case 'status':
+                valueA = a.status?.phase || '';
+                valueB = b.status?.phase || '';
+                break;
+            case 'cpu':
+                valueA = parseFloat(getResourceUsage(a).cpu) || 0;
+                valueB = parseFloat(getResourceUsage(b).cpu) || 0;
+                break;
+            case 'memory':
+                // Extract numeric value from memory string
+                const memA = getResourceUsage(a).memory || '0Mi';
+                const memB = getResourceUsage(b).memory || '0Mi';
+                valueA = parseFloat(memA.replace(/[^0-9.]/g, '')) || 0;
+                valueB = parseFloat(memB.replace(/[^0-9.]/g, '')) || 0;
+                break;
+            case 'gpu':
+                valueA = parseInt(getResourceUsage(a).gpu) || 0;
+                valueB = parseInt(getResourceUsage(b).gpu) || 0;
+                break;
+            case 'age':
+                valueA = new Date(a.metadata?.creationTimestamp || 0).getTime();
+                valueB = new Date(b.metadata?.creationTimestamp || 0).getTime();
+                break;
+            default:
+                valueA = '';
+                valueB = '';
+        }
+        
+        // Perform comparison based on type
+        let result;
+        if (typeof valueA === 'number' && typeof valueB === 'number') {
+            // Numeric comparison
+            result = valueA - valueB;
+        } else {
+            // String comparison
+            valueA = String(valueA).toLowerCase();
+            valueB = String(valueB).toLowerCase();
+            result = valueA.localeCompare(valueB);
+        }
+        
+        // Apply sort direction
+        return sortDirection === 'asc' ? result : -result;
+    });
+}
