@@ -1396,71 +1396,71 @@ function fetchEvents(namespace) {
 }
 
 // GitHub update function
-function updateFromGithub() {
-    const repoUrl = document.getElementById('githubRepo').value;
-    const statusDiv = document.getElementById('updateStatus');
+// function updateFromGithub() {
+//     const repoUrl = document.getElementById('githubRepo').value;
+//     const statusDiv = document.getElementById('updateStatus');
     
-    if (!statusDiv) return;
+//     if (!statusDiv) return;
     
-    statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
+//     statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
     
-    // First update from GitHub
-    fetch('/update_from_github', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            repo_url: repoUrl
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            statusDiv.innerHTML = 'Update successful. Initiating application restart...';
+//     // First update from GitHub
+//     fetch('/update_from_github', {
+//         method: 'POST',
+//         headers: {
+//             'Content-Type': 'application/json',
+//         },
+//         body: JSON.stringify({
+//             repo_url: repoUrl
+//         })
+//     })
+//     .then(response => response.json())
+//     .then(data => {
+//         if (data.status === 'success') {
+//             statusDiv.innerHTML = 'Update successful. Initiating application restart...';
             
-            // Then restart the application
-            fetch('/restart', {
-                method: 'POST'
-            })
-            .then(response => {
-                if (response.ok) {
-                    return response.json();
-                } else {
-                    // If the server is already restarting, we might get an error response
-                    // This is normal, so handle it gracefully
-                    statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
-                    waitForApplicationRestart(statusDiv);
-                    throw new Error('restart_in_progress');
-                }
-            })
-            .then(data => {
-                if (data.status === 'success') {
-                    statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
-                    waitForApplicationRestart(statusDiv);
-                }
-            })
-            .catch(error => {
-                if (error.message !== 'restart_in_progress') {
-                    console.error('Error during restart:', error);
-                    statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
-                    waitForApplicationRestart(statusDiv);
-                }
-            });
-        } else {
-            statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
-            throw new Error(data.message);
-        }
-    })
-    .catch(error => {
-        if (error.message !== 'restart_in_progress') {
-            console.error('Error:', error);
-            if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
-                statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-            }
-        }
-    });
-}
+//             // Then restart the application
+//             fetch('/restart', {
+//                 method: 'POST'
+//             })
+//             .then(response => {
+//                 if (response.ok) {
+//                     return response.json();
+//                 } else {
+//                     // If the server is already restarting, we might get an error response
+//                     // This is normal, so handle it gracefully
+//                     statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
+//                     waitForApplicationRestart(statusDiv);
+//                     throw new Error('restart_in_progress');
+//                 }
+//             })
+//             .then(data => {
+//                 if (data.status === 'success') {
+//                     statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
+//                     waitForApplicationRestart(statusDiv);
+//                 }
+//             })
+//             .catch(error => {
+//                 if (error.message !== 'restart_in_progress') {
+//                     console.error('Error during restart:', error);
+//                     statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
+//                     waitForApplicationRestart(statusDiv);
+//                 }
+//             });
+//         } else {
+//             statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
+//             throw new Error(data.message);
+//         }
+//     })
+//     .catch(error => {
+//         if (error.message !== 'restart_in_progress') {
+//             console.error('Error:', error);
+//             if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
+//                 statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+//             }
+//         }
+//     });
+// }
 
 // Application refresh function (for the refresh button)
 function refreshApplication() {
