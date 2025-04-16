@@ -1242,4 +1242,35 @@ body {
 .filter-indicator i {
     color: var(--hpe-info);
     font-size: 1.1rem;
+}
+
+/* Highlighted row animation */
+@keyframes highlight-fade {
+    0% {
+        background-color: rgba(255, 193, 7, 0.3);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+.highlight-row {
+    animation: highlight-fade 3s ease-out;
+}
+
+/* Loading spinner for pagination */
+.load-more-container .load-more-btn:disabled {
+    opacity: 0.8;
+}
+
+/* Filter indicator styles */
+.filter-indicator {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+}
+.filter-indicator .btn-close {
+    font-size: 0.8rem;
+    padding: 0.25rem;
 } 

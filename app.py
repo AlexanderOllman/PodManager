@@ -59,6 +59,11 @@ def get_resources():
     namespace = request.form.get('namespace', 'all')
     critical_only = request.form.get('critical_only', 'false').lower() == 'true'
     
+    # Add pagination parameters
+    page = int(request.form.get('page', 1))
+    page_size = int(request.form.get('page_size', 50))
+    count_only = request.form.get('count_only', 'false').lower() == 'true'
+    
     if not resource_type:
         return jsonify(error="Resource type is required")
     
@@ -69,13 +74,48 @@ def get_resources():
         command = f"kubectl get {resource_type} --all-namespaces -o json"
     
     try:
+        # If count_only is true, just return the count using field selectors to minimize data
+        if count_only:
+            # Use a more efficient way to get just the count
+            if namespace and namespace != 'all':
+                count_command = f"kubectl get {resource_type} -n {namespace} --no-headers | wc -l"
+            else:
+                count_command = f"kubectl get {resource_type} --all-namespaces --no-headers | wc -l"
+            
+            count_result = subprocess.run(count_command, shell=True, check=True, capture_output=True, text=True)
+            count = int(count_result.stdout.strip())
+            return jsonify(data={"totalCount": count})
+        
         output = run_kubectl_command(command)
         data = json.loads(output)
         
-        # For critical-only loads, strip out non-essential data
-        if critical_only:
-            if 'items' in data:
-                for item in data['items']:
+        # Get total count before pagination
+        total_count = len(data.get('items', []))
+        
+        # Apply pagination to limit memory usage
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        
+        # Add pagination metadata
+        paginated_data = {
+            'totalCount': total_count,
+            'page': page,
+            'pageSize': page_size,
+            'totalPages': (total_count + page_size - 1) // page_size
+        }
+        
+        # Paginate the results
+        if 'items' in data:
+            # Slice the items for the current page
+            paginated_items = data['items'][start_idx:end_idx]
+            
+            # Preserve metadata
+            metadata = {k: v for k, v in data.items() if k != 'items'}
+            paginated_data.update(metadata)
+            
+            # For critical-only loads, strip out non-essential data
+            if critical_only:
+                for item in paginated_items:
                     # Keep only essential metadata and status
                     minimal_item = {
                         'metadata': {
@@ -116,8 +156,11 @@ def get_resources():
                     
                     item.clear()
                     item.update(minimal_item)
+            
+            # Update the items with the paginated subset
+            paginated_data['items'] = paginated_items
         
-        return jsonify(data=data)
+        return jsonify(data=paginated_data)
     except subprocess.CalledProcessError as e:
         return jsonify(error=f"Failed to get {resource_type}: {e.stderr}")
     except json.JSONDecodeError:
