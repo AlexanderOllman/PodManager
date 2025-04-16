@@ -947,101 +947,214 @@ function renderCurrentPage(resourceType) {
     }, 100);
 }
 
-// Resource data fetching (for individual tab clicks or refresh button)
-function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false) {
-    console.log(`Fetching ${resourceType} data for namespace ${namespace}${criticalOnly ? ' (critical only)' : ''}`);
+// Function to fetch resource data
+function fetchResourceData(resourceType, namespace, criticalOnly = false, paginationParams = null) {
+    console.log(`Fetching ${resourceType} data for namespace ${namespace}, criticalOnly: ${criticalOnly}`);
     
-    // Show loading indicators
-    showLoading(resourceType);
+    // Unique key for caching based on all parameters
+    const cacheKey = `${resourceType}_${namespace}_${criticalOnly}_${paginationParams ? 
+        `page${paginationParams.page}_size${paginationParams.pageSize}` : 'all'}`;
     
-    // Check for recent cached data unless it's being forced (when returning from pod view)
-    const returningFromPodView = sessionStorage.getItem('returning_from_pod_view') === 'true';
-    const cacheKey = `${resourceType}-${namespace}-${criticalOnly ? 'critical' : 'full'}`;
-    const lastFetch = window.app.state.lastFetch[cacheKey];
-    
-    if (!returningFromPodView && lastFetch && (Date.now() - lastFetch) < window.app.CACHE_TIMEOUT) {
-        console.log(`Using cached data for ${resourceType} (${namespace})`);
-        
-        // Use the cached data
-        const cachedData = window.app.state.resources[cacheKey];
-        if (cachedData) {
-            processResourceData(resourceType, cachedData);
-            hideLoading(resourceType);
-            return Promise.resolve(cachedData);
+    // Check for cached data that's not too old (30 seconds)
+    if (window.app.cachedData[cacheKey]) {
+        const cachedData = window.app.cachedData[cacheKey];
+        const now = Date.now();
+        if (now - cachedData.timestamp < 30000) { // Less than 30 seconds old
+            console.log(`Using cached data for ${cacheKey}`);
+            return Promise.resolve(cachedData.data);
         }
     }
     
-    // If we're returning from pod view, we should clear the flag after processing
-    if (returningFromPodView) {
-        sessionStorage.removeItem('returning_from_pod_view');
+    // Show loading indicator
+    showLoadingIndicator(resourceType);
+    
+    // Prepare request data
+    const requestData = {
+        resourceType: resourceType,
+        namespace: namespace,
+        criticalOnly: criticalOnly
+    };
+    
+    // Add pagination parameters if provided
+    if (paginationParams) {
+        requestData.pagination = paginationParams;
     }
     
-    // No cached data or cache expired, fetch from server
+    // Record start time for performance metrics
     const startTime = performance.now();
     
-    return new Promise((resolve, reject) => {
-    const formData = new FormData();
-    formData.append('resource_type', resourceType);
-        formData.append('namespace', namespace);
-        formData.append('critical_only', criticalOnly.toString());
+    // Make the API request
+    return fetch('/api/resources', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
+    })
+    .then(response => {
+        // Log performance and size metrics
+        const endTime = performance.now();
+        console.log(`API response received in ${(endTime - startTime).toFixed(2)}ms`);
         
-        // Use helper function to ensure URL is relative
-        const url = window.app.getRelativeUrl('/get_resources');
+        // Get response size if available
+        const contentLength = response.headers.get('content-length');
+        if (contentLength) {
+            console.log(`Response size: ${(parseInt(contentLength) / 1024).toFixed(2)} KB`);
+        }
         
-        fetch(url, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Network response was not ok: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log(`Fetched ${resourceType} data in ${Math.round(performance.now() - startTime)}ms`);
-            
-            // Update the last fetch time and cache the data
-            window.app.state.lastFetch[cacheKey] = Date.now();
-            window.app.state.resources[cacheKey] = data;
-            
-            // Process the data
-            processResourceData(resourceType, data, startTime);
-            
-            // Hide loading indicators
-            hideLoading(resourceType);
-            
-            resolve(data);
-        })
-        .catch(error => {
-            console.error(`Error fetching ${resourceType}:`, error);
-            
-            // Show error message
-            hideLoading(resourceType);
-            const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-            if (tableContainer) {
-                tableContainer.innerHTML = `
-                    <div class="alert alert-danger">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        Error loading ${resourceType}: ${error.message}
-                        <button class="btn btn-sm btn-outline-danger ms-3" onclick="fetchResourceData('${resourceType}', '${namespace}')">
-                            <i class="fas fa-sync-alt me-1"></i> Retry
-                        </button>
-                    </div>
-                `;
-            }
-            
-            reject(error);
-        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        
+        return response.json();
+    })
+    .then(data => {
+        // Hide loading indicator
+        hideLoadingIndicator(resourceType);
+        
+        // Process the data based on resource type
+        const processedData = processResourceData(resourceType, data);
+        
+        // Cache the data with a timestamp
+        window.app.cachedData[cacheKey] = {
+            data: processedData,
+            timestamp: Date.now()
+        };
+        
+        return processedData;
+    })
+    .catch(error => {
+        console.error(`Error fetching ${resourceType} data:`, error);
+        hideLoadingIndicator(resourceType);
+        throw error;
     });
+}
+
+// Function to show loading indicator for a resource type
+function showLoadingIndicator(resourceType) {
+    const container = document.getElementById(`${resourceType}Container`);
+    if (!container) return;
+    
+    // Check if loading indicator exists
+    let loader = container.querySelector('.resource-loading');
+    if (!loader) {
+        loader = document.createElement('div');
+        loader.className = 'resource-loading';
+        loader.innerHTML = `
+            <div class="d-flex justify-content-center align-items-center my-4">
+                <div class="spinner-border text-primary me-2" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <span>Loading ${resourceType}...</span>
+            </div>
+        `;
+        container.appendChild(loader);
+    } else {
+        loader.style.display = 'block';
+    }
+}
+
+// Function to hide loading indicator for a resource type
+function hideLoadingIndicator(resourceType) {
+    const container = document.getElementById(`${resourceType}Container`);
+    if (!container) return;
+    
+    const loader = container.querySelector('.resource-loading');
+    if (loader) {
+        loader.style.display = 'none';
+    }
+}
+
+// Function to process resource data based on resource type
+function processResourceData(resourceType, data) {
+    // If data is already in the expected format, return it
+    if (data && data.data && Array.isArray(data.data.items)) {
+        return data;
+    }
+    
+    // If data is not in the expected format, transform it
+    const processedData = {
+        data: {
+            items: []
+        }
+    };
+    
+    switch (resourceType) {
+        case 'pods':
+            // Process pod-specific data
+            if (Array.isArray(data)) {
+                processedData.data.items = data.map(pod => {
+                    // Only keep essential properties to reduce memory usage
+                    return {
+                        metadata: {
+                            name: pod.metadata.name,
+                            namespace: pod.metadata.namespace,
+                            uid: pod.metadata.uid,
+                            creationTimestamp: pod.metadata.creationTimestamp
+                        },
+                        status: {
+                            phase: pod.status.phase,
+                            containerStatuses: pod.status.containerStatuses
+                        },
+                        spec: {
+                            containers: pod.spec.containers.map(container => ({
+                                name: container.name,
+                                image: container.image
+                            }))
+                        }
+                    };
+                });
+            }
+            break;
+            
+        case 'deployments':
+            // Process deployment-specific data
+            if (Array.isArray(data)) {
+                processedData.data.items = data.map(deployment => {
+                    return {
+                        metadata: {
+                            name: deployment.metadata.name,
+                            namespace: deployment.metadata.namespace,
+                            uid: deployment.metadata.uid,
+                            creationTimestamp: deployment.metadata.creationTimestamp
+                        },
+                        spec: {
+                            replicas: deployment.spec.replicas,
+                            selector: deployment.spec.selector
+                        },
+                        status: {
+                            replicas: deployment.status.replicas,
+                            availableReplicas: deployment.status.availableReplicas,
+                            unavailableReplicas: deployment.status.unavailableReplicas
+                        }
+                    };
+                });
+            }
+            break;
+            
+        default:
+            // For other resource types, keep the data as is but ensure correct format
+            if (Array.isArray(data)) {
+                processedData.data.items = data;
+            } else if (data && data.items && Array.isArray(data.items)) {
+                processedData.data.items = data.items;
+            }
+    }
+    
+    // Add pagination info if available
+    if (data && data.pagination) {
+        processedData.data.pagination = data.pagination;
+    }
+    
+    return processedData;
 }
 
 // Load all service types (non-pods) at once
 function loadAllServiceTypes() {
     console.log('Loading all service types...');
     
-    // Define all non-pod resource types
-    const serviceTypes = ['services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+    // Define all resource types including pods
+    const serviceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
     
     // Create a loading indicator at the top of the page
     const mainContent = document.getElementById('mainContent');
@@ -3004,6 +3117,11 @@ window.app.getRelativeUrl = function(path) {
     return baseUrl === '/' ? '/' + path : baseUrl + path;
 };
 
+// Initialize the cache for resources data
+if (!window.app.cachedData) {
+    window.app.cachedData = {};
+}
+
 // Set up initial state for app if not initialized
 if (!window.app.state) {
     window.app.state = {
@@ -3317,8 +3435,20 @@ function loadResourceType(resourceType) {
     // Get namespace filter
     const namespace = document.getElementById('resourceNamespaceSelector')?.value || 'all';
     
-    // Fetch data for the resource type
-    fetchResourceData(resourceType, namespace, false)
+    // Initialize pagination state if not exists
+    if (!window.app.pagination) {
+        window.app.pagination = {};
+    }
+    if (!window.app.pagination[resourceType]) {
+        window.app.pagination[resourceType] = {
+            currentPage: 1,
+            itemsPerPage: 50,
+            total: 0
+        };
+    }
+    
+    // Fetch data with critical info only first (lightweight)
+    fetchResourceData(resourceType, namespace, true)
         .then(data => {
             // Update UI with the fetched data
             const tableHeaders = document.getElementById('resourcesTableHeader');
@@ -3367,13 +3497,20 @@ function loadResourceType(resourceType) {
                     emptyRow.appendChild(emptyCell);
                     tableBody.appendChild(emptyRow);
                 } else {
-                    // Build table with fetched items
-                    data.data.items.forEach(item => {
+                    // Update pagination info
+                    window.app.pagination[resourceType].total = data.data.items.length;
+                    const paginationInfo = window.app.pagination[resourceType];
+                    
+                    // Calculate slice of items to show
+                    const startIndex = (paginationInfo.currentPage - 1) * paginationInfo.itemsPerPage;
+                    const endIndex = Math.min(startIndex + paginationInfo.itemsPerPage, data.data.items.length);
+                    const itemsToShow = data.data.items.slice(startIndex, endIndex);
+                    
+                    // Build table with paginated items
+                    itemsToShow.forEach(item => {
                         const row = document.createElement('tr');
                         
                         // Add cells based on resource type
-                        // Note: This is a simplified version - in real implementation,
-                        // we would add more complex logic for each resource type
                         switch (resourceType) {
                             case 'pods':
                                 row.innerHTML = `
@@ -3388,7 +3525,17 @@ function loadResourceType(resourceType) {
                                 break;
                             case 'services':
                                 // Service specific rendering
-                                // ... (similar to pods)
+                                // Simplified version for now
+                                row.innerHTML = `
+                                    <td>${item.metadata.namespace}</td>
+                                    <td>${item.metadata.name}</td>
+                                    <td>${item.spec?.type || '-'}</td>
+                                    <td>${item.spec?.clusterIP || '-'}</td>
+                                    <td>${item.status?.loadBalancer?.ingress?.[0]?.ip || '-'}</td>
+                                    <td>${item.spec?.ports?.[0]?.port || '-'}</td>
+                                    <td>${calculateAge(item.metadata.creationTimestamp)}</td>
+                                    <td class="text-center">${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                                `;
                                 break;
                             default:
                                 row.innerHTML = `
@@ -3400,6 +3547,9 @@ function loadResourceType(resourceType) {
                         
                         tableBody.appendChild(row);
                     });
+                    
+                    // Add pagination controls
+                    addPaginationControls(resourceType, tableContainer);
                 }
                 
                 // Show the table
@@ -3442,45 +3592,375 @@ function loadResourceType(resourceType) {
         });
 }
 
-// Function to handle resource type change
-function changeResourceType(resourceType) {
-    window.app.currentResourceType = resourceType;
+// Helper function to calculate age from timestamp
+function calculateAge(timestamp) {
+    if (!timestamp) return '-';
+    const created = new Date(timestamp);
+    const now = new Date();
+    const diff = Math.floor((now - created) / 1000); // diff in seconds
+    
+    if (diff < 60) return `${diff}s`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    return `${Math.floor(diff / 86400)}d`;
+}
+
+// Add pagination controls to the table
+function addPaginationControls(resourceType, tableContainer) {
+    const paginationInfo = window.app.pagination[resourceType];
+    if (!paginationInfo) return;
+    
+    // Remove any existing pagination
+    const existingPagination = document.getElementById(`${resourceType}-pagination`);
+    if (existingPagination) {
+        existingPagination.remove();
+    }
+    
+    // Create pagination container
+    const paginationContainer = document.createElement('div');
+    paginationContainer.id = `${resourceType}-pagination`;
+    paginationContainer.className = 'pagination-container d-flex justify-content-between align-items-center mt-3';
+    
+    // Calculate total pages
+    const totalPages = Math.ceil(paginationInfo.total / paginationInfo.itemsPerPage);
+    
+    // Create page size selector
+    const pageSizeSelector = document.createElement('div');
+    pageSizeSelector.className = 'page-size-selector';
+    pageSizeSelector.innerHTML = `
+        <span class="me-2">Show:</span>
+        <select class="form-select form-select-sm" style="width: auto;">
+            <option value="50" ${paginationInfo.itemsPerPage === 50 ? 'selected' : ''}>50</option>
+            <option value="100" ${paginationInfo.itemsPerPage === 100 ? 'selected' : ''}>100</option>
+            <option value="250" ${paginationInfo.itemsPerPage === 250 ? 'selected' : ''}>250</option>
+        </select>
+    `;
+    
+    // Create pagination controls
+    const controls = document.createElement('div');
+    controls.className = 'pagination-controls';
+    
+    // Only show controls if we have more than one page
+    if (totalPages > 1) {
+        controls.innerHTML = `
+            <nav>
+                <ul class="pagination pagination-sm">
+                    <li class="page-item ${paginationInfo.currentPage === 1 ? 'disabled' : ''}">
+                        <a class="page-link" href="#" data-page="prev">Previous</a>
+                    </li>
+                    ${generatePageLinks(paginationInfo.currentPage, totalPages)}
+                    <li class="page-item ${paginationInfo.currentPage === totalPages ? 'disabled' : ''}">
+                        <a class="page-link" href="#" data-page="next">Next</a>
+                    </li>
+                </ul>
+            </nav>
+        `;
+    }
+    
+    // Create page info
+    const pageInfo = document.createElement('div');
+    pageInfo.className = 'page-info text-muted';
+    pageInfo.textContent = `${paginationInfo.total} items • Page ${paginationInfo.currentPage} of ${totalPages || 1}`;
+    
+    // Add all elements to container
+    paginationContainer.appendChild(pageSizeSelector);
+    paginationContainer.appendChild(pageInfo);
+    paginationContainer.appendChild(controls);
+    
+    // Add container to table
+    tableContainer.appendChild(paginationContainer);
+    
+    // Add event listeners
+    // Page size change
+    const pageSizeSelect = paginationContainer.querySelector('.page-size-selector select');
+    if (pageSizeSelect) {
+        pageSizeSelect.addEventListener('change', (e) => {
+            const newSize = parseInt(e.target.value, 10);
+            paginationInfo.itemsPerPage = newSize;
+            paginationInfo.currentPage = 1; // Reset to first page
+            loadResourceType(resourceType);
+        });
+    }
+    
+    // Page navigation
+    const pageLinks = paginationContainer.querySelectorAll('.page-link');
+    pageLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const page = e.target.dataset.page;
+            
+            if (page === 'prev' && paginationInfo.currentPage > 1) {
+                paginationInfo.currentPage--;
+            } else if (page === 'next' && paginationInfo.currentPage < totalPages) {
+                paginationInfo.currentPage++;
+            } else if (!isNaN(parseInt(page, 10))) {
+                paginationInfo.currentPage = parseInt(page, 10);
+            }
+            
+            loadResourceType(resourceType);
+        });
+    });
+}
+
+// Generate page links for pagination
+function generatePageLinks(resourceType, currentPage, totalPages) {
+    let html = '<ul class="pagination">';
+    
+    // Previous button
+    html += '<li class="page-item ' + (currentPage === 1 ? 'disabled' : '') + '">' +
+            '<a class="page-link" href="#" data-page="' + (currentPage - 1) + '" data-resource="' + resourceType + '">Previous</a>' +
+            '</li>';
+    
+    // Calculate visible page range
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + 4);
+    
+    // Adjust start if end is maxed out
+    if (endPage === totalPages) {
+        startPage = Math.max(1, endPage - 4);
+    }
+    
+    // First page
+    if (startPage > 1) {
+        html += '<li class="page-item">' +
+                '<a class="page-link" href="#" data-page="1" data-resource="' + resourceType + '">1</a>' +
+                '</li>';
+        if (startPage > 2) {
+            html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+    }
+    
+    // Page numbers
+    for (let i = startPage; i <= endPage; i++) {
+        html += '<li class="page-item ' + (i === currentPage ? 'active' : '') + '">' +
+                '<a class="page-link" href="#" data-page="' + i + '" data-resource="' + resourceType + '">' + i + '</a>' +
+                '</li>';
+    }
+    
+    // Last page
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+        html += '<li class="page-item">' +
+                '<a class="page-link" href="#" data-page="' + totalPages + '" data-resource="' + resourceType + '">' + totalPages + '</a>' +
+                '</li>';
+    }
+    
+    // Next button
+    html += '<li class="page-item ' + (currentPage === totalPages ? 'disabled' : '') + '">' +
+            '<a class="page-link" href="#" data-page="' + (currentPage + 1) + '" data-resource="' + resourceType + '">Next</a>' +
+            '</li>';
+    
+    html += '</ul>';
+    
+    // Add event listeners to page links after rendering
+    setTimeout(function() {
+        document.querySelectorAll('.pagination a.page-link[data-resource="' + resourceType + '"]').forEach(function(link) {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const page = parseInt(e.target.dataset.page);
+                changePage(resourceType, page);
+            });
+        });
+    }, 0);
+    
+    return html;
+}
+
+// Function to change the current page
+function changePage(resourceType, page) {
+    if (!window.app.pagination[resourceType]) {
+        return;
+    }
+    
+    var paginationState = window.app.pagination[resourceType];
+    if (page < 1 || page > paginationState.totalPages) {
+        return;
+    }
+    
+    paginationState.currentPage = page;
     loadResourceType(resourceType);
 }
 
-// Function to handle namespace change
-function namespaceChangedResource() {
-    loadResourceType(window.app.currentResourceType);
+// Function to change the page size
+// Function to handle page size changes
+function changePageSize(resourceType, newSize) {
+    // Update pagination state
+    window.app.pagination[resourceType].pageSize = parseInt(newSize, 10);
+    window.app.pagination[resourceType].currentPage = 1; // Reset to first page
+    
+    // Reload the resource with new pagination
+    loadResourceType(resourceType);
 }
 
-// Function to clear resource search
-function clearResourceSearch() {
-    const searchInput = document.getElementById('resourceSearchInput');
-    if (searchInput) {
-        searchInput.value = '';
-        // Trigger search to show all rows
-        const rows = document.querySelectorAll('#resourcesTableBody tr');
-        rows.forEach(row => {
-            row.style.display = '';
+// Helper function to calculate age from timestamp
+function calculateAge(timestamp) {
+    const createdAt = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - createdAt;
+    
+    // Convert to appropriate time unit
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) return `${diffSec}s`;
+    
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m`;
+    
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `${diffHours}h`;
+    
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 30) return `${diffDays}d`;
+    
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths < 12) return `${diffMonths}mo`;
+    
+    const diffYears = Math.floor(diffMonths / 12);
+    return `${diffYears}y`;
+}
+
+// Helper function to capitalize first letter
+function capitalizeFirstLetter(string) {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+// Helper function to get pod status class for styling
+function getPodStatusClass(status) {
+    switch (status) {
+        case 'Running':
+            return 'bg-success';
+        case 'Pending':
+            return 'bg-warning';
+        case 'Succeeded':
+            return 'bg-info';
+        case 'Failed':
+            return 'bg-danger';
+        default:
+            return 'bg-secondary';
+    }
+}
+
+// Helper functions for service-specific formatting
+function getExternalIPs(service) {
+    if (service.status && service.status.loadBalancer && service.status.loadBalancer.ingress) {
+        return service.status.loadBalancer.ingress.map(ing => ing.ip || ing.hostname).join(', ') || '<pending>';
+    }
+    return service.spec.externalIPs ? service.spec.externalIPs.join(', ') : 'None';
+}
+
+function getServicePorts(service) {
+    if (!service.spec.ports || service.spec.ports.length === 0) return 'None';
+    
+    return service.spec.ports.map(port => {
+        let portStr = `${port.port}`;
+        if (port.targetPort) portStr += `:${port.targetPort}`;
+        if (port.nodePort) portStr += `:${port.nodePort}`;
+        if (port.protocol) portStr += `/${port.protocol}`;
+        return portStr;
+    }).join(', ');
+}
+
+// Function to load all pods at once
+function loadAllPods() {
+    console.log('Loading all pods...');
+    
+    // Create a loading indicator at the top of the page
+    const mainContent = document.getElementById('mainContent');
+    if (!mainContent) return;
+    
+    // Create loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'alert alert-info mb-4';
+    loadingIndicator.id = 'allPodsLoadingIndicator';
+    loadingIndicator.innerHTML = `
+        <i class="fas fa-sync fa-spin me-2"></i>
+        <span>Loading all pods...</span>
+        <div class="progress mt-2">
+            <div class="progress-bar" role="progressbar" style="width: 0%" id="allPodsProgressBar"></div>
+        </div>
+    `;
+    
+    // Add to the beginning of the content
+    mainContent.insertBefore(loadingIndicator, mainContent.firstChild);
+
+    // Activate the pods tab first
+    const tabButton = document.getElementById('pods-tab');
+    if (tabButton) {
+        tabButton.click();
+    }
+    
+    // Show loading indicator
+    showLoading('pods');
+    
+    // Fetch data with limit set to 0 to get all pods
+    fetchResourceData('pods', 'all', false)
+        .then(data => {
+            // Update progress
+            const progressBar = document.getElementById('allPodsProgressBar');
+            if (progressBar) {
+                progressBar.style.width = '100%';
+                progressBar.textContent = 'Completed';
+            }
+            
+            // Make sure page size is large enough to show all items
+            if (window.app.state.resources['pods']) {
+                window.app.state.resources['pods'].pageSize = 1000; // Show more items per page
+                window.app.state.resources['pods'].currentPage = 1; // Reset current page
+                window.app.state.resources['pods'].showAll = true; // Mark this resource type to show all items
+                renderCurrentPage('pods'); // Re-render with more items
+            }
+            
+            // Remove loading indicator
+            setTimeout(() => {
+                loadingIndicator.remove();
+                
+                // Show success message
+                const successMessage = document.createElement('div');
+                successMessage.className = 'alert alert-success mb-4';
+                successMessage.innerHTML = `
+                    <i class="fas fa-check-circle me-2"></i>
+                    All pods loaded successfully. Total: ${data.data.items.length} pods.
+                    <button class="btn btn-sm btn-outline-success ms-3" onclick="resetPagination()">
+                        <i class="fas fa-undo me-1"></i> Reset Pagination
+                    </button>
+                `;
+                mainContent.insertBefore(successMessage, mainContent.firstChild);
+                
+                // Auto-remove success message after 10 seconds
+                setTimeout(() => {
+                    if (document.contains(successMessage)) {
+                        successMessage.remove();
+                    }
+                }, 10000);
+            }, 500);
+        })
+        .catch(error => {
+            console.error('Error loading pods:', error);
+            
+            // Update progress
+            const progressBar = document.getElementById('allPodsProgressBar');
+            if (progressBar) {
+                progressBar.style.width = '100%';
+                progressBar.className = 'progress-bar bg-danger';
+                progressBar.textContent = 'Error';
+            }
+            
+            // Remove loading indicator
+            setTimeout(() => {
+                loadingIndicator.remove();
+                
+                // Show error message
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'alert alert-danger mb-4';
+                errorMessage.innerHTML = `
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    Error loading pods: ${error.message}
+                    <button class="btn btn-sm btn-outline-danger ms-3" onclick="loadAllPods()">
+                        <i class="fas fa-sync-alt me-1"></i> Retry
+                    </button>
+                `;
+                mainContent.insertBefore(errorMessage, mainContent.firstChild);
+            }, 500);
         });
-    }
-}
-
-// Helper function to add namespace options to namespace selector
-function populateResourceNamespaceSelector(namespaces) {
-    const selector = document.getElementById('resourceNamespaceSelector');
-    if (!selector) return;
-    
-    // Clear current options except "All Namespaces"
-    while (selector.options.length > 1) {
-        selector.options.remove(1);
-    }
-    
-    // Add namespaces
-    namespaces.forEach(namespace => {
-        const option = document.createElement('option');
-        option.value = namespace.name;
-        option.textContent = namespace.name;
-        selector.appendChild(option);
-    });
 }

@@ -112,9 +112,14 @@
                     <button class="nav-link" id="secrets-tab" data-bs-toggle="tab" data-bs-target="#secrets" type="button" role="tab" aria-controls="secrets" aria-selected="false">Secrets</button>
                 </li>
             </ul>
-            <button class="btn btn-outline-primary btn-sm" onclick="loadAllServiceTypes()">
-                <i class="fas fa-cloud-download-alt me-1"></i> Load All Services
-            </button>
+            <div>
+                <button class="btn btn-outline-primary btn-sm me-2" onclick="loadAllPods()">
+                    <i class="fas fa-cubes me-1"></i> Load All Pods
+                </button>
+                <button class="btn btn-outline-primary btn-sm" onclick="loadAllServiceTypes()">
+                    <i class="fas fa-cloud-download-alt me-1"></i> Load All Services
+                </button>
+            </div>
         </div>
 
         <!-- Tab content -->
