@@ -143,6 +143,12 @@ function initializeApp() {
     // Initialize terminal if available
     initializeTerminal();
     
+    // Wire up the kubectl check button if it exists
+    const checkKubectlButton = document.getElementById('checkKubectlButton');
+    if (checkKubectlButton) {
+        checkKubectlButton.addEventListener('click', checkKubectlConnection);
+    }
+    
     // Connect socket event listeners
     connectSocketListeners();
     
@@ -250,26 +256,6 @@ function initializeTerminal() {
             let commandHistory = [];
             let historyIndex = -1;
             
-            const setupSocketListener = () => {
-                // Register the socket event listener for receiving command output
-                if (window.app.socket) {
-                    console.log('Setting up socket listener for terminal');
-                    window.app.socket.on('output', (data) => {
-                        if (data && data.data) {
-                            terminal.write(data.data);
-                        }
-                    });
-                }
-            };
-            
-            // Listen for socket connected event
-            document.addEventListener('socket-connected', setupSocketListener);
-            
-            // Also try to set up now if socket already exists
-            if (window.app.socketConnected) {
-                setupSocketListener();
-            }
-            
             // Initial prompt
             terminal.writeln('Welcome to the Kubernetes CLI.');
             terminal.writeln('Type commands directly in this window and press Enter to execute.');
@@ -342,19 +328,135 @@ function initializeTerminal() {
     }
 }
 
-// Function to execute commands via WebSocket
+// Function to execute commands via REST API
 function executeCliCommand(command) {
     if (!command) return;
     
-    if (!window.app.socket || !window.app.socketConnected) {
-        // If socket isn't available, show error
-        window.app.terminal.writeln('Error: Socket connection is not available');
+    console.log("Executing CLI command:", command);
+    
+    // Global to track if we're using fallback mode
+    window.app.usingPodFallback = window.app.usingPodFallback || false;
+    
+    // If we already know we need to use the pod fallback, go straight to it
+    if (window.app.usingPodFallback && window.app.fallbackPod) {
+        executeCliCommandViaPod(command);
+        return;
+    }
+    
+    // Try direct CLI execution first
+    fetch('/api/cli/exec', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            command: command
+        })
+    })
+    .then(response => {
+        console.log("CLI command response status:", response.status);
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log("CLI command response data:", data);
+        
+        // Check if we need to use the fallback approach
+        if (data.output && (data.output.startsWith('Error:') || data.output.includes('connection refused'))) {
+            console.log("Direct CLI execution failed, attempting pod fallback");
+            // Only try fallback if we haven't already tried to find a pod
+            if (!window.app.triedFallback) {
+                window.app.triedFallback = true;
+                findFallbackPod(command);
+            } else {
+                window.app.terminal.writeln("Error: " + data.output);
+                window.app.terminal.write('\r\n$ ');
+            }
+        } else {
+            // Direct CLI execution worked
+            if (data.output) {
+                window.app.terminal.writeln(data.output);
+            } else {
+                window.app.terminal.writeln('Command executed with no output.');
+            }
+            window.app.terminal.write('\r\n$ ');
+        }
+    })
+    .catch(error => {
+        console.error('Error executing CLI command:', error);
+        window.app.terminal.writeln(`Error executing command: ${error.message}`);
+        // Try fallback approach if we get an error
+        if (!window.app.triedFallback) {
+            window.app.triedFallback = true;
+            findFallbackPod(command);
+        } else {
+            window.app.terminal.write('\r\n$ ');
+        }
+    });
+}
+
+// Find a pod to use for CLI fallback
+function findFallbackPod(originalCommand) {
+    window.app.terminal.writeln('Direct CLI execution failed, attempting to find a pod for command execution...');
+    
+    fetch('/api/cli/check_pods')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.pod) {
+            // Save the pod details for future commands
+            window.app.fallbackPod = data.pod;
+            window.app.usingPodFallback = true;
+            window.app.terminal.writeln(`Using pod ${data.pod.name} in namespace ${data.pod.namespace} for command execution.`);
+            
+            // Execute the original command via the pod
+            executeCliCommandViaPod(originalCommand);
+        } else {
+            window.app.terminal.writeln('Could not find a suitable pod for command execution. CLI commands may not work properly.');
+            window.app.terminal.write('\r\n$ ');
+        }
+    })
+    .catch(error => {
+        console.error('Error finding fallback pod:', error);
+        window.app.terminal.writeln('Error finding a suitable pod for command execution.');
+        window.app.terminal.write('\r\n$ ');
+    });
+}
+
+// Execute CLI command via a pod
+function executeCliCommandViaPod(command) {
+    if (!window.app.fallbackPod) {
+        window.app.terminal.writeln('Error: No fallback pod available for command execution.');
         window.app.terminal.write('\r\n$ ');
         return;
     }
     
-    // Use socket connection
-    window.app.socket.emit('cli_command', { command: command });
+    fetch('/api/pod/exec', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            namespace: window.app.fallbackPod.namespace,
+            pod_name: window.app.fallbackPod.name,
+            command: command
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.output) {
+            window.app.terminal.writeln(data.output);
+        } else {
+            window.app.terminal.writeln('Command executed with no output.');
+        }
+        window.app.terminal.write('\r\n$ ');
+    })
+    .catch(error => {
+        console.error('Error executing command via pod:', error);
+        window.app.terminal.writeln('Error executing command via pod.');
+        window.app.terminal.write('\r\n$ ');
+    });
 }
 
 // Socket event listeners
@@ -1294,71 +1396,71 @@ function fetchEvents(namespace) {
 }
 
 // GitHub update function
-// function updateFromGithub() {
-//     const repoUrl = document.getElementById('githubRepo').value;
-//     const statusDiv = document.getElementById('updateStatus');
+function updateFromGithub() {
+    const repoUrl = document.getElementById('githubRepo').value;
+    const statusDiv = document.getElementById('updateStatus');
     
-//     if (!statusDiv) return;
+    if (!statusDiv) return;
     
-//     statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
+    statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
     
-//     // First update from GitHub
-//     fetch('/update_from_github', {
-//         method: 'POST',
-//         headers: {
-//             'Content-Type': 'application/json',
-//         },
-//         body: JSON.stringify({
-//             repo_url: repoUrl
-//         })
-//     })
-//     .then(response => response.json())
-//     .then(data => {
-//         if (data.status === 'success') {
-//             statusDiv.innerHTML = 'Update successful. Initiating application restart...';
+    // First update from GitHub
+    fetch('/update_from_github', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            repo_url: repoUrl
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            statusDiv.innerHTML = 'Update successful. Initiating application restart...';
             
-//             // Then restart the application
-//             fetch('/restart', {
-//                 method: 'POST'
-//             })
-//             .then(response => {
-//                 if (response.ok) {
-//                     return response.json();
-//                 } else {
-//                     // If the server is already restarting, we might get an error response
-//                     // This is normal, so handle it gracefully
-//                     statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
-//                     waitForApplicationRestart(statusDiv);
-//                     throw new Error('restart_in_progress');
-//                 }
-//             })
-//             .then(data => {
-//                 if (data.status === 'success') {
-//                     statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
-//                     waitForApplicationRestart(statusDiv);
-//                 }
-//             })
-//             .catch(error => {
-//                 if (error.message !== 'restart_in_progress') {
-//                     console.error('Error during restart:', error);
-//                     statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
-//                     waitForApplicationRestart(statusDiv);
-//                 }
-//             });
-//         } else {
-//             statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
-//             throw new Error(data.message);
-//         }
-//     })
-//     .catch(error => {
-//         if (error.message !== 'restart_in_progress') {
-//             console.error('Error:', error);
-//             if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
-//                 statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-//             }
-//         }
-//     });
-// }
+            // Then restart the application
+            fetch('/restart', {
+                method: 'POST'
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    // If the server is already restarting, we might get an error response
+                    // This is normal, so handle it gracefully
+                    statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
+                    waitForApplicationRestart(statusDiv);
+                    throw new Error('restart_in_progress');
+                }
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
+                    waitForApplicationRestart(statusDiv);
+                }
+            })
+            .catch(error => {
+                if (error.message !== 'restart_in_progress') {
+                    console.error('Error during restart:', error);
+                    statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
+                    waitForApplicationRestart(statusDiv);
+                }
+            });
+        } else {
+            statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
+            throw new Error(data.message);
+        }
+    })
+    .catch(error => {
+        if (error.message !== 'restart_in_progress') {
+            console.error('Error:', error);
+            if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
+                statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            }
+        }
+    });
+}
 
 // Application refresh function (for the refresh button)
 function refreshApplication() {
@@ -3231,4 +3333,44 @@ function addSortingToResourceTable(resourceType) {
             header.innerHTML = `${text} <i class="sort-icon"></i>`;
         }
     });
+}
+
+// Add just before the initializeTerminal function
+// Check kubectl connectivity
+function checkKubectlConnection() {
+    const statusSpan = document.getElementById('kubectlStatus');
+    
+    if (statusSpan) {
+        statusSpan.innerHTML = '<span class="text-info"><i class="fas fa-spinner fa-spin"></i> Checking connection...</span>';
+        
+        fetch('/api/cli/exec', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                command: 'kubectl version --client'
+            })
+        })
+        .then(response => {
+            console.log("Check kubectl response status:", response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("Check kubectl response data:", data);
+            if (data.output && !data.output.startsWith('Error:')) {
+                statusSpan.innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> kubectl connection working</span>';
+            } else {
+                statusSpan.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle"></i> kubectl connection failed</span>';
+                console.error("kubectl check failed:", data.output);
+            }
+        })
+        .catch(error => {
+            console.error('Error checking kubectl:', error);
+            statusSpan.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle"></i> Connection check failed</span>';
+        });
+    }
 }
