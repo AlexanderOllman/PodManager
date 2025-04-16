@@ -2881,66 +2881,70 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Add sorting functionality to resource tables
 function addSortingToResourceTable(resourceType) {
-    // Get the table headers
-    const tableHeaders = document.querySelectorAll(`#${resourceType}Table thead th[data-sort]`);
-    
-    // If no sortable headers, return early
-    if (!tableHeaders || tableHeaders.length === 0) {
+    const table = document.getElementById(`${resourceType}Table`);
+    if (!table) {
+        console.warn(`Table #${resourceType}Table not found`);
         return;
     }
     
-    // Add click listeners to sortable headers
-    tableHeaders.forEach(header => {
-        // Remove existing event listeners by cloning
-        const newHeader = header.cloneNode(true);
-        header.parentNode.replaceChild(newHeader, header);
-        
-        // Add sort indicators if not already present
-        if (!newHeader.querySelector('.sort-indicator')) {
-            const sortIndicator = document.createElement('span');
-            sortIndicator.className = 'sort-indicator ms-1';
-            sortIndicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
-            newHeader.appendChild(sortIndicator);
+    // Get all sortable headers
+    const headers = table.querySelectorAll('th[data-sort]');
+    if (!headers || headers.length === 0) {
+        console.warn(`No sortable headers found in #${resourceType}Table`);
+        return;
+    }
+    
+    // Process each sortable header
+    headers.forEach(header => {
+        // Skip if already processed (has a sort-indicator)
+        if (header.querySelector('.sort-indicator')) {
+            return;
         }
         
-        // Add click event listener
-        newHeader.addEventListener('click', () => {
-            // Get sort field and current direction
-            const sortField = newHeader.getAttribute('data-sort');
-            let sortDirection = 'asc';
+        // Add sort indicator
+        const sortIndicator = document.createElement('span');
+        sortIndicator.className = 'sort-indicator ms-1';
+        sortIndicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
+        header.appendChild(sortIndicator);
+        
+        // Add click event
+        header.addEventListener('click', function() {
+            const sortField = this.getAttribute('data-sort');
+            if (!sortField) return;
             
             // Toggle sort direction if already sorted by this field
+            let sortDirection = 'asc';
             if (window.app.state.resources[resourceType].sortField === sortField) {
                 sortDirection = window.app.state.resources[resourceType].sortDirection === 'asc' ? 'desc' : 'asc';
             }
             
-            // Update sort indicators for all headers
-            tableHeaders.forEach(h => {
-                const indicator = h.querySelector('.sort-indicator');
-                if (indicator) {
-                    indicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
+            // Reset all sort indicators
+            headers.forEach(h => {
+                const ind = h.querySelector('.sort-indicator');
+                if (ind) {
+                    ind.innerHTML = '<i class="fas fa-sort text-muted"></i>';
                 }
             });
             
-            // Update indicator for this header
-            const indicator = newHeader.querySelector('.sort-indicator');
+            // Update this header's sort indicator
+            const indicator = this.querySelector('.sort-indicator');
             if (indicator) {
                 indicator.innerHTML = sortDirection === 'asc' 
                     ? '<i class="fas fa-sort-up text-primary"></i>' 
                     : '<i class="fas fa-sort-down text-primary"></i>';
             }
             
-            // Save sort settings
+            // Update state
             window.app.state.resources[resourceType].sortField = sortField;
             window.app.state.resources[resourceType].sortDirection = sortDirection;
             
-            // Sort the data
+            // Sort data and re-render
             sortResourceData(resourceType, sortField, sortDirection);
-            
-            // Re-render the current page
             renderCurrentPage(resourceType);
         });
     });
+    
+    console.log(`Added sorting to ${headers.length} columns in ${resourceType}Table`);
 }
 
 // Helper function to sort resource data
