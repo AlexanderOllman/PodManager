@@ -903,5 +903,173 @@ def handle_disconnect():
     print('Client disconnected')
     return None
 
+@app.route('/api/gpu-pods', methods=['GET'])
+def get_gpu_pods():
+    try:
+        namespace = request.args.get('namespace')
+        
+        # Get all pods
+        pods = []
+        if namespace:
+            command = f"kubectl get pods -n {namespace} -o json"
+        else:
+            command = "kubectl get pods --all-namespaces -o json"
+        
+        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+        pod_list = json.loads(result.stdout)
+        
+        # Filter pods that use GPU resources
+        gpu_pods = []
+        for pod in pod_list.get('items', []):
+            has_gpu = False
+            gpu_count = 0
+            
+            # Check containers for GPU requests
+            for container in pod.get('spec', {}).get('containers', []):
+                resources = container.get('resources', {})
+                limits = resources.get('limits', {})
+                
+                # Look for NVIDIA GPU or generic GPU resources
+                for resource_name, value in limits.items():
+                    if 'nvidia.com' in resource_name or 'gpu' in resource_name:
+                        has_gpu = True
+                        try:
+                            gpu_count += int(value)
+                        except ValueError:
+                            pass
+            
+            if has_gpu:
+                gpu_pods.append({
+                    'name': pod.get('metadata', {}).get('name', ''),
+                    'namespace': pod.get('metadata', {}).get('namespace', ''),
+                    'node': pod.get('spec', {}).get('nodeName', ''),
+                    'status': pod.get('status', {}).get('phase', ''),
+                    'gpu_count': gpu_count
+                })
+        
+        return jsonify(gpu_pods)
+    
+    except subprocess.CalledProcessError as e:
+        app.logger.error(f"Error executing kubectl command: {e}")
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        app.logger.error(f"Error fetching GPU pods: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/namespace-metrics', methods=['GET'])
+def get_namespace_metrics():
+    try:
+        metric_type = request.args.get('metric', 'gpu')
+        
+        # Get all pods
+        command = "kubectl get pods --all-namespaces -o json"
+        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+        pod_list = json.loads(result.stdout)
+        
+        # Group pods by namespace and calculate resource usage
+        namespace_metrics = {}
+        
+        for pod in pod_list.get('items', []):
+            namespace = pod.get('metadata', {}).get('namespace', 'default')
+            
+            if namespace not in namespace_metrics:
+                namespace_metrics[namespace] = {
+                    'namespace': namespace,
+                    'pod_count': 0,
+                    'gpu_usage': 0,
+                    'cpu_usage': 0,
+                    'memory_usage': 0
+                }
+            
+            # Increment pod count
+            namespace_metrics[namespace]['pod_count'] += 1
+            
+            # Calculate resource usage from containers
+            for container in pod.get('spec', {}).get('containers', []):
+                resources = container.get('resources', {})
+                limits = resources.get('limits', {})
+                
+                # CPU
+                cpu = limits.get('cpu', '')
+                if cpu:
+                    cpu_cores = 0
+                    if cpu.endswith('m'):
+                        cpu_cores = float(cpu[:-1]) / 1000
+                    else:
+                        try:
+                            cpu_cores = float(cpu)
+                        except ValueError:
+                            pass
+                    namespace_metrics[namespace]['cpu_usage'] += cpu_cores
+                
+                # Memory
+                memory = limits.get('memory', '')
+                if memory:
+                    memory_bytes = 0
+                    if memory.endswith('Ki'):
+                        memory_bytes = float(memory[:-2]) * 1024
+                    elif memory.endswith('Mi'):
+                        memory_bytes = float(memory[:-2]) * 1024 * 1024
+                    elif memory.endswith('Gi'):
+                        memory_bytes = float(memory[:-2]) * 1024 * 1024 * 1024
+                    else:
+                        try:
+                            memory_bytes = float(memory)
+                        except ValueError:
+                            pass
+                    namespace_metrics[namespace]['memory_usage'] += memory_bytes
+                
+                # GPU
+                for resource_name, value in limits.items():
+                    if 'nvidia.com' in resource_name or 'gpu' in resource_name:
+                        try:
+                            namespace_metrics[namespace]['gpu_usage'] += int(value)
+                        except ValueError:
+                            pass
+        
+        # Convert to list and sort by the requested metric
+        metrics_list = list(namespace_metrics.values())
+        if metric_type == 'gpu':
+            metrics_list.sort(key=lambda x: x['gpu_usage'], reverse=True)
+        elif metric_type == 'cpu':
+            metrics_list.sort(key=lambda x: x['cpu_usage'], reverse=True)
+        elif metric_type == 'memory':
+            metrics_list.sort(key=lambda x: x['memory_usage'], reverse=True)
+        
+        # Return only namespaces with the relevant resource usage
+        filtered_metrics = [m for m in metrics_list if m[f'{metric_type}_usage'] > 0]
+        
+        return jsonify(filtered_metrics[:10])  # Return top 10 namespaces
+    
+    except subprocess.CalledProcessError as e:
+        app.logger.error(f"Error executing kubectl command: {e}")
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        app.logger.error(f"Error calculating namespace metrics: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/pods/delete', methods=['POST'])
+def delete_pod():
+    try:
+        namespace = request.args.get('namespace')
+        name = request.args.get('name')
+        
+        if not namespace or not name:
+            return jsonify({"error": "Namespace and pod name are required"}), 400
+        
+        # Execute kubectl delete command
+        command = f"kubectl delete pod {name} -n {namespace}"
+        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+        
+        return jsonify({"success": True, "message": f"Pod {name} deleted successfully"})
+    
+    except subprocess.CalledProcessError as e:
+        app.logger.error(f"Error deleting pod: {e}")
+        error_message = e.stderr if e.stderr else str(e)
+        return jsonify({"error": error_message}), 500
+    except Exception as e:
+        app.logger.error(f"Error deleting pod: {e}")
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)

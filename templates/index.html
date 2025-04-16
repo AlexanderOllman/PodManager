@@ -91,39 +91,96 @@
         </div>
 
         <!-- Tabs -->
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <ul class="nav nav-tabs" id="resourceTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="pods-tab" data-bs-toggle="tab" data-bs-target="#pods" type="button" role="tab" aria-controls="pods" aria-selected="true">Pods</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="services-tab" data-bs-toggle="tab" data-bs-target="#services" type="button" role="tab" aria-controls="services" aria-selected="false">Services</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="inferenceservices-tab" data-bs-toggle="tab" data-bs-target="#inferenceservices" type="button" role="tab" aria-controls="inferenceservices" aria-selected="false">InferenceServices</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="deployments-tab" data-bs-toggle="tab" data-bs-target="#deployments" type="button" role="tab" aria-controls="deployments" aria-selected="false">Deployments</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="configmaps-tab" data-bs-toggle="tab" data-bs-target="#configmaps" type="button" role="tab" aria-controls="configmaps" aria-selected="false">ConfigMaps</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="secrets-tab" data-bs-toggle="tab" data-bs-target="#secrets" type="button" role="tab" aria-controls="secrets" aria-selected="false">Secrets</button>
-                </li>
-            </ul>
-            <div>
-                <button class="btn btn-outline-primary btn-sm me-2" onclick="loadAllPods()">
-                    <i class="fas fa-cubes me-1"></i> Load All Pods
-                </button>
-                <button class="btn btn-outline-primary btn-sm" onclick="loadAllServiceTypes()">
-                    <i class="fas fa-cloud-download-alt me-1"></i> Load All Services
-                </button>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Pods with GPU</h5>
+                        <button class="btn btn-sm btn-outline-primary" id="refreshGpuPods">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="loading-container" id="gpuPodsLoading">
+                            <div class="progress-container">
+                                <div class="progress">
+                                    <div class="progress-bar" role="progressbar" style="width: 0%" id="gpuPodsProgressBar"></div>
+                                </div>
+                                <div class="loading-text" id="gpuPodsLoadingText">Loading GPU Pods...</div>
+                            </div>
+                        </div>
+                        <div class="table-container" id="gpuPodsTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
+                            <div class="table-responsive">
+                                <table class="table table-hover table-striped table-sm border-bottom mb-0" id="gpuPodsTable">
+                                    <thead class="bg-light">
+                                        <tr>
+                                            <th class="border-0" data-sort="namespace">Namespace</th>
+                                            <th class="border-0" data-sort="name">Name</th>
+                                            <th class="border-0" data-sort="status">Status</th>
+                                            <th class="border-0" data-sort="gpu">GPU</th>
+                                            <th class="border-0" data-sort="memory">Memory</th>
+                                            <th class="border-0 text-center">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- GPU Pods will be dynamically populated -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Top Namespaces by Resource</h5>
+                        <div>
+                            <select id="namespaceMetricSelector" class="form-select form-select-sm d-inline-block me-2" style="width: auto;">
+                                <option value="gpu">GPU Usage</option>
+                                <option value="cpu">vCPU Usage</option>
+                                <option value="memory">Memory Usage</option>
+                            </select>
+                            <button class="btn btn-sm btn-outline-primary" id="refreshNamespaceMetrics">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="loading-container" id="namespaceMetricsLoading">
+                            <div class="progress-container">
+                                <div class="progress">
+                                    <div class="progress-bar" role="progressbar" style="width: 0%" id="namespaceMetricsProgressBar"></div>
+                                </div>
+                                <div class="loading-text" id="namespaceMetricsLoadingText">Loading Namespace Metrics...</div>
+                            </div>
+                        </div>
+                        <div class="table-container" id="namespaceMetricsTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
+                            <div class="table-responsive">
+                                <table class="table table-hover table-striped table-sm border-bottom mb-0" id="namespaceMetricsTable">
+                                    <thead class="bg-light">
+                                        <tr>
+                                            <th class="border-0" data-sort="namespace">Namespace</th>
+                                            <th class="border-0" data-sort="pods">Pods</th>
+                                            <th class="border-0" data-sort="cpu">vCPU</th>
+                                            <th class="border-0" data-sort="gpu">GPU</th>
+                                            <th class="border-0" data-sort="memory">Memory</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Namespace metrics will be dynamically populated -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Tab content -->
-        <div class="tab-content" id="resourceTabsContent">
+        <div class="tab-content" id="resourceTabsContent" style="display: none;">
             <div class="tab-pane fade show active" id="pods" role="tabpanel" aria-labelledby="pods-tab">
                 <div class="loading-container" id="podsLoading">
                     <div class="progress-container">
