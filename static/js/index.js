@@ -256,7 +256,7 @@ function initializeTerminal() {
             let historyIndex = -1;
             
             // Initial prompt
-            terminal.writeln('Welcome to the Kubernetes CLI.');
+            terminal.writeln('-- HPE Private Cloud AI - Control Plane CLI --');
             terminal.writeln('Type commands directly in this window and press Enter to execute.');
             terminal.writeln('');
             terminal.write('$ ');
@@ -284,14 +284,16 @@ function initializeTerminal() {
             
             // Listen for command output
             window.app.socket.on('terminal_output', function(data) {
+                // Only write to terminal if there's actual data to display
                 if (data.data) {
                     // Display the output
                     terminal.write(data.data);
-                    
-                    // If command is complete, show a new prompt
-                    if (data.complete) {
-                        terminal.write('\r\n$ ');
-                    }
+                }
+                
+                // If command is complete, show a new prompt
+                if (data.complete) {
+                    console.log('Command execution completed');
+                    terminal.write('\r\n$ ');
                 }
             });
             

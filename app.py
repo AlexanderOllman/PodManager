@@ -157,7 +157,9 @@ def run_command(command, sid):
     if error_output:
         socketio.emit('terminal_output', {'data': f"\nError: {error_output}", 'error': True}, room=sid)
     
-    socketio.emit('terminal_output', {'data': '\nCommand completed.', 'complete': True}, room=sid)
+    # Send completion signal without the message
+    print(f"Command completed: {command}")
+    socketio.emit('terminal_output', {'complete': True}, room=sid)
 
 @app.route('/run_cli_command', methods=['POST'])
 def run_cli_command():
