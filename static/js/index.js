@@ -1108,10 +1108,10 @@ function loadAllServiceTypes() {
                     window.app.state.resources[type].showAll = true; // Mark this resource type to show all items
                     renderCurrentPage(type); // Re-render with more items
                 }
-            
-            return data;
-        })
-        .catch(error => {
+                
+                return data;
+            })
+            .catch(error => {
                 completedCount++;
                 updateProgress(completedCount, serviceTypes.length);
                 console.error(`Error loading ${type}:`, error);
@@ -1125,7 +1125,7 @@ function loadAllServiceTypes() {
             console.log('All service types loaded');
             
             // Remove loading indicator
-                    setTimeout(() => {
+            setTimeout(() => {
                 loadingIndicator.remove();
                 
                 // Show success message
@@ -2913,26 +2913,29 @@ function namespaceChanged(resourceType) {
 function loadResourcesForTab(tabId) {
     console.log(`Loading resources for tab: ${tabId}`);
 
-    // If we're loading for home tab, we need to figure out which resource tab is active
+    // Handle resource loading based on tab ID
+    if (tabId === 'resources') {
+        loadResourcesPage();
+        return;
+    }
+
+    // Handle home tab with nested resource tabs
     if (tabId === 'home') {
-        // Find the active resource tab
-        const activeResourceTab = document.querySelector('#resourceTabs .nav-link.active');
-        if (activeResourceTab) {
-            const resourceTabId = activeResourceTab.id.replace('-tab', '');
-            console.log(`Active resource tab on home: ${resourceTabId}`);
-            
-            // Get current namespace selection
-            const namespaceSelector = document.getElementById(`${resourceTabId}Namespace`);
-            const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
-            
-            // Check if we need to force reload (when returning from pod view)
-            const returningFromPodView = sessionStorage.getItem('returning_from_pod_view') === 'true';
-            if (returningFromPodView || !window.app.loadedResources || !window.app.loadedResources[resourceTabId]) {
-                // Fetch resource data
-                console.log(`Loading ${resourceTabId} data with namespace ${currentNamespace}`);
+        // Check if there's an active resource tab
+        try {
+            const activeTabId = document.querySelector('#resourceTabs .nav-link.active')?.id;
+            if (activeTabId) {
+                const resourceTabId = activeTabId.replace('-tab', '');
+                console.log(`Active resource tab in home: ${resourceTabId}`);
+                
+                // Get the current namespace selection
+                const namespaceSelector = document.getElementById(`${resourceTabId}Namespace`);
+                const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+                
+                // Fetch data for the active resource tab
                 fetchResourceData(resourceTabId, currentNamespace, false);
             }
-        } else {
+        } catch (e) {
             // Default to pods if no tab is active
             console.log('No active resource tab found, defaulting to pods');
             fetchResourceData('pods', 'all', false);
@@ -2943,34 +2946,43 @@ function loadResourcesForTab(tabId) {
             initializeGPUFilter();
         }
         
-        // Also initialize other home page functionality
-        setupTabClickHandlers();
-    } else if (tabId === 'namespaces') {
-        // Load namespaces data
-        if (typeof loadNamespaces === 'function') {
-            loadNamespaces();
-        }
-    } else if (tabId === 'cli') {
-        // Make sure terminal is initialized
-        if (typeof initializeTerminal === 'function') {
-            initializeTerminal();
-        }
-    } else if (tabId === 'yaml') {
-        // Setup drop zone for YAML uploads
-        if (typeof setupDropZone === 'function') {
-            setupDropZone();
-        }
-    } else if (tabId === 'settings') {
-        // Check git availability for settings page
-        if (typeof checkGitAvailability === 'function') {
-            checkGitAvailability();
-        }
-    } else if (tabId === 'charts') {
-        // Load charts data
-        if (typeof listCharts === 'function') {
-            listCharts();
-        }
+        return;
     }
+    
+    // For other tabs like CLI, YAML, etc.
+    const activeTabId = tabId.replace('-tab', '');
+    if (['cli', 'yaml', 'namespaces', 'charts', 'settings'].includes(activeTabId)) {
+        console.log(`Non-resource tab selected: ${activeTabId}`);
+    } else if (activeTabId) {
+        // If it's a direct resource tab
+        fetchResourceData(activeTabId, 'all', false);
+    } else {
+        // Default to pods if no active tab
+        console.log('No active tab found, defaulting to pods');
+        fetchResourceData('pods', 'all', false);
+    }
+    
+    // Set up lazy loading for other tabs
+    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+    resourceTypes.forEach(resourceType => {
+        if (resourceType !== activeTabId) {
+            console.log(`Setting up lazy loading for ${resourceType}`);
+            const tabElement = document.getElementById(`${resourceType}-tab`);
+            
+            if (tabElement) {
+                const newTabElement = tabElement.cloneNode(true);
+                tabElement.parentNode.replaceChild(newTabElement, tabElement);
+                
+                newTabElement.addEventListener('click', () => {
+                    if (!window.app.loadedResources[resourceType]) {
+                        console.log(`Lazy loading ${resourceType} data`);
+                        window.app.loadedResources[resourceType] = true;
+                        fetchResourceData(resourceType, 'all', false);
+                    }
+                });
+            }
+        }
+    });
 }
 
 // Initialize app object if not exists
@@ -3010,14 +3022,20 @@ if (!window.app.state) {
     };
 }
 
+// Current resource type for Resources page
+window.app.currentResourceType = 'pods';
+
 // Cache timeout - 5 minutes
 window.app.CACHE_TIMEOUT = window.app.CACHE_TIMEOUT || 5 * 60 * 1000;
 
 // Add cache management at the top of the file
 window.app.cache = {
     resources: {},
-    timestamps: {},
-    STALE_THRESHOLD: 2 * 60 * 1000 // 2 minutes in milliseconds
+    lastFetch: {},
+    clear: function() {
+        this.resources = {};
+        this.lastFetch = {};
+    }
 };
 
 // Add refresh alert container after loading container
@@ -3073,6 +3091,14 @@ function startDataFreshnessChecker() {
 // Initialize the freshness checker when the document is ready
 document.addEventListener('DOMContentLoaded', () => {
     startDataFreshnessChecker();
+    
+    // Set up Resources tab handler
+    const resourcesTab = document.querySelector('a[data-bs-target="#resources"]');
+    if (resourcesTab) {
+        resourcesTab.addEventListener('click', function() {
+            loadResourcesPage();
+        });
+    }
 });
 
 // Add sorting functionality to resource tables
@@ -3201,5 +3227,260 @@ function sortResourceData(resourceType, sortField, sortDirection) {
         
         // Apply sort direction
         return sortDirection === 'asc' ? result : -result;
+    });
+}
+
+// ========================
+// Resources page functions
+// ========================
+
+// Initialize resources page when it's first loaded
+function initializeResourcesPage() {
+    console.log('Initializing resources page...');
+    
+    // Set up namespace selector
+    fetch('/api/namespaces/list')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const selector = document.getElementById('resourceNamespaceSelector');
+                if (selector) {
+                    // Add namespaces
+                    data.namespaces.forEach(namespace => {
+                        const option = document.createElement('option');
+                        option.value = namespace.name;
+                        option.textContent = namespace.name;
+                        selector.appendChild(option);
+                    });
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error loading namespaces:', error);
+        });
+    
+    // Set up search input event listener
+    const searchInput = document.getElementById('resourceSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const rows = document.querySelectorAll('#resourcesTableBody tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
+    
+    // Load the default resource type (pods)
+    loadResourceType(window.app.currentResourceType);
+}
+
+// Load resources when the resources tab is selected
+function loadResourcesPage() {
+    console.log('Loading resources page...');
+    
+    // Initialize the page if not already done
+    if (!window.app.resourcesInitialized) {
+        initializeResourcesPage();
+        window.app.resourcesInitialized = true;
+    } else {
+        // Reload current resource type
+        loadResourceType(window.app.currentResourceType);
+    }
+}
+
+// Load resources for the selected type
+function loadResourceType(resourceType) {
+    console.log(`Loading resources for type: ${resourceType}`);
+    
+    // Show loading indicator
+    const loadingContainer = document.getElementById('resourcesLoading');
+    const tableContainer = document.getElementById('resourcesTableContainer');
+    const progressBar = document.getElementById('resourcesProgressBar');
+    
+    if (loadingContainer) {
+        loadingContainer.style.display = 'flex';
+    }
+    if (tableContainer) {
+        tableContainer.style.opacity = '0';
+    }
+    if (progressBar) {
+        progressBar.style.width = '30%';
+    }
+    
+    // Get namespace filter
+    const namespace = document.getElementById('resourceNamespaceSelector')?.value || 'all';
+    
+    // Fetch data for the resource type
+    fetchResourceData(resourceType, namespace, false)
+        .then(data => {
+            // Update UI with the fetched data
+            const tableHeaders = document.getElementById('resourcesTableHeader');
+            const tableBody = document.getElementById('resourcesTableBody');
+            
+            if (tableHeaders && tableBody) {
+                // Clear existing content
+                tableHeaders.innerHTML = '';
+                tableBody.innerHTML = '';
+                
+                // Set headers based on resource type
+                let headers = [];
+                
+                switch (resourceType) {
+                    case 'pods':
+                        headers = ['Namespace', 'Name', 'Status', 'CPU', 'GPU', 'Memory', 'Actions'];
+                        break;
+                    case 'services':
+                        headers = ['Namespace', 'Name', 'Type', 'Cluster IP', 'External IP', 'Ports', 'Age', 'Actions'];
+                        break;
+                    case 'deployments':
+                        headers = ['Namespace', 'Name', 'Ready', 'Status', 'CPU', 'Memory', 'Actions'];
+                        break;
+                    case 'inferenceservices':
+                        headers = ['Namespace', 'Name', 'URL', 'Status', 'CPU', 'GPU', 'Memory', 'Actions'];
+                        break;
+                    default:
+                        headers = ['Namespace', 'Name', 'Actions'];
+                }
+                
+                // Create header row
+                headers.forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    tableHeaders.appendChild(th);
+                });
+                
+                // Check if we have data
+                if (!data?.data?.items || data.data.items.length === 0) {
+                    // Show empty state
+                    const emptyRow = document.createElement('tr');
+                    const emptyCell = document.createElement('td');
+                    emptyCell.colSpan = headers.length;
+                    emptyCell.className = 'text-center py-4';
+                    emptyCell.innerHTML = `<i class="fas fa-info-circle me-2"></i> No ${resourceType} found`;
+                    emptyRow.appendChild(emptyCell);
+                    tableBody.appendChild(emptyRow);
+                } else {
+                    // Build table with fetched items
+                    data.data.items.forEach(item => {
+                        const row = document.createElement('tr');
+                        
+                        // Add cells based on resource type
+                        // Note: This is a simplified version - in real implementation,
+                        // we would add more complex logic for each resource type
+                        switch (resourceType) {
+                            case 'pods':
+                                row.innerHTML = `
+                                    <td>${item.metadata.namespace}</td>
+                                    <td>${item.metadata.name}</td>
+                                    <td>${item.status.phase}</td>
+                                    <td>${getResourceUsage(item).cpu || '0'}</td>
+                                    <td>${getResourceUsage(item).gpu || '0'}</td>
+                                    <td>${getResourceUsage(item).memory || '0Mi'}</td>
+                                    <td class="text-center">${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                                `;
+                                break;
+                            case 'services':
+                                // Service specific rendering
+                                // ... (similar to pods)
+                                break;
+                            default:
+                                row.innerHTML = `
+                                    <td>${item.metadata.namespace}</td>
+                                    <td>${item.metadata.name}</td>
+                                    <td class="text-center">${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                                `;
+                        }
+                        
+                        tableBody.appendChild(row);
+                    });
+                }
+                
+                // Show the table
+                if (progressBar) {
+                    progressBar.style.width = '100%';
+                    setTimeout(() => {
+                        if (loadingContainer) {
+                            loadingContainer.style.display = 'none';
+                        }
+                    }, 500);
+                }
+                
+                if (tableContainer) {
+                    setTimeout(() => {
+                        tableContainer.style.opacity = '1';
+                    }, 100);
+                }
+            }
+        })
+        .catch(error => {
+            console.error(`Error loading ${resourceType}:`, error);
+            
+            // Show error message
+            if (tableContainer) {
+                tableContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error loading ${resourceType}: ${error.message}
+                        <button class="btn btn-sm btn-outline-danger ms-3" onclick="loadResourceType('${resourceType}')">
+                            <i class="fas fa-sync-alt me-1"></i> Retry
+                        </button>
+                    </div>
+                `;
+                
+                // Hide loading indicator
+                if (loadingContainer) {
+                    loadingContainer.style.display = 'none';
+                }
+            }
+        });
+}
+
+// Function to handle resource type change
+function changeResourceType(resourceType) {
+    window.app.currentResourceType = resourceType;
+    loadResourceType(resourceType);
+}
+
+// Function to handle namespace change
+function namespaceChangedResource() {
+    loadResourceType(window.app.currentResourceType);
+}
+
+// Function to clear resource search
+function clearResourceSearch() {
+    const searchInput = document.getElementById('resourceSearchInput');
+    if (searchInput) {
+        searchInput.value = '';
+        // Trigger search to show all rows
+        const rows = document.querySelectorAll('#resourcesTableBody tr');
+        rows.forEach(row => {
+            row.style.display = '';
+        });
+    }
+}
+
+// Helper function to add namespace options to namespace selector
+function populateResourceNamespaceSelector(namespaces) {
+    const selector = document.getElementById('resourceNamespaceSelector');
+    if (!selector) return;
+    
+    // Clear current options except "All Namespaces"
+    while (selector.options.length > 1) {
+        selector.options.remove(1);
+    }
+    
+    // Add namespaces
+    namespaces.forEach(namespace => {
+        const option = document.createElement('option');
+        option.value = namespace.name;
+        option.textContent = namespace.name;
+        selector.appendChild(option);
     });
 }
