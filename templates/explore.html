@@ -254,7 +254,14 @@ function initializeExplorePage() {
     document.getElementById('backButton').addEventListener('click', function(e) {
         e.preventDefault();
         console.log("Returning to home page");
-        window.location.href = '/'; // Use direct navigation instead of SPA
+        
+        // Store a flag in sessionStorage indicating we're navigating back to home
+        // This will be used to ensure resources are properly reloaded
+        sessionStorage.setItem('returning_from_pod_view', 'true');
+        sessionStorage.setItem('last_active_tab', window.location.hash || '#details');
+        
+        // Clear hash and return to home page
+        window.location.href = '/';
     });
     
     // Handle tab selection based on URL hash

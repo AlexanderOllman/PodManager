@@ -173,51 +173,53 @@ function initializeBootstrapComponents() {
     });
 }
 
-// Home page specific initialization
+// Initialize or reinitialize the home page
 function initializeHomePage() {
-    console.log('Initializing home page components...');
+    console.log('Initializing home page...');
     
-    // Initialize GPU filter card
-    initializeGPUFilter();
-    
-    // Add controls to each resource tab
-    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
-    resourceTypes.forEach(resourceType => {
-        addResourceControls(resourceType);
+    // Check if returning from pod view
+    const returningFromPodView = sessionStorage.getItem('returning_from_pod_view') === 'true';
+    if (returningFromPodView) {
+        console.log('Detected return from pod view - forcing reload of resources');
+        sessionStorage.removeItem('returning_from_pod_view');
         
-        // Set up tab click handlers to load data on demand
-        const tabElement = document.querySelector(`#${resourceType}-tab`);
-        if (tabElement) {
-            tabElement.addEventListener('click', () => {
-                // Always fetch fresh data when tab is clicked
-                console.log(`Tab ${resourceType} clicked, fetching fresh data...`);
-                
-                // Get current namespace selection
-                const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
-                const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
-                
-                // Force fetch by clearing the cached state
-                if (window.loadedResources) {
-                    delete window.loadedResources[resourceType];
-                }
-                
-                fetchResourceData(resourceType, currentNamespace);
-            });
-        }
-    });
-    
-    // Load the active tab content
-    const activeTabId = document.querySelector('.tab-pane.active')?.id;
-    if (activeTabId && resourceTypes.includes(activeTabId)) {
-        // Get the namespace for this tab
-        const namespaceSelector = document.getElementById(`${activeTabId}Namespace`);
-        const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
-        
-        fetchResourceData(activeTabId, currentNamespace);
-    } else {
-        // If no tab is active, load pods as default
-        fetchResourceData('pods', 'all');
+        // Force reset of any cached resources
+        window.app.loadedResources = {};
+        window.app.state.resources = {};
+        window.app.state.lastFetch = {};
     }
+    
+    // Reset resources if we're coming from a different page
+    if (window.app.state.navigation.isNavigating || returningFromPodView) {
+        window.app.loadedResources = {};
+        if (window.app.state.resources) {
+            window.app.state.resources = {};
+        }
+        window.app.state.navigation.isNavigating = false;
+        
+        // Ensure cluster capacity is fetched after navigation
+        if (typeof fetchClusterCapacity === 'function') {
+            console.log('Fetching cluster capacity after navigation');
+            fetchClusterCapacity();
+        }
+    }
+    
+    // Get active tab from navigation state
+    const activeTab = window.app.state.navigation.activeTab || 'home';
+    console.log(`Active tab from navigation state: ${activeTab}`);
+    
+    // Activate the tab
+    activateTab(activeTab, false); // false means don't trigger a load yet
+    
+    // Delay resource loading to ensure DOM is ready
+    setTimeout(() => {
+        // Home tab is a special case - it contains resource tabs
+        if (activeTab === 'home') {
+            loadResourcesForTab('home'); // This will handle finding the active resource tab
+        } else {
+            loadResourcesForTab(activeTab);
+        }
+    }, 200);
 }
 
 // Terminal initialization - already loaded in head
@@ -865,172 +867,89 @@ function renderCurrentPage(resourceType) {
 }
 
 // Resource data fetching (for individual tab clicks or refresh button)
-function fetchResourceData(resourceType, namespace, criticalOnly = false) {
-    console.log(`Fetching ${resourceType} data (${criticalOnly ? 'critical' : 'full'})...`);
-    const startTime = performance.now();
+function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false) {
+    console.log(`Fetching ${resourceType} data for namespace ${namespace}${criticalOnly ? ' (critical only)' : ''}`);
     
-    // Cancel any existing request for this resource type
-    if (window.app.state.activeRequests && window.app.state.activeRequests.has(resourceType)) {
-        window.app.state.activeRequests.get(resourceType).abort();
-        window.app.state.activeRequests.delete(resourceType);
-    }
+    // Show loading indicators
+    showLoading(resourceType);
     
-    // Initialize the activeRequests Map if it doesn't exist
-    if (!window.app.state.activeRequests) {
-        window.app.state.activeRequests = new Map();
-    }
+    // Check for recent cached data unless it's being forced (when returning from pod view)
+    const returningFromPodView = sessionStorage.getItem('returning_from_pod_view') === 'true';
+    const cacheKey = `${resourceType}-${namespace}-${criticalOnly ? 'critical' : 'full'}`;
+    const lastFetch = window.app.state.lastFetch[cacheKey];
     
-    // Initialize resources object if it doesn't exist
-    if (!window.app.state.resources) {
-        window.app.state.resources = {};
-    }
-    
-    // Initialize lastFetch object if it doesn't exist
-    if (!window.app.state.lastFetch) {
-        window.app.state.lastFetch = {};
-    }
-    
-    // Initialize the app's CACHE_TIMEOUT if it doesn't exist
-    if (!window.app.CACHE_TIMEOUT) {
-        window.app.CACHE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-    }
-    
-    // Track when the user left the dashboard 
-    const navigatingBack = window.app.state.navigation && 
-                           window.app.state.navigation.isNavigating === false && 
-                           window.location.pathname === '/';
-    
-    // Force fresh data when returning to the dashboard
-    if (navigatingBack) {
-        console.log("Returning to dashboard - forcing fresh data fetch");
-        delete window.app.state.resources[resourceType];
-        delete window.app.state.lastFetch[resourceType];
-    }
-    
-    // For critical-only loads, don't use cache unless explicitly returning to dashboard
-    if (!criticalOnly && !navigatingBack) {
-        // Check cache first
-        const cachedData = window.app.state.resources[resourceType];
-        const lastFetch = window.app.state.lastFetch[resourceType];
-        if (cachedData && lastFetch && (Date.now() - lastFetch < window.app.CACHE_TIMEOUT)) {
-            console.log(`Using cached data for ${resourceType}`);
-            return Promise.resolve(processResourceData(resourceType, cachedData, startTime));
+    if (!returningFromPodView && lastFetch && (Date.now() - lastFetch) < window.app.CACHE_TIMEOUT) {
+        console.log(`Using cached data for ${resourceType} (${namespace})`);
+        
+        // Use the cached data
+        const cachedData = window.app.state.resources[cacheKey];
+        if (cachedData) {
+            processResourceData(resourceType, cachedData);
+            hideLoading(resourceType);
+            return Promise.resolve(cachedData);
         }
     }
     
-    // Show loading indicator
-    showLoading(resourceType);
-    
-    // Create new abort controller
-    const controller = new AbortController();
-    window.app.state.activeRequests.set(resourceType, controller);
-    
-    // Prepare form data
-    const formData = new FormData();
-    formData.append('resource_type', resourceType);
-    formData.append('critical_only', criticalOnly);
-    if (namespace && namespace !== 'all') {
-        formData.append('namespace', namespace);
+    // If we're returning from pod view, we should clear the flag after processing
+    if (returningFromPodView) {
+        sessionStorage.removeItem('returning_from_pod_view');
     }
     
-    // Advance to connecting step
-    setTimeout(() => advanceLoadingStep(resourceType), 800);
+    // No cached data or cache expired, fetch from server
+    const startTime = performance.now();
     
-    // Track when we start processing the response
-    let processingStartTime;
-    
-    function fetchWithRetry(attempt = 0) {
-        const MAX_RETRIES = 3;
-        const RETRY_DELAY = 1000;
+    return new Promise((resolve, reject) => {
+        const formData = new FormData();
+        formData.append('resource_type', resourceType);
+        formData.append('namespace', namespace);
+        formData.append('critical_only', criticalOnly.toString());
         
-        return fetch('/get_resources', {
+        fetch('/get_resources', {
             method: 'POST',
-            body: formData,
-            signal: controller.signal
+            body: formData
         })
         .then(response => {
-            processingStartTime = performance.now();
-            // Advance to processing step
-            advanceLoadingStep(resourceType);
+            if (!response.ok) {
+                throw new Error(`Network response was not ok: ${response.status}`);
+            }
             return response.json();
         })
         .then(data => {
-            if (!data || !data.data || !data.data.items) {
-                throw new Error('Invalid response format');
-            }
+            console.log(`Fetched ${resourceType} data in ${Math.round(performance.now() - startTime)}ms`);
             
-            // Advance to metrics calculation step
-            advanceLoadingStep(resourceType);
-            
-            // Cache the successful response
-            window.app.state.resources[resourceType] = data;
-            window.app.state.lastFetch[resourceType] = Date.now();
-            
-            // Mark as loaded
-            if (!window.app.loadedResources) {
-                window.app.loadedResources = {};
-            }
-            window.app.loadedResources[resourceType] = true;
-            
-            // Advance to preparing display step
-            setTimeout(() => advanceLoadingStep(resourceType), 500);
+            // Update the last fetch time and cache the data
+            window.app.state.lastFetch[cacheKey] = Date.now();
+            window.app.state.resources[cacheKey] = data;
             
             // Process the data
-            setTimeout(() => {
-                processResourceData(resourceType, data, startTime, processingStartTime);
-            }, 800);
+            processResourceData(resourceType, data, startTime);
             
-            return data;
+            // Hide loading indicators
+            hideLoading(resourceType);
+            
+            resolve(data);
         })
         .catch(error => {
-            if (error.name === 'AbortError') {
-                console.log(`Request for ${resourceType} was cancelled`);
-                return;
-            }
+            console.error(`Error fetching ${resourceType}:`, error);
             
-            // Store error state
-            window.app.state.errors[resourceType] = error;
-            
-            // Retry logic
-            if (attempt < MAX_RETRIES) {
-                console.log(`Retrying ${resourceType} fetch attempt ${attempt + 1}...`);
-                return new Promise(resolve => {
-                    setTimeout(() => {
-                        resolve(fetchWithRetry(attempt + 1));
-                    }, RETRY_DELAY * Math.pow(2, attempt));
-                });
-            }
-            
-            // Show error in UI after all retries failed
-            const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-            if (tableBody) {
-                // Hide loading indicator with error
-                hideLoading(resourceType);
-                
-                // Show error in table
-                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-                if (tableContainer) {
-                    tableContainer.style.opacity = '1';
-                    tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
-                        <i class="fas fa-exclamation-circle me-2"></i>
-                        Failed to load ${resourceType} after multiple attempts. 
-                        <button onclick="fetchResourceData('${resourceType}')" class="btn btn-sm btn-outline-danger ms-3">
+            // Show error message
+            hideLoading(resourceType);
+            const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+            if (tableContainer) {
+                tableContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error loading ${resourceType}: ${error.message}
+                        <button class="btn btn-sm btn-outline-danger ms-3" onclick="fetchResourceData('${resourceType}', '${namespace}')">
                             <i class="fas fa-sync-alt me-1"></i> Retry
                         </button>
-                    </td></tr>`;
-                }
+                    </div>
+                `;
             }
             
-            throw error;
-        })
-        .finally(() => {
-            if (window.app.state.activeRequests) {
-                window.app.state.activeRequests.delete(resourceType);
-            }
+            reject(error);
         });
-    }
-    
-    return fetchWithRetry();
+    });
 }
 
 // Helper function to process resource data
@@ -1380,73 +1299,6 @@ function fetchEvents(namespace) {
     });
 }
 
-// GitHub update function
-// function updateFromGithub() {
-//     const repoUrl = document.getElementById('githubRepo').value;
-//     const statusDiv = document.getElementById('updateStatus');
-    
-//     if (!statusDiv) return;
-    
-//     statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
-    
-//     // First update from GitHub
-//     fetch('/update_from_github', {
-//         method: 'POST',
-//         headers: {
-//             'Content-Type': 'application/json',
-//         },
-//         body: JSON.stringify({
-//             repo_url: repoUrl
-//         })
-//     })
-//     .then(response => response.json())
-//     .then(data => {
-//         if (data.status === 'success') {
-//             statusDiv.innerHTML = 'Update successful. Initiating application restart...';
-            
-//             // Then restart the application
-//             fetch('/restart', {
-//                 method: 'POST'
-//             })
-//             .then(response => {
-//                 if (response.ok) {
-//                     return response.json();
-//                 } else {
-//                     // If the server is already restarting, we might get an error response
-//                     // This is normal, so handle it gracefully
-//                     statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
-//                     waitForApplicationRestart(statusDiv);
-//                     throw new Error('restart_in_progress');
-//                 }
-//             })
-//             .then(data => {
-//                 if (data.status === 'success') {
-//                     statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
-//                     waitForApplicationRestart(statusDiv);
-//                 }
-//             })
-//             .catch(error => {
-//                 if (error.message !== 'restart_in_progress') {
-//                     console.error('Error during restart:', error);
-//                     statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
-//                     waitForApplicationRestart(statusDiv);
-//                 }
-//             });
-//         } else {
-//             statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
-//             throw new Error(data.message);
-//         }
-//     })
-//     .catch(error => {
-//         if (error.message !== 'restart_in_progress') {
-//             console.error('Error:', error);
-//             if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
-//                 statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-//             }
-//         }
-//     });
-// }
-
 // Application refresh function (for the refresh button)
 function refreshApplication() {
     const refreshLog = document.getElementById('refreshLog');
@@ -1735,50 +1587,34 @@ document.addEventListener('click', function(e) {
 
 // Setup tab click handlers
 function setupTabClickHandlers() {
-    console.log('Setting up tab click handlers');
-    
-    // Setup for each resource type
     const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
     
-    // Add refresh button and search bar to each resource tab
     resourceTypes.forEach(resourceType => {
-        // Add resource controls to each tab
+        // Add controls to each resource tab if not already added
         addResourceControls(resourceType);
         
-        // Set up tab click handlers to load data on demand
+        // Set up tab click handlers
         const tabElement = document.querySelector(`#${resourceType}-tab`);
         if (tabElement) {
-            tabElement.addEventListener('click', () => {
-                // Always fetch fresh data when tab is clicked
-                console.log(`Tab ${resourceType} clicked, fetching fresh data...`);
+            // Remove existing event listeners (to prevent duplicates)
+            const newTabElement = tabElement.cloneNode(true);
+            tabElement.parentNode.replaceChild(newTabElement, tabElement);
+            
+            // Add new click event listener
+            newTabElement.addEventListener('click', () => {
+                console.log(`Tab ${resourceType} clicked, loading data...`);
                 
                 // Get current namespace selection
                 const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
                 const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
                 
-                // Force fetch by clearing the cached state
-                if (window.app.loadedResources) {
-                    delete window.app.loadedResources[resourceType];
-                }
-                
-                if (window.app.state.resources) {
-                    delete window.app.state.resources[resourceType];
-                }
+                // Fetch resource data, forcing a refresh
+                window.app.loadedResources = window.app.loadedResources || {};
+                delete window.app.loadedResources[resourceType];
                 
                 fetchResourceData(resourceType, currentNamespace);
             });
         }
-    });
-    
-    // Handle switching between main sections (Home, CLI, Upload YAML, etc.)
-    const mainNavLinks = document.querySelectorAll('.sidebar .nav-link');
-    mainNavLinks.forEach(link => {
-        link.addEventListener('click', event => {
-            // The actual navigation is handled by the navigateToTab function
-            // This is just for any additional setup needed
-            const tabId = link.getAttribute('data-bs-target').replace('#', '');
-            console.log(`Main navigation clicked: ${tabId}`);
-        });
     });
 }
 
@@ -2807,76 +2643,63 @@ function namespaceChanged(resourceType) {
 }
 
 function loadResourcesForTab(tabId) {
-    console.log(`Loading resources for tab from index.js: ${tabId}`);
-    window.app.currentTab = tabId;
-
-    // Special handling for 'home' tab - need to load the active resource tab
-    if (tabId === 'home') {
-        console.log("Home tab detected in index.js, finding active resource tab to load");
-        // Find the first active resource tab
-        const resourceTabs = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
-        
-        // First check if any tab is already active
-        let activeResourceTab = null;
-        for (const tab of resourceTabs) {
-            const tabElement = document.getElementById(tab);
-            if (tabElement && tabElement.classList.contains('active')) {
-                activeResourceTab = tab;
-                console.log(`Found active resource tab in index.js: ${activeResourceTab}`);
-                break;
-            }
-        }
-        
-        // If no active tab found, default to 'pods'
-        if (!activeResourceTab) {
-            activeResourceTab = 'pods';
-            // Activate the pods tab
-            const podsTab = document.getElementById('pods');
-            const podsTabButton = document.getElementById('pods-tab');
-            if (podsTab && podsTabButton) {
-                podsTab.classList.add('show', 'active');
-                podsTabButton.classList.add('active');
-                console.log("No active resource tab found in index.js, defaulting to pods");
-            }
-        }
-        
-        // Load the active resource tab's data
-        loadResourcesForTab(activeResourceTab);
-        return;
-    }
+    console.log(`Loading resources for tab: ${tabId}`);
     
-    // Clear any existing content
-    const tableBody = document.querySelector(`#${tabId}Table tbody`);
-    if (tableBody) {
-        tableBody.innerHTML = '';
-    }
-
-    // Show loading indicator for the tab
-    const loadingElement = document.getElementById(`${tabId}Loading`);
-    if (loadingElement) {
-        loadingElement.style.display = 'block';
-    }
-
-    // Load resources based on tab type
-    if (['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'].includes(tabId)) {
-        // First load critical data (status and basic info)
-        fetchResourceData(tabId, 'all', true)
-            .then(() => {
-                // Then load full details in background
-                if (window.app.currentTab === tabId) {  // Only if still on same tab
-                    return fetchResourceData(tabId, 'all', false);
-                }
-            })
-            .catch(error => {
-                console.error(`Error loading ${tabId}:`, error);
-            });
+    // If we're loading for home tab, we need to figure out which resource tab is active
+    if (tabId === 'home') {
+        // Find the active resource tab
+        const activeResourceTab = document.querySelector('#resourceTabs .nav-link.active');
+        if (activeResourceTab) {
+            const resourceTabId = activeResourceTab.id.replace('-tab', '');
+            console.log(`Active resource tab on home: ${resourceTabId}`);
+            
+            // Get current namespace selection
+            const namespaceSelector = document.getElementById(`${resourceTabId}Namespace`);
+            const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
+            
+            // Check if we need to force reload (when returning from pod view)
+            const returningFromPodView = sessionStorage.getItem('returning_from_pod_view') === 'true';
+            if (returningFromPodView || !window.app.loadedResources || !window.app.loadedResources[resourceTabId]) {
+                // Fetch resource data
+                fetchResourceData(resourceTabId, currentNamespace);
+            }
+        } else {
+            // Default to pods if no tab is active
+            console.log('No active resource tab found, defaulting to pods');
+            fetchResourceData('pods', 'all');
+        }
+        
+        // Also initialize GPU filter
+        if (typeof initializeGPUFilter === 'function') {
+            initializeGPUFilter();
+        }
+        
+        // Also initialize other home page functionality
+        setupTabClickHandlers();
     } else if (tabId === 'namespaces') {
+        // Load namespaces data
         if (typeof loadNamespaces === 'function') {
             loadNamespaces();
         }
+    } else if (tabId === 'cli') {
+        // Make sure terminal is initialized
+        if (typeof initializeTerminal === 'function') {
+            initializeTerminal();
+        }
+    } else if (tabId === 'yaml') {
+        // Setup drop zone for YAML uploads
+        if (typeof setupDropZone === 'function') {
+            setupDropZone();
+        }
+    } else if (tabId === 'settings') {
+        // Check git availability for settings page
+        if (typeof checkGitAvailability === 'function') {
+            checkGitAvailability();
+        }
     } else if (tabId === 'charts') {
-        if (typeof refreshCharts === 'function') {
-            refreshCharts();
+        // Load charts data
+        if (typeof listCharts === 'function') {
+            listCharts();
         }
     }
 }
