@@ -2777,8 +2777,47 @@ function loadResourcesForTab(tabId) {
     }
 }
 
-// Add cache management at the top of the file
+// Initialize app object if not exists
 window.app = window.app || {};
+
+// Add the missing getRelativeUrl function
+window.app.getRelativeUrl = function(path) {
+    // Remove leading slash if present to avoid double slashes
+    if (path.startsWith('/')) {
+        path = path.substring(1);
+    }
+    
+    // Get the base URL from the current location
+    const baseUrl = window.location.pathname.endsWith('/') 
+        ? window.location.pathname 
+        : window.location.pathname + '/';
+        
+    // Join the base URL and the path
+    return baseUrl === '/' ? '/' + path : baseUrl + path;
+};
+
+// Set up initial state for app if not initialized
+if (!window.app.state) {
+    window.app.state = {
+        resources: {},
+        lastFetch: {},
+        errors: {},
+        activeRequests: new Map(),
+        filters: {
+            gpu: false,
+            namespace: 'all'
+        },
+        navigation: {
+            isNavigating: false,
+            activeTab: 'home'
+        }
+    };
+}
+
+// Cache timeout - 5 minutes
+window.app.CACHE_TIMEOUT = window.app.CACHE_TIMEOUT || 5 * 60 * 1000;
+
+// Add cache management at the top of the file
 window.app.cache = {
     resources: {},
     timestamps: {},
