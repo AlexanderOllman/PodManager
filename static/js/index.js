@@ -757,7 +757,7 @@ function renderCurrentPage(resourceType) {
     
     // Clear the table body
     tableBody.innerHTML = '';
-    
+
     // If no items, show empty state
     if (itemsToShow.length === 0) {
         tableBody.innerHTML = `
@@ -980,8 +980,8 @@ function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false
     const startTime = performance.now();
     
     return new Promise((resolve, reject) => {
-        const formData = new FormData();
-        formData.append('resource_type', resourceType);
+    const formData = new FormData();
+    formData.append('resource_type', resourceType);
         formData.append('namespace', namespace);
         formData.append('critical_only', criticalOnly.toString());
         
@@ -1108,10 +1108,10 @@ function loadAllServiceTypes() {
                     window.app.state.resources[type].showAll = true; // Mark this resource type to show all items
                     renderCurrentPage(type); // Re-render with more items
                 }
-                
-                return data;
-            })
-            .catch(error => {
+            
+            return data;
+        })
+        .catch(error => {
                 completedCount++;
                 updateProgress(completedCount, serviceTypes.length);
                 console.error(`Error loading ${type}:`, error);
@@ -1125,7 +1125,7 @@ function loadAllServiceTypes() {
             console.log('All service types loaded');
             
             // Remove loading indicator
-            setTimeout(() => {
+                    setTimeout(() => {
                 loadingIndicator.remove();
                 
                 // Show success message
@@ -1861,7 +1861,7 @@ function setupTabClickHandlers() {
                 
                 // Fetch resource data, forcing a refresh by removing from loaded resources
                 window.app.loadedResources = window.app.loadedResources || {};
-                delete window.app.loadedResources[resourceType];
+                    delete window.app.loadedResources[resourceType];
                 
                 // Clear existing cache for this resource type
                 const cacheKey = `${resourceType}-${currentNamespace}-full`;
@@ -2978,18 +2978,18 @@ window.app = window.app || {};
 
 // Add the missing getRelativeUrl function
 window.app.getRelativeUrl = function(path) {
-    // Remove leading slash if present
+    // Remove leading slash if present to avoid double slashes
     if (path.startsWith('/')) {
         path = path.substring(1);
     }
     
-    // Get the application root based on the first segment of the current path
-    const currentPath = window.location.pathname;
-    const basePath = currentPath.startsWith('/resources') ? '/resources' : '';
-    
-    // All endpoints should respect the base path to prevent 404 errors
-    // Prepend the base path to all URLs
-    return basePath + '/' + path;
+    // Get the base URL from the current location
+    const baseUrl = window.location.pathname.endsWith('/') 
+        ? window.location.pathname 
+        : window.location.pathname + '/';
+        
+    // Join the base URL and the path
+    return baseUrl === '/' ? '/' + path : baseUrl + path;
 };
 
 // Set up initial state for app if not initialized
