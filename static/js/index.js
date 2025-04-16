@@ -730,15 +730,27 @@ function renderCurrentPage(resourceType) {
     
     const { items, totalCount, pageSize, loadedPages } = resourceData;
     
-    // Get the table body
-    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    let tableBody;
+    let tableContainer;
+    
+    // Determine if we're in the resource explorer or a specific tab
+    if (window.app.state.navigation?.activeTab === 'resources') {
+        tableBody = document.getElementById('resourcesTableBody');
+        tableContainer = document.getElementById('resourcesTableContainer');
+    } else {
+        tableBody = document.querySelector(`#${resourceType}Table tbody`);
+        tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    }
+    
     if (!tableBody) {
         console.error(`Table body not found for ${resourceType}`);
         return;
     }
 
-    // Get the table container
-    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    if (!tableContainer) {
+        console.error(`Table container not found for ${resourceType}`);
+        return;
+    }
     
     // Remove existing "Load More" button if it exists
     const existingLoadMore = tableContainer.querySelector('.load-more-container');
@@ -3512,6 +3524,9 @@ function loadResourceType(resourceType) {
         progressBar.style.width = '30%';
     }
     
+    // Set up the table headers based on resource type
+    setupTableHeaders(resourceType);
+    
     // Get namespace filter
     const namespace = document.getElementById('resourceNamespaceSelector')?.value || 'all';
     
@@ -3556,6 +3571,52 @@ function loadResourceType(resourceType) {
                 loadingContainer.style.display = 'none';
             }
         });
+}
+
+// Function to set up the table headers based on resource type
+function setupTableHeaders(resourceType) {
+    const tableHeaders = document.getElementById('resourcesTableHeader');
+    if (!tableHeaders) {
+        console.error('Table headers element not found');
+        return;
+    }
+    
+    // Clear existing headers
+    tableHeaders.innerHTML = '';
+    
+    // Define headers based on resource type
+    let headers = [];
+    
+    switch (resourceType) {
+        case 'pods':
+            headers = ['Namespace', 'Name', 'Status', 'CPU', 'GPU', 'Memory', 'Actions'];
+            break;
+        case 'services':
+            headers = ['Namespace', 'Name', 'Type', 'Cluster IP', 'External IP', 'Ports', 'Age', 'Actions'];
+            break;
+        case 'deployments':
+            headers = ['Namespace', 'Name', 'Ready', 'Status', 'CPU', 'Memory', 'Actions'];
+            break;
+        case 'inferenceservices':
+            headers = ['Namespace', 'Name', 'URL', 'Status', 'CPU', 'GPU', 'Memory', 'Actions'];
+            break;
+        case 'configmaps':
+            headers = ['Namespace', 'Name', 'Data', 'Actions'];
+            break;
+        case 'secrets':
+            headers = ['Namespace', 'Name', 'Type', 'Data', 'Actions'];
+            break;
+        default:
+            headers = ['Namespace', 'Name', 'Actions'];
+    }
+    
+    // Create header row
+    headers.forEach((header, index) => {
+        const th = document.createElement('th');
+        th.textContent = header;
+        th.setAttribute('data-sort', header.toLowerCase().replace(/\s+/g, ''));
+        tableHeaders.appendChild(th);
+    });
 }
 
 // Function to handle resource type change
@@ -4207,4 +4268,107 @@ function formatMemorySize(bytes) {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Add a function to initialize navigation state
+function initNavigation() {
+    if (!window.app) window.app = {};
+    if (!window.app.state) window.app.state = {};
+    
+    // Initialize navigation state
+    window.app.state.navigation = {
+        activeTab: getActiveTabFromURL()
+    };
+    
+    console.log('Navigation initialized, active tab:', window.app.state.navigation.activeTab);
+}
+
+// Helper function to get the active tab from URL
+function getActiveTabFromURL() {
+    const hash = window.location.hash;
+    if (hash) {
+        const tabId = hash.substring(1); // Remove the # character
+        return tabId;
+    }
+    
+    // Check if we have tab in the URL path
+    const pathParts = window.location.pathname.split('/');
+    const lastPart = pathParts[pathParts.length - 1];
+    if (lastPart && ['resources', 'cli', 'yaml', 'namespaces', 'charts'].includes(lastPart)) {
+        return lastPart;
+    }
+    
+    return 'home'; // Default tab
+}
+
+// Make sure all necessary initialization functions run on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded, initializing app...');
+    
+    // Initialize app and state
+    if (!window.app) window.app = {};
+    if (!window.app.state) window.app.state = {};
+    if (!window.app.state.resources) window.app.state.resources = {};
+    if (!window.app.state.lastFetch) window.app.state.lastFetch = {};
+    if (!window.app.CACHE_TIMEOUT) window.app.CACHE_TIMEOUT = 60000; // 1 minute cache
+    
+    // Initialize navigation state
+    initNavigation();
+    
+    // Initialize other components
+    initializeApp();
+    initializeHomePage();
+    
+    // Initialize the resources page if we're on that tab
+    if (window.app.state.navigation.activeTab === 'resources') {
+        initializeResourcesPage();
+    }
+    
+    // Set up event listener for tab changes
+    document.querySelectorAll('a[data-bs-toggle="tab"]').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function (e) {
+            const tabId = e.target.getAttribute('data-bs-target').substring(1);
+            window.app.state.navigation.activeTab = tabId;
+            console.log('Tab changed to:', tabId);
+            
+            // Initialize the resources page if we just switched to it
+            if (tabId === 'resources') {
+                initializeResourcesPage();
+            }
+        });
+    });
+});
+
+// Function to refresh the resources page
+function refreshResourcesPage() {
+    const resourceType = document.getElementById('resourceTypeSelector')?.value || 'pods';
+    const namespace = document.getElementById('resourceNamespaceSelector')?.value || 'all';
+    
+    console.log(`Refreshing resources page for ${resourceType} in namespace ${namespace}`);
+    
+    // Clear any existing search
+    const searchInput = document.getElementById('resourceSearchInput');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    
+    // Clear any filter indicators
+    const tableContainer = document.getElementById('resourcesTableContainer');
+    if (tableContainer) {
+        const existingIndicator = tableContainer.querySelector('.filter-indicator');
+        if (existingIndicator) {
+            existingIndicator.remove();
+        }
+    }
+    
+    // Show loading indicator
+    const loadingContainer = document.getElementById('resourcesLoading');
+    if (loadingContainer) {
+        loadingContainer.style.display = 'flex';
+    }
+    
+    // Fetch data with resetting
+    fetchResourceData(resourceType, namespace, false, 1, true).catch(error => {
+        console.error(`Error refreshing resources:`, error);
+    });
 }
