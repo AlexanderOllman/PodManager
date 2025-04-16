@@ -377,7 +377,11 @@ function executeCliCommand(command) {
         } else {
             // Direct CLI execution worked
             if (data.output) {
-                window.app.terminal.writeln(data.output);
+                // Split and write each line separately to ensure proper line breaks
+                const lines = data.output.split('\n');
+                for (const line of lines) {
+                    window.app.terminal.writeln(line);
+                }
             } else {
                 window.app.terminal.writeln('Command executed with no output.');
             }
@@ -446,7 +450,11 @@ function executeCliCommandViaPod(command) {
     .then(response => response.json())
     .then(data => {
         if (data.output) {
-            window.app.terminal.writeln(data.output);
+            // Split and write each line separately to ensure proper line breaks
+            const lines = data.output.split('\n');
+            for (const line of lines) {
+                window.app.terminal.writeln(line);
+            }
         } else {
             window.app.terminal.writeln('Command executed with no output.');
         }
