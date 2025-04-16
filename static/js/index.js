@@ -2978,18 +2978,18 @@ window.app = window.app || {};
 
 // Add the missing getRelativeUrl function
 window.app.getRelativeUrl = function(path) {
-    // Remove leading slash if present to avoid double slashes
+    // Remove leading slash if present
     if (path.startsWith('/')) {
         path = path.substring(1);
     }
     
-    // Get the base URL from the current location
-    const baseUrl = window.location.pathname.endsWith('/') 
-        ? window.location.pathname 
-        : window.location.pathname + '/';
-        
-    // Join the base URL and the path
-    return baseUrl === '/' ? '/' + path : baseUrl + path;
+    // Get the application root based on the first segment of the current path
+    const currentPath = window.location.pathname;
+    const basePath = currentPath.startsWith('/resources') ? '/resources' : '';
+    
+    // All endpoints should respect the base path to prevent 404 errors
+    // Prepend the base path to all URLs
+    return basePath + '/' + path;
 };
 
 // Set up initial state for app if not initialized
