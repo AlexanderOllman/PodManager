@@ -216,9 +216,9 @@ function initializeHomePage() {
         // Home tab is a special case - it contains resource tabs
         if (activeTab === 'home') {
             loadResourcesForTab('home'); // This will handle finding the active resource tab
-        } else {
+    } else {
             loadResourcesForTab(activeTab);
-        }
+    }
     }, 200);
 }
 
@@ -422,29 +422,29 @@ function executeCliCommand(command) {
         window.app.socket.emit('terminal_command', { command: command });
     } else {
         // Fallback to REST API
-        fetch('/api/cli/exec', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                command: command
-            })
+    fetch('/api/cli/exec', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            command: command
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.output) {
-                window.app.terminal.writeln(data.output);
-            } else {
-                window.app.terminal.writeln('Command executed with no output.');
-            }
-            window.app.terminal.write('\r\n$ ');
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            window.app.terminal.writeln('Error executing command.');
-            window.app.terminal.write('\r\n$ ');
-        });
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.output) {
+            window.app.terminal.writeln(data.output);
+        } else {
+            window.app.terminal.writeln('Command executed with no output.');
+        }
+        window.app.terminal.write('\r\n$ ');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        window.app.terminal.writeln('Error executing command.');
+        window.app.terminal.write('\r\n$ ');
+    });
     }
 }
 
@@ -729,6 +729,8 @@ function renderCurrentPage(resourceType) {
     }
     
     const { items, currentPage, pageSize } = resourceData;
+    
+    // Get the table body
     const tableBody = document.querySelector(`#${resourceType}Table tbody`);
     if (!tableBody) {
         console.error(`Table body not found for ${resourceType}`);
@@ -917,6 +919,13 @@ function renderCurrentPage(resourceType) {
         });
     }
     
+    // Make table visible with transition
+    setTimeout(() => {
+        if (tableContainer) {
+            tableContainer.style.opacity = '1';
+        }
+    }, 100);
+    
     // Initialize all dropdowns
     setTimeout(() => {
         const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
@@ -959,8 +968,8 @@ function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false
     const startTime = performance.now();
     
     return new Promise((resolve, reject) => {
-        const formData = new FormData();
-        formData.append('resource_type', resourceType);
+    const formData = new FormData();
+    formData.append('resource_type', resourceType);
         formData.append('namespace', namespace);
         formData.append('critical_only', criticalOnly.toString());
         
@@ -996,9 +1005,9 @@ function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false
             console.error(`Error fetching ${resourceType}:`, error);
             
             // Show error message
-            hideLoading(resourceType);
-            const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-            if (tableContainer) {
+                hideLoading(resourceType);
+                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+                if (tableContainer) {
                 tableContainer.innerHTML = `
                     <div class="alert alert-danger">
                         <i class="fas fa-exclamation-triangle me-2"></i>
@@ -1075,7 +1084,42 @@ function showLoading(resourceType) {
     if (progressBar) {
         progressBar.style.width = '5%';
         progressBar.style.background = 'linear-gradient(to right, #f5f5f5, #01a982)';
+        
+        // Animate progress bar
+        setTimeout(() => {
+            progressBar.style.width = '30%';
+            setTimeout(() => {
+                progressBar.style.width = '60%';
+            }, 500);
+        }, 200);
     }
+    
+    // Update loading text
+    const loadingText = document.getElementById(`${resourceType}LoadingText`);
+    if (loadingText) {
+        loadingText.textContent = 'Loading data...';
+    }
+}
+
+// Hide loading indicator for resource type
+function hideLoading(resourceType) {
+    const loadingContainer = document.getElementById(`${resourceType}Loading`);
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
+    
+    if (progressBar) {
+        progressBar.style.width = '100%';
+        setTimeout(() => {
+            if (loadingContainer) {
+                loadingContainer.style.display = 'none';
+            }
+            if (progressBar) {
+                progressBar.style.width = '0%';
+            }
+        }, 500);
+    }
+    
+    // Don't set table container opacity here - that's handled in renderCurrentPage
 }
 
 // Update loading step with animation
@@ -1109,31 +1153,6 @@ function advanceLoadingStep(resourceType) {
     const nextStep = window.loadingStepIndex[resourceType] + 1;
     if (window.loadingSteps[resourceType] && nextStep < window.loadingSteps[resourceType].length) {
         updateLoadingStep(resourceType, nextStep);
-    }
-}
-
-// Hide loading indicator for resource type
-function hideLoading(resourceType) {
-    const loadingContainer = document.getElementById(`${resourceType}Loading`);
-    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-    const progressBar = document.getElementById(`${resourceType}ProgressBar`);
-    
-    if (progressBar) {
-        progressBar.style.width = '100%';
-        setTimeout(() => {
-            if (loadingContainer) {
-                loadingContainer.style.display = 'none';
-            }
-            if (progressBar) {
-                progressBar.style.width = '0%';
-            }
-        }, 500);
-    }
-    
-    if (tableContainer) {
-        setTimeout(() => {
-            tableContainer.style.opacity = '1';
-        }, 100);
     }
 }
 
@@ -1671,6 +1690,9 @@ function setupTabClickHandlers() {
                 const namespaceSelector = document.getElementById(`${resourceType}Namespace`);
                 const currentNamespace = namespaceSelector ? namespaceSelector.value : 'all';
                 
+                // Show loading indicator
+                showLoading(resourceType);
+                
                 // Fetch resource data, forcing a refresh by removing from loaded resources
                 window.app.loadedResources = window.app.loadedResources || {};
                 delete window.app.loadedResources[resourceType];
@@ -1682,6 +1704,14 @@ function setupTabClickHandlers() {
                 }
                 if (window.app.state.lastFetch && window.app.state.lastFetch[cacheKey]) {
                     delete window.app.state.lastFetch[cacheKey];
+                }
+                
+                // Make sure the table container is visible
+                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+                if (tableContainer) {
+                    tableContainer.style.display = 'block';
+                    // Start with opacity 0, will be set to 1 after data is loaded
+                    tableContainer.style.opacity = '0';
                 }
                 
                 fetchResourceData(resourceType, currentNamespace, false);
@@ -2716,7 +2746,7 @@ function namespaceChanged(resourceType) {
 
 function loadResourcesForTab(tabId) {
     console.log(`Loading resources for tab: ${tabId}`);
-    
+
     // If we're loading for home tab, we need to figure out which resource tab is active
     if (tabId === 'home') {
         // Find the active resource tab
@@ -2881,70 +2911,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Add sorting functionality to resource tables
 function addSortingToResourceTable(resourceType) {
-    const table = document.getElementById(`${resourceType}Table`);
-    if (!table) {
-        console.warn(`Table #${resourceType}Table not found`);
+    // Get the table headers
+    const tableHeaders = document.querySelectorAll(`#${resourceType}Table thead th[data-sort]`);
+    
+    // If no sortable headers, return early
+    if (!tableHeaders || tableHeaders.length === 0) {
         return;
     }
     
-    // Get all sortable headers
-    const headers = table.querySelectorAll('th[data-sort]');
-    if (!headers || headers.length === 0) {
-        console.warn(`No sortable headers found in #${resourceType}Table`);
-        return;
-    }
-    
-    // Process each sortable header
-    headers.forEach(header => {
-        // Skip if already processed (has a sort-indicator)
-        if (header.querySelector('.sort-indicator')) {
-            return;
+    // Add click listeners to sortable headers
+    tableHeaders.forEach(header => {
+        // Remove existing event listeners by cloning
+        const newHeader = header.cloneNode(true);
+        header.parentNode.replaceChild(newHeader, header);
+        
+        // Add sort indicators if not already present
+        if (!newHeader.querySelector('.sort-indicator')) {
+            const sortIndicator = document.createElement('span');
+            sortIndicator.className = 'sort-indicator ms-1';
+            sortIndicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
+            newHeader.appendChild(sortIndicator);
         }
         
-        // Add sort indicator
-        const sortIndicator = document.createElement('span');
-        sortIndicator.className = 'sort-indicator ms-1';
-        sortIndicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
-        header.appendChild(sortIndicator);
-        
-        // Add click event
-        header.addEventListener('click', function() {
-            const sortField = this.getAttribute('data-sort');
-            if (!sortField) return;
+        // Add click event listener
+        newHeader.addEventListener('click', () => {
+            // Get sort field and current direction
+            const sortField = newHeader.getAttribute('data-sort');
+            let sortDirection = 'asc';
             
             // Toggle sort direction if already sorted by this field
-            let sortDirection = 'asc';
             if (window.app.state.resources[resourceType].sortField === sortField) {
                 sortDirection = window.app.state.resources[resourceType].sortDirection === 'asc' ? 'desc' : 'asc';
             }
             
-            // Reset all sort indicators
-            headers.forEach(h => {
-                const ind = h.querySelector('.sort-indicator');
-                if (ind) {
-                    ind.innerHTML = '<i class="fas fa-sort text-muted"></i>';
+            // Update sort indicators for all headers
+            tableHeaders.forEach(h => {
+                const indicator = h.querySelector('.sort-indicator');
+                if (indicator) {
+                    indicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
                 }
             });
             
-            // Update this header's sort indicator
-            const indicator = this.querySelector('.sort-indicator');
+            // Update indicator for this header
+            const indicator = newHeader.querySelector('.sort-indicator');
             if (indicator) {
                 indicator.innerHTML = sortDirection === 'asc' 
                     ? '<i class="fas fa-sort-up text-primary"></i>' 
                     : '<i class="fas fa-sort-down text-primary"></i>';
             }
             
-            // Update state
+            // Save sort settings
             window.app.state.resources[resourceType].sortField = sortField;
             window.app.state.resources[resourceType].sortDirection = sortDirection;
             
-            // Sort data and re-render
+            // Sort the data
             sortResourceData(resourceType, sortField, sortDirection);
-            renderCurrentPage(resourceType);
+            
+            // Re-render the current page
+    renderCurrentPage(resourceType);
         });
     });
-    
-    console.log(`Added sorting to ${headers.length} columns in ${resourceType}Table`);
 }
 
 // Helper function to sort resource data
