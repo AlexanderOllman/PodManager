@@ -853,5 +853,24 @@ def handle_disconnect():
     print('Client disconnected')
     return None
 
+@socketio.on('cli_command')
+def handle_cli_command(data):
+    """Handle CLI commands via WebSocket connection"""
+    try:
+        command = data.get('command', '')
+        if not command:
+            emit('output', {'data': 'Error: No command provided'})
+            return
+        
+        # Run the command and send back the output
+        result = run_kubectl_command(command)
+        emit('output', {'data': result})
+        # Send prompt character
+        emit('output', {'data': '\r\n$ '})
+    except Exception as e:
+        app.logger.error(f"Error in handle_cli_command: {str(e)}")
+        emit('output', {'data': f"Error: {str(e)}"})
+        emit('output', {'data': '\r\n$ '})
+
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)

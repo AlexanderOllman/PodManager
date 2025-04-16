@@ -250,6 +250,26 @@ function initializeTerminal() {
             let commandHistory = [];
             let historyIndex = -1;
             
+            const setupSocketListener = () => {
+                // Register the socket event listener for receiving command output
+                if (window.app.socket) {
+                    console.log('Setting up socket listener for terminal');
+                    window.app.socket.on('output', (data) => {
+                        if (data && data.data) {
+                            terminal.write(data.data);
+                        }
+                    });
+                }
+            };
+            
+            // Listen for socket connected event
+            document.addEventListener('socket-connected', setupSocketListener);
+            
+            // Also try to set up now if socket already exists
+            if (window.app.socketConnected) {
+                setupSocketListener();
+            }
+            
             // Initial prompt
             terminal.writeln('Welcome to the Kubernetes CLI.');
             terminal.writeln('Type commands directly in this window and press Enter to execute.');
@@ -322,33 +342,19 @@ function initializeTerminal() {
     }
 }
 
-// Function to execute commands via REST API
+// Function to execute commands via WebSocket
 function executeCliCommand(command) {
     if (!command) return;
     
-    fetch('/api/cli/exec', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            command: command
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.output) {
-            window.app.terminal.writeln(data.output);
-        } else {
-            window.app.terminal.writeln('Command executed with no output.');
-        }
+    if (!window.app.socket || !window.app.socketConnected) {
+        // If socket isn't available, show error
+        window.app.terminal.writeln('Error: Socket connection is not available');
         window.app.terminal.write('\r\n$ ');
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        window.app.terminal.writeln('Error executing command.');
-        window.app.terminal.write('\r\n$ ');
-    });
+        return;
+    }
+    
+    // Use socket connection
+    window.app.socket.emit('cli_command', { command: command });
 }
 
 // Socket event listeners
@@ -1288,71 +1294,71 @@ function fetchEvents(namespace) {
 }
 
 // GitHub update function
-function updateFromGithub() {
-    const repoUrl = document.getElementById('githubRepo').value;
-    const statusDiv = document.getElementById('updateStatus');
+// function updateFromGithub() {
+//     const repoUrl = document.getElementById('githubRepo').value;
+//     const statusDiv = document.getElementById('updateStatus');
     
-    if (!statusDiv) return;
+//     if (!statusDiv) return;
     
-    statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
+//     statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Updating from GitHub...';
     
-    // First update from GitHub
-    fetch('/update_from_github', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            repo_url: repoUrl
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            statusDiv.innerHTML = 'Update successful. Initiating application restart...';
+//     // First update from GitHub
+//     fetch('/update_from_github', {
+//         method: 'POST',
+//         headers: {
+//             'Content-Type': 'application/json',
+//         },
+//         body: JSON.stringify({
+//             repo_url: repoUrl
+//         })
+//     })
+//     .then(response => response.json())
+//     .then(data => {
+//         if (data.status === 'success') {
+//             statusDiv.innerHTML = 'Update successful. Initiating application restart...';
             
-            // Then restart the application
-            fetch('/restart', {
-                method: 'POST'
-            })
-            .then(response => {
-                if (response.ok) {
-                    return response.json();
-                } else {
-                    // If the server is already restarting, we might get an error response
-                    // This is normal, so handle it gracefully
-                    statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
-                    waitForApplicationRestart(statusDiv);
-                    throw new Error('restart_in_progress');
-                }
-            })
-            .then(data => {
-                if (data.status === 'success') {
-                    statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
-                    waitForApplicationRestart(statusDiv);
-                }
-            })
-            .catch(error => {
-                if (error.message !== 'restart_in_progress') {
-                    console.error('Error during restart:', error);
-                    statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
-                    waitForApplicationRestart(statusDiv);
-                }
-            });
-        } else {
-            statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
-            throw new Error(data.message);
-        }
-    })
-    .catch(error => {
-        if (error.message !== 'restart_in_progress') {
-            console.error('Error:', error);
-            if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
-                statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-            }
-        }
-    });
-}
+//             // Then restart the application
+//             fetch('/restart', {
+//                 method: 'POST'
+//             })
+//             .then(response => {
+//                 if (response.ok) {
+//                     return response.json();
+//                 } else {
+//                     // If the server is already restarting, we might get an error response
+//                     // This is normal, so handle it gracefully
+//                     statusDiv.innerHTML = 'Application is restarting. Waiting for it to come back online...';
+//                     waitForApplicationRestart(statusDiv);
+//                     throw new Error('restart_in_progress');
+//                 }
+//             })
+//             .then(data => {
+//                 if (data.status === 'success') {
+//                     statusDiv.innerHTML = 'Application restart initiated. Waiting for application to come back online...';
+//                     waitForApplicationRestart(statusDiv);
+//                 }
+//             })
+//             .catch(error => {
+//                 if (error.message !== 'restart_in_progress') {
+//                     console.error('Error during restart:', error);
+//                     statusDiv.innerHTML = `<div class="alert alert-warning">Restart initiated, but couldn't confirm status. Will try to reconnect.</div>`;
+//                     waitForApplicationRestart(statusDiv);
+//                 }
+//             });
+//         } else {
+//             statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
+//             throw new Error(data.message);
+//         }
+//     })
+//     .catch(error => {
+//         if (error.message !== 'restart_in_progress') {
+//             console.error('Error:', error);
+//             if (statusDiv && !statusDiv.innerHTML.includes('alert-danger')) {
+//                 statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+//             }
+//         }
+//     });
+// }
 
 // Application refresh function (for the refresh button)
 function refreshApplication() {
