@@ -299,6 +299,43 @@ function initializeTerminal() {
             
             // Handle user input
             terminal.onKey(({ key, domEvent }) => {
+                // Handle control key combinations
+                if (domEvent.ctrlKey) {
+                    const keyCode = domEvent.keyCode;
+                    
+                    // Map common control keys to their ASCII control characters
+                    if (keyCode === 67) { // Ctrl+C
+                        // Send SIGINT (ASCII control character ETX, \x03)
+                        window.app.socket.emit('terminal_command', { 
+                            control: 'SIGINT',
+                            key: '\x03'
+                        });
+                        terminal.write('^C\r\n$ ');
+                        currentLine = '';
+                        return;
+                    } else if (keyCode === 68) { // Ctrl+D
+                        // Send EOF (ASCII control character EOT, \x04)
+                        window.app.socket.emit('terminal_command', { 
+                            control: 'EOF',
+                            key: '\x04'
+                        });
+                        return;
+                    } else if (keyCode === 90) { // Ctrl+Z
+                        // Send SIGTSTP (ASCII control character SUB, \x1A)
+                        window.app.socket.emit('terminal_command', { 
+                            control: 'SIGTSTP',
+                            key: '\x1A'
+                        });
+                        terminal.write('^Z\r\n');
+                        return;
+                    } else if (keyCode === 76) { // Ctrl+L
+                        // Clear screen
+                        terminal.clear();
+                        terminal.write('$ ' + currentLine);
+                        return;
+                    }
+                }
+                
                 const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.ctrlKey && !domEvent.metaKey;
                 
                 // Handle special keys
@@ -347,6 +384,10 @@ function initializeTerminal() {
                         terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
                         currentLine = '';
                     }
+                } else if (domEvent.keyCode === 9) { // Tab - auto-complete (placeholder)
+                    // Prevent tab from moving focus
+                    domEvent.preventDefault();
+                    // Future: Could implement auto-completion here
                 } else if (printable) {
                     // Regular printable character
                     currentLine += key;
@@ -1123,7 +1164,7 @@ function createActionButton(resourceType, namespace, name) {
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-${namespace}-${name}">
-                    <li><a class="dropdown-item explore-pod-link" href="/explore/${namespace}/${name}" data-namespace="${namespace}" data-pod-name="${name}">
+                    <li><a class="dropdown-item explore-pod-link" href="/explore/${namespace}/${name}#details" data-namespace="${namespace}" data-pod-name="${name}">
                         <i class="fas fa-search text-primary"></i> View Details
                     </a></li>
                     <li><a class="dropdown-item" href="/explore/${namespace}/${name}#describe" data-namespace="${namespace}" data-pod-name="${name}">

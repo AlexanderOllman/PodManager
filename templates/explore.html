@@ -240,10 +240,8 @@ const podName = "{{ pod_name }}";
 function initializeExplorePage() {
     console.log(`Initializing explore page for pod: ${podName} in namespace: ${namespace}`);
     
-    // Load the pod details immediately (new default tab)
-    loadPodDetails();
-    
     // Set up tab handlers
+    document.getElementById('details-tab').addEventListener('click', loadPodDetails);
     document.getElementById('describe-tab').addEventListener('click', loadPodDescription);
     document.getElementById('logs-tab').addEventListener('click', loadPodLogs);
     document.getElementById('access-tab').addEventListener('click', setupTerminal);
@@ -260,6 +258,10 @@ function initializeExplorePage() {
     });
     
     // Handle tab selection based on URL hash
+    const hash = window.location.hash || '#details'; // Default to details if no hash
+    window.location.hash = hash; // Ensure hash is in URL
+    
+    // Handle the selected tab
     handleTabFromHash();
     
     // Listen for hash changes
@@ -267,14 +269,31 @@ function initializeExplorePage() {
 }
 
 function handleTabFromHash() {
-    const hash = window.location.hash;
-    if (hash) {
-        const tabId = hash.substring(1); // Remove the # character
-        const tabElement = document.getElementById(`${tabId}-tab`);
+    const hash = window.location.hash || '#details';
+    const tabId = hash.substring(1); // Remove the # character
+    const tabElement = document.getElementById(`${tabId}-tab`);
+    
+    if (tabElement) {
+        console.log(`Activating tab: ${tabId}`);
         
-        if (tabElement) {
-            // Trigger a click on the tab to activate it
-            tabElement.click();
+        // Create a bootstrap tab instance and show it
+        const tab = new bootstrap.Tab(tabElement);
+        tab.show();
+        
+        // Also trigger the data loading function for the selected tab
+        switch(tabId) {
+            case 'details':
+                loadPodDetails();
+                break;
+            case 'describe':
+                loadPodDescription();
+                break;
+            case 'logs':
+                loadPodLogs();
+                break;
+            case 'access':
+                setupTerminal();
+                break;
         }
     }
 }

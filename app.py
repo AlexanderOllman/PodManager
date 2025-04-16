@@ -744,6 +744,27 @@ def handle_disconnect():
 
 @socketio.on('terminal_command')
 def handle_terminal_command(data):
+    # Handle control signals
+    if 'control' in data:
+        control_type = data.get('control')
+        print(f"Received control signal: {control_type}")
+        
+        if control_type == 'SIGINT':
+            # In a real implementation, we would send SIGINT to the process
+            # For now, we'll just acknowledge it
+            return
+        
+        elif control_type == 'EOF':
+            # Handle EOF signal
+            return
+        
+        elif control_type == 'SIGTSTP':
+            # Handle SIGTSTP signal
+            return
+            
+        return
+    
+    # Handle regular commands
     command = data.get('command', '')
     if not command:
         return
