@@ -52,6 +52,10 @@ def run_kubectl_command(command):
 def index():
     return render_template('index.html')
 
+@app.route('/resources')
+def resources():
+    return render_template('resources.html')
+
 @app.route('/get_resources', methods=['POST'])
 def get_resources():
     """Get Kubernetes resources based on type."""

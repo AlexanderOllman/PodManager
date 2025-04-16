@@ -728,7 +728,7 @@ function renderCurrentPage(resourceType) {
         return;
     }
     
-    const { items, currentPage, pageSize } = resourceData;
+    const { items, currentPage, pageSize, showAll } = resourceData;
     
     // Get the table body
     const tableBody = document.querySelector(`#${resourceType}Table tbody`);
@@ -746,8 +746,14 @@ function renderCurrentPage(resourceType) {
         existingLoadMore.remove();
     }
     
-    // Calculate how many items to show
-    const itemsToShow = items.slice(0, currentPage * pageSize);
+    // Remove existing count info messages
+    const existingCountInfo = tableContainer.querySelector('.count-info');
+    if (existingCountInfo) {
+        existingCountInfo.remove();
+    }
+    
+    // Calculate how many items to show - respect showAll flag
+    const itemsToShow = showAll ? items : items.slice(0, currentPage * pageSize);
     
     // Clear the table body
     tableBody.innerHTML = '';
@@ -763,6 +769,12 @@ function renderCurrentPage(resourceType) {
         `;
         return;
     }
+    
+    // Add count message
+    const countInfo = document.createElement('div');
+    countInfo.className = 'text-muted small mb-2 count-info';
+    countInfo.innerHTML = `Showing ${itemsToShow.length} of ${items.length} ${resourceType}`;
+    tableContainer.insertBefore(countInfo, tableContainer.firstChild);
     
     // Render items based on resource type
     itemsToShow.forEach(item => {
@@ -968,8 +980,8 @@ function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false
     const startTime = performance.now();
     
     return new Promise((resolve, reject) => {
-    const formData = new FormData();
-    formData.append('resource_type', resourceType);
+        const formData = new FormData();
+        formData.append('resource_type', resourceType);
         formData.append('namespace', namespace);
         formData.append('critical_only', criticalOnly.toString());
         
@@ -1005,9 +1017,9 @@ function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false
             console.error(`Error fetching ${resourceType}:`, error);
             
             // Show error message
-                hideLoading(resourceType);
-                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-                if (tableContainer) {
+            hideLoading(resourceType);
+            const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+            if (tableContainer) {
                 tableContainer.innerHTML = `
                     <div class="alert alert-danger">
                         <i class="fas fa-exclamation-triangle me-2"></i>
@@ -1022,6 +1034,160 @@ function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false
             reject(error);
         });
     });
+}
+
+// Load all service types (non-pods) at once
+function loadAllServiceTypes() {
+    console.log('Loading all service types...');
+    
+    // Define all non-pod resource types
+    const serviceTypes = ['services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+    
+    // Create a loading indicator at the top of the page
+    const mainContent = document.getElementById('mainContent');
+    if (!mainContent) return;
+    
+    // Create loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'alert alert-info mb-4';
+    loadingIndicator.id = 'allServicesLoadingIndicator';
+    loadingIndicator.innerHTML = `
+        <i class="fas fa-sync fa-spin me-2"></i>
+        <span>Loading all service types...</span>
+        <div class="progress mt-2">
+            <div class="progress-bar" role="progressbar" style="width: 0%" id="allServicesProgressBar"></div>
+        </div>
+    `;
+    
+    // Add to the beginning of the content
+    mainContent.insertBefore(loadingIndicator, mainContent.firstChild);
+    
+    // Function to update progress
+    const updateProgress = (completed, total) => {
+        const progressBar = document.getElementById('allServicesProgressBar');
+        if (progressBar) {
+            const percentage = Math.round((completed / total) * 100);
+            progressBar.style.width = `${percentage}%`;
+            progressBar.textContent = `${completed}/${total} loaded`;
+            
+            // Update text
+            const textSpan = loadingIndicator.querySelector('span');
+            if (textSpan) {
+                textSpan.textContent = `Loading all service types (${completed}/${total})...`;
+            }
+        }
+    };
+    
+    // Track completed fetchResourceData calls
+    let completedCount = 0;
+    
+    // Set a flag to show all items
+    window.app.showAllItems = true;
+    
+    // Store all promises in an array
+    const fetchPromises = serviceTypes.map(type => {
+        // Activate the corresponding tab first
+        const tabButton = document.getElementById(`${type}-tab`);
+        if (tabButton) {
+            tabButton.click();
+        }
+        
+        // Show loading indicators
+        showLoading(type);
+        
+        // Fetch data with limit set to 0 to get all items
+        return fetchResourceData(type, 'all', false)
+            .then(data => {
+                completedCount++;
+                updateProgress(completedCount, serviceTypes.length);
+                
+                // Make sure page size is large enough to show all items
+                if (window.app.state.resources[type]) {
+                    window.app.state.resources[type].pageSize = 1000; // Show more items per page
+                    window.app.state.resources[type].currentPage = 1; // Reset current page
+                    window.app.state.resources[type].showAll = true; // Mark this resource type to show all items
+                    renderCurrentPage(type); // Re-render with more items
+                }
+                
+                return data;
+            })
+            .catch(error => {
+                completedCount++;
+                updateProgress(completedCount, serviceTypes.length);
+                console.error(`Error loading ${type}:`, error);
+                return null;
+            });
+    });
+    
+    // When all fetches complete
+    Promise.all(fetchPromises)
+        .then(() => {
+            console.log('All service types loaded');
+            
+            // Remove loading indicator
+            setTimeout(() => {
+                loadingIndicator.remove();
+                
+                // Show success message
+                const successMessage = document.createElement('div');
+                successMessage.className = 'alert alert-success mb-4';
+                successMessage.innerHTML = `
+                    <i class="fas fa-check-circle me-2"></i>
+                    All service types loaded successfully. Use the tabs to view each type.
+                    <button class="btn btn-sm btn-outline-success ms-3" onclick="resetPagination()">
+                        <i class="fas fa-undo me-1"></i> Reset Pagination
+                    </button>
+                `;
+                mainContent.insertBefore(successMessage, mainContent.firstChild);
+                
+                // Auto-remove success message after 10 seconds
+                setTimeout(() => {
+                    if (document.contains(successMessage)) {
+                        successMessage.remove();
+                    }
+                }, 10000);
+            }, 500);
+        });
+}
+
+// Reset pagination after loading all items
+function resetPagination() {
+    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+    
+    window.app.showAllItems = false;
+    
+    resourceTypes.forEach(type => {
+        if (window.app.state.resources[type]) {
+            window.app.state.resources[type].pageSize = 10; // Reset to default page size
+            window.app.state.resources[type].currentPage = 1; // Reset current page
+            window.app.state.resources[type].showAll = false; // Reset show all flag
+            
+            // Re-render if this is the active tab
+            const tabContent = document.getElementById(type);
+            if (tabContent && tabContent.classList.contains('active')) {
+                renderCurrentPage(type);
+            }
+        }
+    });
+    
+    // Show message
+    const mainContent = document.getElementById('mainContent');
+    if (mainContent) {
+        const resetMessage = document.createElement('div');
+        resetMessage.className = 'alert alert-info mb-4';
+        resetMessage.innerHTML = `
+            <i class="fas fa-undo me-2"></i>
+            Pagination has been reset to default.
+        `;
+        mainContent.insertBefore(resetMessage, mainContent.firstChild);
+        
+        // Auto-remove message after 3 seconds
+        setTimeout(() => {
+            if (document.contains(resetMessage)) {
+                resetMessage.remove();
+            }
+        }, 3000);
+    }
 }
 
 // Helper function to process resource data
