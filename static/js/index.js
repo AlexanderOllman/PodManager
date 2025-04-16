@@ -3527,15 +3527,32 @@ function loadResourceType(resourceType) {
     // Set up the table headers based on resource type
     setupTableHeaders(resourceType);
     
-    // Get namespace filter
-    const namespace = document.getElementById('resourceNamespaceSelector')?.value || 'all';
+    // Reset pagination UI
+    const paginationInfo = document.getElementById('paginationInfo');
+    if (paginationInfo) {
+        paginationInfo.textContent = 'Page 1';
+    }
+    
+    const prevPageBtn = document.getElementById('prevPageBtn');
+    const nextPageBtn = document.getElementById('nextPageBtn');
+    
+    if (prevPageBtn) {
+        prevPageBtn.disabled = true;
+    }
+    
+    if (nextPageBtn) {
+        nextPageBtn.disabled = true;
+    }
     
     // Fetch data for the resource type with pagination and reset
-    fetchResourceData(resourceType, namespace, false, 1, true)
+    fetchResourceData(resourceType, 'all', false, 1, true)
         .then(data => {
             if (progressBar) {
                 progressBar.style.width = '100%';
             }
+            
+            // Update pagination UI
+            updatePaginationUI(resourceType);
             
             // Hide loading indicator
             setTimeout(() => {
@@ -3642,13 +3659,11 @@ function changeResourceType(resourceType) {
 
 // Handle namespace selection change for resources page
 function namespaceChangedResource() {
-    const resourceType = document.getElementById('resourceTypeSelector').value;
-    const namespace = document.getElementById('resourceNamespaceSelector').value;
+    // This function is no longer used as we've removed the namespace dropdown
+    console.warn("namespaceChangedResource function is deprecated");
     
-    console.log(`Resources: Namespace changed to ${namespace} for ${resourceType}`);
-    
-    // Load resources with the new namespace filter
-    loadResourceType(resourceType);
+    // Just refresh the page as a fallback
+    refreshResourcesPage();
 }
 
 // Handle search in resources page
@@ -3665,112 +3680,190 @@ function searchResources() {
         return;
     }
     
-    // Use the already loaded data and filter it
-    const resourceData = window.app.state.resources[resourceType];
-    if (!resourceData || !resourceData.items) {
-        console.error(`No data available for ${resourceType}`);
-        return;
+    // Show loading indicator
+    const loadingContainer = document.getElementById('resourcesLoading');
+    const tableContainer = document.getElementById('resourcesTableContainer');
+    const progressBar = document.getElementById('resourcesProgressBar');
+    const loadingText = document.getElementById('resourcesLoadingText');
+    
+    if (loadingContainer) {
+        loadingContainer.style.display = 'flex';
     }
-    
-    // Get the resource cache with all items (to search in)
-    const resourceCache = window.app.state.resources[`${resourceType}-all-full-1`];
-    if (!resourceCache || !resourceCache.data || !resourceCache.data.items) {
-        console.error('No cache available for full search');
-        
-        // Show a message that we need to load all data first
-        const tableBody = document.querySelector(`#resourcesTable tbody`);
-        if (tableBody) {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center text-muted py-4">
-                        <i class="fas fa-info-circle me-2"></i> Please wait while data is loading for search...
-                    </td>
-                </tr>
-            `;
-        }
-        return;
-    }
-    
-    // Filter items by search term
-    const allItems = resourceCache.data.items;
-    const filteredItems = allItems.filter(item => {
-        // Search in name
-        if (item.metadata.name.toLowerCase().includes(searchTerm)) {
-            return true;
-        }
-        
-        // Search in namespace
-        if (item.metadata.namespace && item.metadata.namespace.toLowerCase().includes(searchTerm)) {
-            return true;
-        }
-        
-        // For pods, search in labels, status, and resources
-        if (resourceType === 'pods') {
-            // Search in status
-            if (item.status.phase && item.status.phase.toLowerCase().includes(searchTerm)) {
-                return true;
-            }
-            
-            // Search for GPU resources
-            if (searchTerm === 'gpu' || searchTerm.includes('gpu')) {
-                const resources = getResourceUsage(item);
-                if (resources.gpu && resources.gpu !== '0') {
-                    return true;
-                }
-            }
-            
-            // Search for CPU resources
-            if (searchTerm === 'cpu' || searchTerm.includes('cpu')) {
-                const resources = getResourceUsage(item);
-                if (resources.cpu && resources.cpu !== '0') {
-                    return true;
-                }
-            }
-            
-            // Search for memory resources
-            if (searchTerm === 'memory' || searchTerm.includes('memory') || searchTerm.includes('mem')) {
-                const resources = getResourceUsage(item);
-                if (resources.memory && resources.memory !== '0Mi') {
-                    return true;
-                }
-            }
-        }
-        
-        return false;
-    });
-    
-    // Update the resource state with filtered items
-    window.app.state.resources[resourceType] = {
-        items: filteredItems,
-        totalCount: filteredItems.length,
-        pageSize: 50,
-        loadedPages: [1]
-    };
-    
-    // Render the filtered items
-    renderCurrentPage(resourceType);
-    
-    // Add a filter indicator to the table
-    const tableContainer = document.getElementById(`resourcesTableContainer`);
     if (tableContainer) {
-        // Remove existing indicator if any
-        const existingIndicator = tableContainer.querySelector('.filter-indicator');
-        if (existingIndicator) {
-            existingIndicator.remove();
-        }
-        
-        // Add new indicator if we have a filter
-        if (searchTerm) {
-            const indicator = document.createElement('div');
-            indicator.className = 'filter-indicator alert alert-info mb-3';
-            indicator.innerHTML = `
-                <i class="fas fa-filter me-2"></i>
-                Filtered by: "${searchTerm}" (${filteredItems.length} results)
-                <button type="button" class="btn-close float-end" onclick="clearResourceSearch()"></button>
-            `;
-            tableContainer.insertBefore(indicator, tableContainer.firstChild);
-        }
+        tableContainer.style.opacity = '0';
     }
+    if (progressBar) {
+        progressBar.style.width = '30%';
+    }
+    if (loadingText) {
+        loadingText.textContent = 'Searching all resources...';
+    }
+    
+    // First, we need to get the total count to know how many pages to fetch
+    fetchResourceCount(resourceType, 'all')
+        .then(totalCount => {
+            const pageSize = 50;
+            const totalPages = Math.ceil(totalCount / pageSize);
+            
+            if (progressBar) {
+                progressBar.style.width = '40%';
+            }
+            if (loadingText) {
+                loadingText.textContent = `Searching across ${totalCount} items...`;
+            }
+            
+            // We'll store all items here
+            let allItems = [];
+            let fetchedPages = 0;
+            
+            // Prepare array of promises to fetch all pages
+            const pagePromises = [];
+            
+            for (let page = 1; page <= totalPages; page++) {
+                pagePromises.push(
+                    fetchResourcePage(resourceType, 'all', false, page)
+                        .then(data => {
+                            if (data && data.data && data.data.items) {
+                                allItems = allItems.concat(data.data.items);
+                            }
+                            
+                            fetchedPages++;
+                            if (progressBar) {
+                                // Update progress based on pages fetched
+                                const progress = 40 + (fetchedPages / totalPages) * 40;
+                                progressBar.style.width = `${progress}%`;
+                            }
+                            if (loadingText) {
+                                loadingText.textContent = `Fetched ${allItems.length} of ${totalCount} items...`;
+                            }
+                        })
+                );
+            }
+            
+            // When all pages are fetched, filter the items
+            return Promise.all(pagePromises).then(() => {
+                if (progressBar) {
+                    progressBar.style.width = '90%';
+                }
+                if (loadingText) {
+                    loadingText.textContent = 'Filtering results...';
+                }
+                
+                // Filter all items by search term
+                const filteredItems = allItems.filter(item => {
+                    // Search in name
+                    if (item.metadata.name.toLowerCase().includes(searchTerm)) {
+                        return true;
+                    }
+                    
+                    // Search in namespace
+                    if (item.metadata.namespace && item.metadata.namespace.toLowerCase().includes(searchTerm)) {
+                        return true;
+                    }
+                    
+                    // For pods, search in labels, status, and resources
+                    if (resourceType === 'pods') {
+                        // Search in status
+                        if (item.status.phase && item.status.phase.toLowerCase().includes(searchTerm)) {
+                            return true;
+                        }
+                        
+                        // Search for GPU resources
+                        if (searchTerm === 'gpu' || searchTerm.includes('gpu')) {
+                            const resources = getResourceUsage(item);
+                            if (resources.gpu && resources.gpu !== '0') {
+                                return true;
+                            }
+                        }
+                        
+                        // Search for CPU resources
+                        if (searchTerm === 'cpu' || searchTerm.includes('cpu')) {
+                            const resources = getResourceUsage(item);
+                            if (resources.cpu && resources.cpu !== '0') {
+                                return true;
+                            }
+                        }
+                        
+                        // Search for memory resources
+                        if (searchTerm === 'memory' || searchTerm.includes('memory') || searchTerm.includes('mem')) {
+                            const resources = getResourceUsage(item);
+                            if (resources.memory && resources.memory !== '0Mi') {
+                                return true;
+                            }
+                        }
+                    }
+                    
+                    return false;
+                });
+                
+                // Update the resource state with filtered items
+                window.app.state.resources[resourceType] = {
+                    items: filteredItems,
+                    totalCount: filteredItems.length,
+                    pageSize: 50,
+                    currentPage: 1,
+                    loadedPages: [1]
+                };
+                
+                // Render the filtered items
+                renderCurrentPage(resourceType);
+                
+                // Add a filter indicator to the table
+                const tableContainer = document.getElementById('resourcesTableContainer');
+                if (tableContainer) {
+                    // Remove existing indicator if any
+                    const existingIndicator = tableContainer.querySelector('.filter-indicator');
+                    if (existingIndicator) {
+                        existingIndicator.remove();
+                    }
+                    
+                    // Add new indicator
+                    const indicator = document.createElement('div');
+                    indicator.className = 'filter-indicator alert alert-info mb-3';
+                    indicator.innerHTML = `
+                        <i class="fas fa-filter me-2"></i>
+                        Filtered by: "${searchTerm}" (${filteredItems.length} results)
+                        <button type="button" class="btn-close float-end" onclick="clearResourceSearch()"></button>
+                    `;
+                    tableContainer.insertBefore(indicator, tableContainer.firstChild);
+                }
+                
+                // Hide loading indicator
+                if (loadingContainer) {
+                    if (progressBar) {
+                        progressBar.style.width = '100%';
+                    }
+                    setTimeout(() => {
+                        loadingContainer.style.display = 'none';
+                        if (tableContainer) {
+                            tableContainer.style.opacity = '1';
+                        }
+                    }, 500);
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error searching resources:', error);
+            
+            // Show error message
+            if (loadingText) {
+                loadingText.textContent = `Error: ${error.message}`;
+            }
+            if (progressBar) {
+                progressBar.classList.add('bg-danger');
+                progressBar.style.width = '100%';
+            }
+            
+            // Hide loading after a delay
+            setTimeout(() => {
+                if (loadingContainer) {
+                    loadingContainer.style.display = 'none';
+                }
+                if (tableContainer) {
+                    tableContainer.style.opacity = '1';
+                }
+            }, 2000);
+        });
 }
 
 // Clear search
@@ -4342,9 +4435,8 @@ document.addEventListener('DOMContentLoaded', function() {
 // Function to refresh the resources page
 function refreshResourcesPage() {
     const resourceType = document.getElementById('resourceTypeSelector')?.value || 'pods';
-    const namespace = document.getElementById('resourceNamespaceSelector')?.value || 'all';
     
-    console.log(`Refreshing resources page for ${resourceType} in namespace ${namespace}`);
+    console.log(`Refreshing resources page for ${resourceType}`);
     
     // Clear any existing search
     const searchInput = document.getElementById('resourceSearchInput');
@@ -4367,8 +4459,351 @@ function refreshResourcesPage() {
         loadingContainer.style.display = 'flex';
     }
     
+    // Reset pagination to first page
+    if (window.app.state.resources[resourceType]) {
+        window.app.state.resources[resourceType].currentPage = 1;
+    }
+    
+    // Update pagination UI
+    const paginationInfo = document.getElementById('paginationInfo');
+    if (paginationInfo) {
+        paginationInfo.textContent = 'Page 1';
+    }
+    
+    const prevPageBtn = document.getElementById('prevPageBtn');
+    if (prevPageBtn) {
+        prevPageBtn.disabled = true;
+    }
+    
     // Fetch data with resetting
-    fetchResourceData(resourceType, namespace, false, 1, true).catch(error => {
+    fetchResourceData(resourceType, 'all', false, 1, true).catch(error => {
         console.error(`Error refreshing resources:`, error);
     });
+}
+
+// Function to navigate resource pages
+function navigateResourcePage(direction) {
+    const resourceType = document.getElementById('resourceTypeSelector')?.value || 'pods';
+    const resourceData = window.app.state.resources[resourceType];
+    
+    if (!resourceData) {
+        console.error(`No data available for ${resourceType}`);
+        return;
+    }
+    
+    let currentPage = resourceData.currentPage || 1;
+    const totalPages = Math.ceil((resourceData.totalCount || 0) / (resourceData.pageSize || 50));
+    
+    if (direction === 'prev' && currentPage > 1) {
+        currentPage--;
+    } else if (direction === 'next' && currentPage < totalPages) {
+        currentPage++;
+    } else {
+        return; // No change needed
+    }
+    
+    // Update current page
+    resourceData.currentPage = currentPage;
+    
+    // Check if we need to fetch more data
+    if (!resourceData.loadedPages.includes(currentPage)) {
+        // Show loading indicator
+        const loadingContainer = document.getElementById('resourcesLoading');
+        const tableContainer = document.getElementById('resourcesTableContainer');
+        
+        if (loadingContainer) {
+            loadingContainer.style.display = 'flex';
+        }
+        if (tableContainer) {
+            tableContainer.style.opacity = '0.5';
+        }
+        
+        // Fetch the page
+        fetchResourceData(resourceType, 'all', false, currentPage)
+            .then(() => {
+                updatePaginationUI(resourceType);
+                renderResourcePage(resourceType);
+            })
+            .catch(error => {
+                console.error(`Error fetching page ${currentPage}:`, error);
+            });
+    } else {
+        // We already have the data, just render it
+        updatePaginationUI(resourceType);
+        renderResourcePage(resourceType);
+    }
+}
+
+// Function to render a specific page of resources
+function renderResourcePage(resourceType) {
+    const resourceData = window.app.state.resources[resourceType];
+    if (!resourceData || !resourceData.items) {
+        console.error(`No data available for ${resourceType}`);
+        return;
+    }
+    
+    const { items, totalCount, pageSize, currentPage } = resourceData;
+    const tableBody = document.getElementById('resourcesTableBody');
+    
+    if (!tableBody) {
+        console.error('Table body not found');
+        return;
+    }
+    
+    // Calculate items for current page
+    const startIdx = (currentPage - 1) * pageSize;
+    const endIdx = Math.min(startIdx + pageSize, items.length);
+    const pageItems = items.slice(startIdx, endIdx);
+    
+    // Clear the table body
+    tableBody.innerHTML = '';
+    
+    // If no items, show empty state
+    if (pageItems.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                    <i class="fas fa-info-circle me-2"></i> No ${resourceType} found
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    // Render items based on resource type
+    pageItems.forEach(item => {
+        const row = document.createElement('tr');
+        
+        switch (resourceType) {
+            case 'pods':
+                const podResources = getResourceUsage(item);
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${podResources.cpu || '0'}</td>
+                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${podResources.gpu || '0'}</td>
+                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${podResources.memory || '0Mi'}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+                
+            // ... other resource types ...
+            
+            default:
+                row.innerHTML = `
+                    <td>${item.metadata.namespace || '-'}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+        }
+        
+        tableBody.appendChild(row);
+    });
+    
+    // Initialize all dropdowns
+    setTimeout(() => {
+        const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }, 100);
+    
+    // Update the count info
+    const tableContainer = document.getElementById('resourcesTableContainer');
+    if (tableContainer) {
+        // Remove existing count info
+        const existingCountInfo = tableContainer.querySelector('.count-info');
+        if (existingCountInfo) {
+            existingCountInfo.remove();
+        }
+        
+        // Add count message
+        const countInfo = document.createElement('div');
+        countInfo.className = 'text-muted small mb-2 count-info';
+        const startItem = Math.min((currentPage - 1) * pageSize + 1, totalCount);
+        const endItem = Math.min(startItem + pageItems.length - 1, totalCount);
+        countInfo.innerHTML = `Showing ${startItem}-${endItem} of ${totalCount} ${resourceType}`;
+        tableContainer.insertBefore(countInfo, tableContainer.firstChild);
+    }
+    
+    // Make sure the table is visible
+    const loadingContainer = document.getElementById('resourcesLoading');
+    if (loadingContainer) {
+        loadingContainer.style.display = 'none';
+    }
+    if (tableContainer) {
+        tableContainer.style.opacity = '1';
+    }
+}
+
+// Function to update the pagination UI
+function updatePaginationUI(resourceType) {
+    const resourceData = window.app.state.resources[resourceType];
+    if (!resourceData) return;
+    
+    const currentPage = resourceData.currentPage || 1;
+    const totalPages = Math.ceil((resourceData.totalCount || 0) / (resourceData.pageSize || 50));
+    
+    // Update pagination info
+    const paginationInfo = document.getElementById('paginationInfo');
+    if (paginationInfo) {
+        paginationInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+    }
+    
+    // Update pagination buttons
+    const prevPageBtn = document.getElementById('prevPageBtn');
+    const nextPageBtn = document.getElementById('nextPageBtn');
+    
+    if (prevPageBtn) {
+        prevPageBtn.disabled = currentPage <= 1;
+    }
+    
+    if (nextPageBtn) {
+        nextPageBtn.disabled = currentPage >= totalPages;
+    }
+}
+
+// Helper function to render current page
+function renderCurrentPage(resourceType) {
+    const resourceData = window.app.state.resources[resourceType];
+    if (!resourceData || !resourceData.items) {
+        console.error(`No data available for ${resourceType}`);
+        return;
+    }
+    
+    // For the resources page, use the pagination-based rendering
+    if (window.app.state.navigation?.activeTab === 'resources') {
+        updatePaginationUI(resourceType);
+        renderResourcePage(resourceType);
+        return;
+    }
+    
+    // For other tabs, use the original rendering logic
+    const { items, totalCount, pageSize, loadedPages } = resourceData;
+    
+    let tableBody;
+    let tableContainer;
+    
+    tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    
+    if (!tableBody) {
+        console.error(`Table body not found for ${resourceType}`);
+        return;
+    }
+
+    if (!tableContainer) {
+        console.error(`Table container not found for ${resourceType}`);
+        return;
+    }
+    
+    // Remove existing "Load More" button if it exists
+    const existingLoadMore = tableContainer.querySelector('.load-more-container');
+    if (existingLoadMore) {
+        existingLoadMore.remove();
+    }
+    
+    // Remove existing count info messages
+    const existingCountInfo = tableContainer.querySelector('.count-info');
+    if (existingCountInfo) {
+        existingCountInfo.remove();
+    }
+    
+    // Clear the table body
+    tableBody.innerHTML = '';
+
+    // If no items, show empty state
+    if (items.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                    <i class="fas fa-info-circle me-2"></i> No ${resourceType} found
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    // Add count message
+    const countInfo = document.createElement('div');
+    countInfo.className = 'text-muted small mb-2 count-info';
+    countInfo.innerHTML = `Showing ${items.length} of ${totalCount} ${resourceType}`;
+    tableContainer.insertBefore(countInfo, tableContainer.firstChild);
+    
+    // Render items based on resource type
+    items.forEach(item => {
+        const row = document.createElement('tr');
+        
+        switch (resourceType) {
+            case 'pods':
+                const podResources = getResourceUsage(item);
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${podResources.cpu || '0'}</td>
+                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${podResources.gpu || '0'}</td>
+                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${podResources.memory || '0Mi'}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+                
+            // Other cases remain the same
+        }
+        
+        tableBody.appendChild(row);
+    });
+    
+    // Check if we need to show the "Load More" button
+    if (items.length < totalCount) {
+        const loadMoreContainer = document.createElement('div');
+        loadMoreContainer.className = 'load-more-container text-center mt-3 mb-2';
+        loadMoreContainer.innerHTML = `
+            <button class="btn btn-outline-primary load-more-btn">
+                <i class="fas fa-chevron-down me-1"></i> 
+                Load More (showing ${items.length} of ${totalCount})
+            </button>
+        `;
+        tableContainer.appendChild(loadMoreContainer);
+        
+        // Add event listener to load more button
+        const loadMoreBtn = loadMoreContainer.querySelector('.load-more-btn');
+        loadMoreBtn.addEventListener('click', () => {
+            const nextPage = Math.ceil(items.length / pageSize) + 1;
+            // Show loading spinner on load more button
+            loadMoreBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Loading...';
+            loadMoreBtn.disabled = true;
+            
+            // Fetch next page
+            fetchResourceData(
+                resourceType, 
+                'all', 
+                false, 
+                nextPage
+            ).finally(() => {
+                // Re-enable button if more data can be loaded
+                const updatedResourceData = window.app.state.resources[resourceType];
+                if (updatedResourceData && updatedResourceData.items.length < updatedResourceData.totalCount) {
+                    loadMoreBtn.disabled = false;
+                    loadMoreBtn.innerHTML = `<i class="fas fa-chevron-down me-1"></i> Load More (showing ${updatedResourceData.items.length} of ${updatedResourceData.totalCount})`;
+                }
+            });
+        });
+    }
+    
+    // Make table visible with transition
+    setTimeout(() => {
+        if (tableContainer) {
+            tableContainer.style.opacity = '1';
+        }
+    }, 100);
+    
+    // Initialize all dropdowns
+    setTimeout(() => {
+        const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }, 100);
 }
