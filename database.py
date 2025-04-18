@@ -95,10 +95,8 @@ class Database:
         if not os.path.exists(DATABASE_PATH):
             init_db()
     
-    def update_resources(self, resource_type, resources_json):
-        """Update resources in the database"""
-        resources = json.loads(resources_json)
-        
+    def update_resource(self, resource_type, items):
+        """Update resources in the database from a list of items"""
         with get_connection() as conn:
             cursor = conn.cursor()
             
@@ -110,7 +108,7 @@ class Database:
                 cursor.execute("DELETE FROM resources WHERE resource_type = ?", (resource_type,))
                 
                 # Insert new resources
-                for resource in resources.get('items', []):
+                for resource in items:
                     resource_id = f"{resource_type}:{resource.get('metadata', {}).get('namespace', 'default')}:{resource.get('metadata', {}).get('name', '')}"
                     namespace = resource.get('metadata', {}).get('namespace', 'default')
                     name = resource.get('metadata', {}).get('name', '')
@@ -142,6 +140,28 @@ class Database:
                         simplified_data['replicas'] = resource.get('spec', {}).get('replicas', 0)
                         simplified_data['available'] = resource.get('status', {}).get('availableReplicas', 0)
                     
+                    elif resource_type == 'services':
+                        simplified_data['type'] = resource.get('spec', {}).get('type', 'ClusterIP')
+                        simplified_data['clusterIP'] = resource.get('spec', {}).get('clusterIP', '')
+                        # Handle ports
+                        ports = resource.get('spec', {}).get('ports', [])
+                        simplified_data['ports'] = [{
+                            'port': port.get('port'),
+                            'protocol': port.get('protocol', 'TCP'),
+                            'targetPort': port.get('targetPort')
+                        } for port in ports]
+                    
+                    elif resource_type == 'inferenceservices':
+                        simplified_data['model'] = resource.get('spec', {}).get('predictor', {}).get('model', {}).get('modelFormat', {}).get('name', 'unknown')
+                        simplified_data['runtime'] = resource.get('spec', {}).get('predictor', {}).get('model', {}).get('runtime', 'unknown')
+                        
+                    elif resource_type == 'configmaps':
+                        simplified_data['data_count'] = len(resource.get('data', {}))
+                        
+                    elif resource_type == 'secrets':
+                        simplified_data['type'] = resource.get('type', 'Opaque')
+                        simplified_data['data_count'] = len(resource.get('data', {}))
+                    
                     cursor.execute('''
                     INSERT INTO resources (id, resource_type, namespace, name, yaml, data, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -164,11 +184,21 @@ class Database:
                 ''', (f"last_updated_{resource_type}", now))
                 
                 conn.commit()
-                logging.info(f"Updated {len(resources.get('items', []))} {resource_type} in database")
+                logging.info(f"Updated {len(items)} {resource_type} in database")
+                return True
             except Exception as e:
                 conn.rollback()
                 logging.error(f"Failed to update {resource_type}: {str(e)}")
                 raise
+    
+    def update_resources(self, resource_type, resources_json):
+        """Update resources in the database from JSON string"""
+        try:
+            resources = json.loads(resources_json)
+            return self.update_resource(resource_type, resources.get('items', []))
+        except Exception as e:
+            logging.error(f"Failed to parse resources JSON: {str(e)}")
+            return False
     
     def _extract_status(self, resource, resource_type):
         """Extract status from a resource based on its type"""
@@ -285,6 +315,55 @@ class Database:
             metrics['failed_pods'] = cursor.fetchone()[0]
             
             return metrics
+    
+    def get_namespaces_list(self):
+        """Get a list of all namespaces"""
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Look for namespaces as resources first
+            cursor.execute("""
+            SELECT DISTINCT json_extract(data, '$.name') as name, 
+                   json_extract(data, '$.created') as created,
+                   json_extract(data, '$.status') as status
+            FROM resources 
+            WHERE resource_type = 'namespaces'
+            ORDER BY name
+            """)
+            
+            rows = cursor.fetchall()
+            
+            # If we have namespaces as resources, return them
+            if rows and len(rows) > 0:
+                namespaces = []
+                for row in rows:
+                    namespaces.append({
+                        'name': row['name'],
+                        'created': row['created'],
+                        'status': row['status'] or 'Active',
+                    })
+                return namespaces
+            
+            # Otherwise, get distinct namespaces from all resources
+            cursor.execute("""
+            SELECT DISTINCT namespace
+            FROM resources
+            WHERE namespace IS NOT NULL AND namespace != ''
+            ORDER BY namespace
+            """)
+            
+            rows = cursor.fetchall()
+            
+            # Format results
+            namespaces = []
+            for row in rows:
+                namespaces.append({
+                    'name': row['namespace'],
+                    'created': None,
+                    'status': 'Active',
+                })
+            
+            return namespaces
     
     def get_gpu_pods(self):
         """Get pods with GPU resources"""
