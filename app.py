@@ -11,9 +11,6 @@ import time
 import signal
 import atexit
 import psutil
-import logging
-from database import get_db, clear_db
-from datetime import datetime, timedelta
 
 # We'll check for git availability at runtime rather than import time
 git_available = False
@@ -22,10 +19,6 @@ try:
     git_available = True
 except ImportError:
     print("Git module could not be imported. GitHub update functionality will be disabled.")
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 # Configure SocketIO with enhanced settings for reliability
@@ -74,67 +67,55 @@ def get_resources():
     if not resource_type:
         return jsonify(error="Resource type is required")
     
+    # Build kubectl command based on resource type and namespace
+    if namespace and namespace != 'all':
+        command = f"kubectl get {resource_type} -n {namespace} -o json"
+    else:
+        command = f"kubectl get {resource_type} --all-namespaces -o json"
+    
     try:
-        # Get database instance
-        db = get_db()
-        
-        # Check when was the last update for this resource type
-        last_updated = db.get_last_updated(resource_type)
-        current_time = datetime.now().isoformat()
-        
-        print(f"[DATABASE] Get resources request for {resource_type}, namespace={namespace}, page={page}")
-        if last_updated:
-            print(f"[DATABASE] Last updated: {last_updated}")
-        else:
-            print(f"[DATABASE] No last_updated found for {resource_type}")
-        
-        # If resources haven't been loaded or are stale (older than 5 minutes), populate from kubectl
-        if not last_updated or (
-            datetime.fromisoformat(last_updated) < 
-            datetime.fromisoformat(current_time) - timedelta(minutes=5)
-        ):
-            app.logger.info(f"Data for {resource_type} is stale or missing, fetching from Kubernetes")
-            print(f"[DATABASE] Fetching fresh data for {resource_type} from Kubernetes")
-            try:
-                fetch_success = fetch_k8s_data(resource_type)
-                if not fetch_success:
-                    print(f"[DATABASE] Failed to fetch {resource_type} from Kubernetes, but continuing with what we have")
-                    # Continue with what we have - don't return error
-            except Exception as e:
-                print(f"[DATABASE] Error fetching {resource_type} from Kubernetes: {str(e)}")
-                # Continue with what we have - don't return error
-        
-        try:
-            # If count_only is true, just return the count from the database
-            if count_only:
-                count_result = db.get_resources(resource_type, namespace)
-                count = count_result['total']
-                print(f"[DATABASE] Count query returned {count} {resource_type}")
-                return jsonify(data={"totalCount": count})
+        # If count_only is true, just return the count using field selectors to minimize data
+        if count_only:
+            # Use a more efficient way to get just the count
+            if namespace and namespace != 'all':
+                count_command = f"kubectl get {resource_type} -n {namespace} --no-headers | wc -l"
+            else:
+                count_command = f"kubectl get {resource_type} --all-namespaces --no-headers | wc -l"
             
-            # Get paginated resources from database
-            print(f"[DATABASE] Retrieving {resource_type} from database")
-            result = db.get_resources(
-                resource_type=resource_type, 
-                namespace=namespace,
-                page=page,
-                page_size=page_size
-            )
-            print(f"[DATABASE] Retrieved {len(result['items'])} {resource_type} items from database")
+            count_result = subprocess.run(count_command, shell=True, check=True, capture_output=True, text=True)
+            count = int(count_result.stdout.strip())
+            return jsonify(data={"totalCount": count})
+        
+        output = run_kubectl_command(command)
+        data = json.loads(output)
+        
+        # Get total count before pagination
+        total_count = len(data.get('items', []))
+        
+        # Apply pagination to limit memory usage
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        
+        # Add pagination metadata
+        paginated_data = {
+            'totalCount': total_count,
+            'page': page,
+            'pageSize': page_size,
+            'totalPages': (total_count + page_size - 1) // page_size
+        }
+        
+        # Paginate the results
+        if 'items' in data:
+            # Slice the items for the current page
+            paginated_items = data['items'][start_idx:end_idx]
             
-            # Format data to match the expected structure from kubectl
-            paginated_data = {
-                'totalCount': result['total'],
-                'page': result['page'],
-                'pageSize': result['page_size'],
-                'totalPages': result['total_pages'],
-                'items': result['items'],
-                'source': 'database'
-            }
+            # Preserve metadata
+            metadata = {k: v for k, v in data.items() if k != 'items'}
+            paginated_data.update(metadata)
             
             # For critical-only loads, strip out non-essential data
-            if critical_only and 'items' in paginated_data:
-                for item in paginated_data['items']:
+            if critical_only:
+                for item in paginated_items:
                     # Keep only essential metadata and status
                     minimal_item = {
                         'metadata': {
@@ -149,22 +130,18 @@ def get_resources():
                     if resource_type == 'pods':
                         minimal_item['status'] = {
                             'phase': item['status'].get('phase'),
-                            'containerStatuses': [
-                                {
-                                    'ready': status.get('ready'),
-                                    'restartCount': status.get('restartCount'),
-                                    'state': status.get('state')
-                                } for status in item['status'].get('containerStatuses', [])
-                            ]
+                            'containerStatuses': [{
+                                'ready': status.get('ready'),
+                                'restartCount': status.get('restartCount'),
+                                'state': status.get('state')
+                            } for status in item['status'].get('containerStatuses', [])]
                         }
                         # Include spec data for pods to calculate resource usage
                         minimal_item['spec'] = {
-                            'containers': [
-                                {
-                                    'name': container.get('name'),
-                                    'resources': container.get('resources', {})
-                                } for container in item.get('spec', {}).get('containers', [])
-                            ]
+                            'containers': [{
+                                'name': container.get('name'),
+                                'resources': container.get('resources', {})
+                            } for container in item.get('spec', {}).get('containers', [])]
                         }
                     elif resource_type == 'services':
                         minimal_item['spec'] = {
@@ -180,64 +157,14 @@ def get_resources():
                     item.clear()
                     item.update(minimal_item)
             
-            return jsonify(data=paginated_data)
-        except Exception as db_error:
-            print(f"[DATABASE] Error retrieving {resource_type} from database: {str(db_error)}")
-            # Continue to kubectl fallback
-            raise
-            
-    except Exception as e:
-        app.logger.error(f"Error retrieving {resource_type} from database: {str(e)}")
+            # Update the items with the paginated subset
+            paginated_data['items'] = paginated_items
         
-        # Return empty result with message instead of error
-        empty_data = {
-            'totalCount': 0,
-            'page': page,
-            'pageSize': page_size,
-            'totalPages': 0,
-            'items': [],
-            'source': 'fallback',
-            'message': f"Could not retrieve data: {str(e)}"
-        }
-        
-        # Fallback to kubectl if database query fails
-        try:
-            app.logger.info(f"Falling back to kubectl for {resource_type}")
-            print(f"[DATABASE] Falling back to kubectl for {resource_type}")
-            # Build kubectl command based on resource type and namespace
-            if namespace and namespace != 'all':
-                command = f"kubectl get {resource_type} -n {namespace} -o json"
-            else:
-                command = f"kubectl get {resource_type} --all-namespaces -o json"
-                
-            output = run_kubectl_command(command)
-            data = json.loads(output)
-            
-            # Get total count before pagination
-            total_count = len(data.get('items', []))
-            
-            # Apply pagination to limit memory usage
-            start_idx = (page - 1) * page_size
-            end_idx = start_idx + page_size
-            
-            # Add pagination metadata
-            paginated_data = {
-                'totalCount': total_count,
-                'page': page,
-                'pageSize': page_size,
-                'totalPages': (total_count + page_size - 1) // page_size,
-                'source': 'kubectl'
-            }
-            
-            # Paginate the results
-            if 'items' in data:
-                paginated_data['items'] = data['items'][start_idx:end_idx]
-            
-            return jsonify(data=paginated_data)
-        except Exception as fallback_error:
-            print(f"[DATABASE] Kubectl fallback also failed for {resource_type}: {str(fallback_error)}")
-            # Return empty data if both database and kubectl fail
-            return jsonify(data=empty_data)
+        return jsonify(data=paginated_data)
+    except subprocess.CalledProcessError as e:
+        return jsonify(error=f"Failed to get {resource_type}: {e.stderr}")
+    except json.JSONDecodeError:
+        return jsonify(error=f"Invalid JSON response from kubectl")
 
 @app.route('/run_action', methods=['POST'])
 def run_action():
@@ -726,40 +653,26 @@ def refresh_application():
         # Emit starting message
         socketio.emit('refresh_log', {'message': 'Starting application refresh process...', 'status': 'info'})
         
-        # Step 1: Clear the database
-        socketio.emit('refresh_log', {'message': 'Clearing database...', 'status': 'info'})
-        socketio.emit('refresh_status', {'step': 'clearing_database', 'progress': 10})
-        
-        if clear_db():
-            socketio.emit('refresh_log', {'message': 'Database cleared successfully', 'status': 'success'})
-        else:
-            socketio.emit('refresh_log', {'message': 'Warning: Failed to clear database', 'status': 'warning'})
-        
-        # Step 2: Prepare for shutdown
+        # Step 1: Prepare for shutdown
         socketio.emit('refresh_log', {'message': 'Preparing to stop application...', 'status': 'info'})
-        socketio.emit('refresh_status', {'step': 'preparing', 'progress': 20})
         time.sleep(1)  # Give time for the message to be sent
         
-        # Step 3: Get repo URL (from environment or request)
+        # Step 2: Get repo URL (from environment or request)
         repo_url = request.json.get('repo_url', github_repo_url)
         socketio.emit('refresh_log', {'message': f'Using repository: {repo_url}', 'status': 'info'})
-        socketio.emit('refresh_status', {'step': 'preparing_repo', 'progress': 30})
         
-        # Step 4: Create a temporary directory
+        # Step 3: Create a temporary directory
         temp_dir = tempfile.mkdtemp()
         socketio.emit('refresh_log', {'message': f'Created temporary directory: {temp_dir}', 'status': 'info'})
         
-        # Step 5: Clone the repository with --hard option
+        # Step 4: Clone the repository with --hard option
         socketio.emit('refresh_log', {'message': 'Cloning repository (hard pull)...', 'status': 'info'})
-        socketio.emit('refresh_status', {'step': 'cloning_repo', 'progress': 40})
         git.Repo.clone_from(repo_url, temp_dir)
         socketio.emit('refresh_log', {'message': 'Repository successfully cloned', 'status': 'info'})
-        socketio.emit('refresh_status', {'step': 'repo_cloned', 'progress': 60})
         
-        # Step 6: Copy new files to the application directory
+        # Step 5: Copy new files to the application directory
         app_dir = os.path.dirname(os.path.abspath(__file__))
         socketio.emit('refresh_log', {'message': f'Copying files to application directory: {app_dir}', 'status': 'info'})
-        socketio.emit('refresh_status', {'step': 'copying_files', 'progress': 70})
         
         # Copy files while preserving the app instance
         for item in os.listdir(temp_dir):
@@ -775,14 +688,12 @@ def refresh_application():
                     shutil.copy2(src, dst)
                     socketio.emit('refresh_log', {'message': f'Copied file: {item}', 'status': 'info'})
         
-        # Step 7: Clean up
+        # Step 6: Clean up
         shutil.rmtree(temp_dir)
         socketio.emit('refresh_log', {'message': 'Cleaned up temporary files', 'status': 'info'})
-        socketio.emit('refresh_status', {'step': 'cleanup_complete', 'progress': 90})
         
-        # Step 8: Prepare for restart
+        # Step 7: Prepare for restart
         socketio.emit('refresh_log', {'message': 'All files updated. Preparing to restart application...', 'status': 'info'})
-        socketio.emit('refresh_status', {'step': 'preparing_restart', 'progress': 100})
         
         # Return success response (the client will then call restart)
         return jsonify({"status": "success", "message": "Application ready for restart"})
@@ -1203,424 +1114,5 @@ def delete_pod():
         app.logger.error(f"Error deleting pod: {e}")
         return jsonify({"error": str(e)}), 500
 
-# Fetch function that gets data from Kubernetes and stores in database
-def fetch_k8s_data(resource_type):
-    """
-    Fetch data from Kubernetes and store in database
-    """
-    db = get_db()
-    try:
-        # Simulate fetching data from Kubernetes
-        # In real implementation, this would call kubernetes API
-        cmd = ["kubectl", "get", resource_type, "--all-namespaces", "-o", "json"]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        
-        # Update database with new data
-        success = db.update_resource(resource_type, data.get('items', []))
-        
-        # Update namespace metrics if we've updated pods
-        if resource_type == 'pods':
-            db.update_namespace_metrics()
-            
-        return success
-    except Exception as e:
-        logger.error(f"Error fetching {resource_type}: {e}")
-        return False
-
-# API for refreshing all resources
-@app.route('/api/refresh/all', methods=['POST'])
-def refresh_all():
-    # Start a background thread to refresh all resources
-    thread = threading.Thread(target=refresh_all_resources)
-    thread.daemon = True
-    thread.start()
-    
-    return jsonify({'status': 'refresh started'})
-
-def refresh_all_resources():
-    """Background task to refresh all resources"""
-    resource_types = ['pods', 'services', 'deployments', 'configmaps', 'secrets', 'namespaces']
-    for resource_type in resource_types:
-        logger.info(f"Refreshing {resource_type}")
-        fetch_k8s_data(resource_type)
-        # Small delay to avoid overwhelming the API server
-        time.sleep(1)
-    
-    # Update namespace metrics
-    get_db().update_namespace_metrics()
-    logger.info("All resources refreshed")
-
-# API for namespaces
-@app.route('/api/namespaces')
-def get_namespaces_api():
-    # Get data from database
-    db = get_db()
-    
-    # Check if we should force refresh
-    refresh = request.args.get('refresh', 'false').lower() == 'true'
-    
-    if refresh:
-        fetch_k8s_data('namespaces')
-    
-    namespaces = db.get_namespaces_list()
-    return jsonify({'items': namespaces})
-
-# API for resources data
-@app.route('/api/resources/<resource_type>', methods=['POST'])
-def api_resources(resource_type):
-    namespace = request.form.get('namespace', 'all')
-    search = request.form.get('search', '')
-    offset = int(request.form.get('offset', 0))
-    limit = int(request.form.get('limit', 50))
-    critical_only = request.form.get('critical_only', 'false').lower() == 'true'
-    
-    try:
-        # Get database instance
-        db = get_db()
-        
-        # Check if we need to refresh data
-        last_updated = db.get_last_updated(resource_type)
-        current_time = datetime.now().isoformat()
-        
-        print(f"[DATABASE] Infinite scroll request for {resource_type}, offset={offset}, limit={limit}")
-        if last_updated:
-            print(f"[DATABASE] Last updated: {last_updated}")
-        else:
-            print(f"[DATABASE] No last_updated found for {resource_type}")
-        
-        # If resources haven't been loaded or are stale (older than 5 minutes), populate from kubectl
-        if not last_updated or (
-            datetime.fromisoformat(last_updated) < 
-            datetime.fromisoformat(current_time) - timedelta(minutes=5)
-        ):
-            app.logger.info(f"Data for {resource_type} is stale or missing, fetching from Kubernetes")
-            print(f"[DATABASE] Fetching fresh data for {resource_type} from Kubernetes")
-            try:
-                fetch_success = fetch_k8s_data(resource_type)
-                if not fetch_success:
-                    print(f"[DATABASE] Failed to fetch {resource_type} from Kubernetes, but continuing with what we have")
-            except Exception as e:
-                print(f"[DATABASE] Error fetching {resource_type} from Kubernetes: {str(e)}")
-        
-        try:
-            # Get resources with pagination from database
-            # We use page_size=limit and calculate the page number from offset
-            page = (offset // limit) + 1
-            print(f"[DATABASE] Retrieving {resource_type} from database for infinite scroll, page={page}")
-            result = db.get_resources(
-                resource_type=resource_type,
-                namespace=namespace,
-                search=search,
-                page=page,
-                page_size=limit
-            )
-            print(f"[DATABASE] Retrieved {len(result['items'])} {resource_type} items from database for infinite scroll")
-            
-            # Format for response
-            response = {
-                'items': result['items'],
-                'totalCount': result['total'],
-                'offset': offset,
-                'limit': limit,
-                'hasMore': (offset + len(result['items'])) < result['total'],
-                'source': 'database'
-            }
-            
-            # For critical-only loads, strip out non-essential data
-            if critical_only and response['items']:
-                for item in response['items']:
-                    # Keep only essential metadata and status
-                    minimal_item = {
-                        'metadata': {
-                            'name': item['metadata'].get('name'),
-                            'namespace': item['metadata'].get('namespace'),
-                            'creationTimestamp': item['metadata'].get('creationTimestamp')
-                        },
-                        'status': {}
-                    }
-                    
-                    # Keep essential status fields based on resource type
-                    if resource_type == 'pods':
-                        minimal_item['status'] = {
-                            'phase': item['status'].get('phase'),
-                            'containerStatuses': [
-                                {
-                                    'ready': status.get('ready'),
-                                    'restartCount': status.get('restartCount'),
-                                    'state': status.get('state')
-                                } for status in item['status'].get('containerStatuses', [])
-                            ]
-                        }
-                        
-                    elif resource_type == 'services':
-                        minimal_item['spec'] = {
-                            'type': item['spec'].get('type'),
-                            'clusterIP': item['spec'].get('clusterIP')
-                        }
-                        
-                    elif resource_type == 'deployments':
-                        minimal_item['status'] = {
-                            'replicas': item['status'].get('replicas'),
-                            'readyReplicas': item['status'].get('readyReplicas')
-                        }
-                    
-                    item.clear()
-                    item.update(minimal_item)
-            
-            return jsonify(response)
-        except Exception as db_error:
-            print(f"[DATABASE] Error retrieving {resource_type} from database: {str(db_error)}")
-            # Continue to kubectl fallback
-            raise
-    
-    except Exception as e:
-        app.logger.error(f"Error retrieving {resource_type} from database: {str(e)}")
-        
-        # Create empty response with message
-        empty_response = {
-            'items': [],
-            'totalCount': 0,
-            'offset': offset,
-            'limit': limit,
-            'hasMore': False,
-            'source': 'fallback',
-            'message': f"Could not retrieve data: {str(e)}"
-        }
-        
-        # Fallback to kubectl if database query fails
-        try:
-            app.logger.info(f"Falling back to kubectl for {resource_type}")
-            print(f"[DATABASE] Falling back to kubectl for infinite scroll {resource_type}")
-            # Build kubectl command based on resource type and namespace
-            if namespace and namespace != 'all':
-                command = f"kubectl get {resource_type} -n {namespace} -o json"
-            else:
-                command = f"kubectl get {resource_type} --all-namespaces -o json"
-            
-            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-            data = json.loads(result.stdout)
-            
-            # Get all items
-            all_items = data.get('items', [])
-            
-            # Apply filters if search is provided
-            if search:
-                search = search.lower()
-                filtered_items = []
-                for item in all_items:
-                    name = item.get('metadata', {}).get('name', '').lower()
-                    ns = item.get('metadata', {}).get('namespace', '').lower()
-                    if search in name or search in ns:
-                        filtered_items.append(item)
-                all_items = filtered_items
-            
-            # Get total count
-            total_count = len(all_items)
-            
-            # Apply pagination
-            paginated_items = all_items[offset:offset+limit] if offset < len(all_items) else []
-            
-            # For critical-only loads, strip out non-essential data
-            if critical_only:
-                for item in paginated_items:
-                    # Keep only essential metadata and status
-                    minimal_item = {
-                        'metadata': {
-                            'name': item['metadata'].get('name'),
-                            'namespace': item['metadata'].get('namespace'),
-                            'creationTimestamp': item['metadata'].get('creationTimestamp')
-                        },
-                        'status': {}
-                    }
-                    
-                    # Keep essential status fields based on resource type
-                    if resource_type == 'pods':
-                        minimal_item['status'] = {
-                            'phase': item['status'].get('phase'),
-                            'containerStatuses': [{
-                                'ready': status.get('ready'),
-                                'restartCount': status.get('restartCount'),
-                                'state': status.get('state')
-                            } for status in item['status'].get('containerStatuses', [])]
-                        }
-                    elif resource_type == 'services':
-                        minimal_item['spec'] = {
-                            'type': item['spec'].get('type'),
-                            'clusterIP': item['spec'].get('clusterIP')
-                        }
-                    elif resource_type == 'deployments':
-                        minimal_item['status'] = {
-                            'replicas': item['status'].get('replicas'),
-                            'readyReplicas': item['status'].get('readyReplicas')
-                        }
-                    
-                    item.clear()
-                    item.update(minimal_item)
-            
-            # Return response with metadata for infinite scrolling
-            response = {
-                'items': paginated_items,
-                'totalCount': total_count,
-                'offset': offset,
-                'limit': limit,
-                'hasMore': offset + len(paginated_items) < total_count,
-                'source': 'kubectl'
-            }
-            
-            return jsonify(response)
-        
-        except Exception as fallback_error:
-            app.logger.error(f"Error with kubectl fallback for {resource_type}: {str(fallback_error)}")
-            print(f"[DATABASE] Kubectl fallback also failed for infinite scroll {resource_type}: {str(fallback_error)}")
-            # Return empty data if both database and kubectl fail
-            return jsonify(empty_response)
-
-# API for resources data
-@app.route('/api/resources/<resource_type>')
-def get_resources_api(resource_type):
-    try:
-        namespace = request.args.get('namespace', 'all')
-        search = request.args.get('search', '')
-        page = int(request.args.get('page', 1))
-        page_size = int(request.args.get('page_size', 50))
-        sort_by = request.args.get('sort_by', None)
-        sort_desc = request.args.get('sort_desc', 'false').lower() == 'true'
-        
-        # Check if we should force refresh from Kubernetes
-        refresh = request.args.get('refresh', 'false').lower() == 'true'
-        
-        if refresh:
-            try:
-                fetch_k8s_data(resource_type)
-            except Exception as e:
-                print(f"[DATABASE] Error during refresh: {str(e)}")
-                # Continue anyway
-        
-        # Get data from database
-        db = get_db()
-        result = db.get_resources(resource_type, namespace, search, page, page_size, sort_by, sort_desc)
-        
-        # Add last_updated timestamp
-        result['last_updated'] = db.get_last_updated(resource_type)
-        result['source'] = 'database'
-        
-        return jsonify(result)
-    except Exception as e:
-        # Return empty result instead of error
-        print(f"[DATABASE] Error in get_resources_api: {str(e)}")
-        return jsonify({
-            'items': [],
-            'total': 0,
-            'page': 1,
-            'page_size': 50,
-            'total_pages': 0,
-            'source': 'error',
-            'message': f"Could not retrieve data: {str(e)}"
-        })
-
-# API for dashboard metrics
-@app.route('/api/dashboard/metrics')
-def get_dashboard_metrics():
-    try:
-        # Get data from database
-        db = get_db()
-        
-        # Check if we should force refresh
-        refresh = request.args.get('refresh', 'false').lower() == 'true'
-        
-        if refresh:
-            try:
-                fetch_k8s_data('pods')
-            except Exception as e:
-                print(f"[DATABASE] Error during pods refresh: {str(e)}")
-                # Continue anyway
-        
-        metrics = db.get_dashboard_metrics()
-        return jsonify(metrics)
-    except Exception as e:
-        # Return empty metrics instead of error
-        print(f"[DATABASE] Error in dashboard metrics: {str(e)}")
-        return jsonify({
-            'pods': 0,
-            'deployments': 0,
-            'services': 0,
-            'namespaces': 0,
-            'running_pods': 0,
-            'failed_pods': 0,
-            'source': 'error',
-            'message': f"Could not retrieve metrics: {str(e)}"
-        })
-
-# API endpoint for GPU pods
-@app.route('/api/gpu-pods')
-def get_gpu_pods_api():
-    try:
-        # Get data from database
-        db = get_db()
-        
-        # Check if we should force refresh
-        refresh = request.args.get('refresh', 'false').lower() == 'true'
-        
-        if refresh:
-            try:
-                fetch_k8s_data('pods')
-            except Exception as e:
-                print(f"[DATABASE] Error during pods refresh: {str(e)}")
-                # Continue anyway
-        
-        pods = db.get_gpu_pods()
-        return jsonify({'items': pods, 'source': 'database'})
-    except Exception as e:
-        # Return empty result instead of error
-        print(f"[DATABASE] Error in get_gpu_pods: {str(e)}")
-        return jsonify({
-            'items': [],
-            'source': 'error',
-            'message': f"Could not retrieve GPU pods: {str(e)}"
-        })
-
-# API endpoint for namespace metrics
-@app.route('/api/namespace-metrics')
-def get_namespace_metrics_api():
-    try:
-        metric_type = request.args.get('metric_type', 'gpu')
-        
-        # Get data from database
-        db = get_db()
-        
-        # Check if we should force refresh
-        refresh = request.args.get('refresh', 'false').lower() == 'true'
-        
-        if refresh:
-            try:
-                fetch_k8s_data('pods')
-                fetch_k8s_data('namespaces')
-                db.update_namespace_metrics()
-            except Exception as e:
-                print(f"[DATABASE] Error during metrics refresh: {str(e)}")
-                # Continue anyway
-        
-        metrics = db.get_namespace_metrics(metric_type)
-        return jsonify({'items': metrics, 'source': 'database'})
-    except Exception as e:
-        # Return empty metrics instead of error
-        print(f"[DATABASE] Error in namespace metrics: {str(e)}")
-        return jsonify({
-            'items': [],
-            'source': 'error',
-            'message': f"Could not retrieve namespace metrics: {str(e)}"
-        })
-
-@app.route('/metrics-test')
-def metrics_test():
-    """Test page for GPU pods and namespace metrics"""
-    return render_template('metrics_test.html')
-
 if __name__ == '__main__':
-    # Initialize the database with a background thread
-    init_thread = threading.Thread(target=init_app)
-    init_thread.daemon = True
-    init_thread.start()
-    
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)

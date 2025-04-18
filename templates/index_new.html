@@ -435,13 +435,6 @@ function hideLoading(resourceType) {
 }
 
 function fetchResourceData(resourceType) {
-    // Check if application is refreshing
-    if (window.app && window.app.isRefreshing) {
-        console.log('Application is refreshing, data loading paused');
-        return;
-    }
-    
-    console.log(`[FRONTEND] Fetching data for ${resourceType} from server`);
     showLoading(resourceType);
     fetch('/get_resources', {
         method: 'POST',
@@ -452,53 +445,12 @@ function fetchResourceData(resourceType) {
     })
     .then(response => response.json())
     .then(data => {
-        console.log(`[FRONTEND] Received ${resourceType} data from server`);
-        
-        // Check if data has source information
-        if (data.data && data.data.source) {
-            console.log(`[FRONTEND] Data source: ${data.data.source}`);
-        }
-        
-        // Log data size
-        if (data.data && data.data.items) {
-            console.log(`[FRONTEND] Received ${data.data.items.length} ${resourceType} items`);
-            if (data.data.totalCount) {
-                console.log(`[FRONTEND] Total count: ${data.data.totalCount}`);
-            }
-        }
-        
         const tableBody = document.querySelector(`#${resourceType}Table table tbody`);
         tableBody.innerHTML = ''; // Clear existing rows
 
-        if (data.format === 'error' || data.error) {
-            const errorMessage = data.error || 'An error occurred while fetching data';
-            tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
-                <i class="fas fa-exclamation-triangle"></i> 
-                ${errorMessage}
-                <button class="btn btn-sm btn-outline-primary ms-3" onclick="fetchResourceData('${resourceType}')">
-                    <i class="fas fa-sync"></i> Retry
-                </button>
-            </td></tr>`;
-            console.error(`[FRONTEND] Error fetching ${resourceType}: ${errorMessage}`);
-        } else if (!data.data || !data.data.items || data.data.items.length === 0) {
-            // Handle empty results
-            let message = "No resources found";
-            
-            // If there's a message from the server, show it
-            if (data.data && data.data.message) {
-                message = `${message} - ${data.data.message}`;
-            }
-            
-            tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">
-                <i class="fas fa-info-circle"></i> 
-                ${message}
-                <button class="btn btn-sm btn-outline-primary ms-3" onclick="fetchResourceData('${resourceType}')">
-                    <i class="fas fa-sync"></i> Refresh
-                </button>
-            </td></tr>`;
-            console.log(`[FRONTEND] No ${resourceType} items found`);
+        if (data.format === 'error') {
+            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}</td></tr>`;
         } else {
-            // Normal case - we have data
             data.data.items.forEach(item => {
                 const row = document.createElement('tr');
                 switch (resourceType) {
@@ -520,20 +472,12 @@ function fetchResourceData(resourceType) {
                             <td>${item.spec.type}</td>
                             <td>${item.spec.clusterIP}</td>
                             <td>${item.spec.externalIP || 'N/A'}</td>
-                            <td>${item.spec.ports ? item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ') : 'N/A'}</td>
+                            <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
                             <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
                             <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
                         `;
                         break;
                     // Add cases for other resource types as needed
-                    default:
-                        // Generic handler for unknown resource types
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td colspan="5">No specific handler for ${resourceType}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
                 }
                 tableBody.appendChild(row);
             });
@@ -541,15 +485,7 @@ function fetchResourceData(resourceType) {
         hideLoading(resourceType);
     })
     .catch(error => {
-        console.error(`[FRONTEND] Error fetching ${resourceType}:`, error);
-        const tableBody = document.querySelector(`#${resourceType}Table table tbody`);
-        tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
-            <i class="fas fa-exclamation-triangle"></i> 
-            Network error while fetching ${resourceType}
-            <button class="btn btn-sm btn-outline-primary ms-3" onclick="fetchResourceData('${resourceType}')">
-                <i class="fas fa-sync"></i> Retry
-            </button>
-        </td></tr>`;
+        console.error('Error:', error);
         hideLoading(resourceType);
     });
 }
