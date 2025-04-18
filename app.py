@@ -74,6 +74,8 @@ def get_resources():
     if not resource_type:
         return jsonify(error="Resource type is required")
     
+    print(f"[DB] Processing /get_resources request for {resource_type}")
+    
     # Get database instance
     db = get_db()
     
@@ -86,25 +88,33 @@ def get_resources():
         datetime.fromisoformat(last_updated) < 
         datetime.fromisoformat(current_time) - timedelta(minutes=5)
     ):
+        print(f"[DB] Data for {resource_type} is stale (last updated: {last_updated}) or missing, fetching from Kubernetes")
         app.logger.info(f"Data for {resource_type} is stale or missing, fetching from Kubernetes")
         fetch_success = fetch_k8s_data(resource_type)
         if not fetch_success:
+            print(f"[DB] Failed to fetch {resource_type} from Kubernetes")
             return jsonify(error=f"Failed to fetch {resource_type} from Kubernetes")
+    else:
+        print(f"[DB] Using cached data for {resource_type} - last updated: {last_updated}")
     
     try:
         # If count_only is true, just return the count from the database
         if count_only:
+            print(f"[DB] Getting count for {resource_type} from database")
             count_result = db.get_resources(resource_type, namespace)
             count = count_result['total']
+            print(f"[DB] Found {count} {resource_type} in database")
             return jsonify(data={"totalCount": count})
         
         # Get paginated resources from database
+        print(f"[DB] Getting resources for {resource_type} from database - page {page}, page_size {page_size}")
         result = db.get_resources(
             resource_type=resource_type, 
             namespace=namespace,
             page=page,
             page_size=page_size
         )
+        print(f"[DB] Retrieved {len(result['items'])} {resource_type} items from database (total: {result['total']})")
         
         # Format data to match the expected structure from kubectl
         paginated_data = {
@@ -117,6 +127,7 @@ def get_resources():
         
         # For critical-only loads, strip out non-essential data
         if critical_only and 'items' in paginated_data:
+            print(f"[DB] Applying critical_only filter for {resource_type}")
             for item in paginated_data['items']:
                 # Keep only essential metadata and status
                 minimal_item = {
@@ -165,9 +176,11 @@ def get_resources():
         
         return jsonify(data=paginated_data)
     except Exception as e:
+        print(f"[DB] Error retrieving {resource_type} from database: {str(e)}")
         app.logger.error(f"Error retrieving {resource_type} from database: {str(e)}")
         # Fallback to kubectl if database query fails
         try:
+            print(f"[DB] Falling back to kubectl for {resource_type}")
             app.logger.info(f"Falling back to kubectl for {resource_type}")
             # Build kubectl command based on resource type and namespace
             if namespace and namespace != 'all':
@@ -175,11 +188,13 @@ def get_resources():
             else:
                 command = f"kubectl get {resource_type} --all-namespaces -o json"
                 
+            print(f"[DB] Executing kubectl command: {command}")
             output = run_kubectl_command(command)
             data = json.loads(output)
             
             # Get total count before pagination
             total_count = len(data.get('items', []))
+            print(f"[DB] Retrieved {total_count} {resource_type} items from kubectl")
             
             # Apply pagination to limit memory usage
             start_idx = (page - 1) * page_size
@@ -199,6 +214,7 @@ def get_resources():
             
             return jsonify(data=paginated_data)
         except Exception as fallback_error:
+            print(f"[DB] Error with kubectl fallback for {resource_type}: {str(fallback_error)}")
             return jsonify(error=f"Failed to get {resource_type}: {str(fallback_error)}")
 
 @app.route('/run_action', methods=['POST'])
@@ -1170,23 +1186,33 @@ def fetch_k8s_data(resource_type):
     """
     Fetch data from Kubernetes and store in database
     """
+    print(f"[DB] fetch_k8s_data() - Fetching {resource_type} from Kubernetes")
     db = get_db()
     try:
         # Simulate fetching data from Kubernetes
         # In real implementation, this would call kubernetes API
         cmd = ["kubectl", "get", resource_type, "--all-namespaces", "-o", "json"]
+        print(f"[DB] Executing kubectl command: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         data = json.loads(result.stdout)
         
+        # Count items to be stored
+        item_count = len(data.get('items', []))
+        print(f"[DB] Retrieved {item_count} {resource_type} from Kubernetes")
+        
         # Update database with new data
+        print(f"[DB] Storing {item_count} {resource_type} in database")
         success = db.update_resource(resource_type, data.get('items', []))
         
         # Update namespace metrics if we've updated pods
         if resource_type == 'pods':
+            print(f"[DB] Updating namespace metrics based on new pod data")
             db.update_namespace_metrics()
-            
+        
+        print(f"[DB] Successfully updated {resource_type} in database")
         return success
     except Exception as e:
+        print(f"[DB] Error fetching {resource_type} from Kubernetes: {str(e)}")
         logger.error(f"Error fetching {resource_type}: {e}")
         return False
 
