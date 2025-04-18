@@ -57,6 +57,28 @@ def init_db():
         conn.commit()
         logging.info("Database initialized")
 
+def clear_db():
+    """Clear all data from the database while preserving the structure"""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Begin transaction
+        cursor.execute("BEGIN TRANSACTION")
+        
+        try:
+            # Clear all tables
+            cursor.execute("DELETE FROM resources")
+            cursor.execute("DELETE FROM metadata")
+            cursor.execute("DELETE FROM namespace_metrics")
+            
+            conn.commit()
+            logging.info("Database cleared successfully")
+            return True
+        except Exception as e:
+            conn.rollback()
+            logging.error(f"Error clearing database: {str(e)}")
+            return False
+
 @contextmanager
 def get_connection():
     """Get a database connection with lock to prevent concurrent writes"""

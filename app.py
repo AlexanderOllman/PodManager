@@ -12,7 +12,7 @@ import signal
 import atexit
 import psutil
 import logging
-from database import get_db
+from database import get_db, clear_db
 
 # We'll check for git availability at runtime rather than import time
 git_available = False
@@ -659,26 +659,40 @@ def refresh_application():
         # Emit starting message
         socketio.emit('refresh_log', {'message': 'Starting application refresh process...', 'status': 'info'})
         
-        # Step 1: Prepare for shutdown
+        # Step 1: Clear the database
+        socketio.emit('refresh_log', {'message': 'Clearing database...', 'status': 'info'})
+        socketio.emit('refresh_status', {'step': 'clearing_database', 'progress': 10})
+        
+        if clear_db():
+            socketio.emit('refresh_log', {'message': 'Database cleared successfully', 'status': 'success'})
+        else:
+            socketio.emit('refresh_log', {'message': 'Warning: Failed to clear database', 'status': 'warning'})
+        
+        # Step 2: Prepare for shutdown
         socketio.emit('refresh_log', {'message': 'Preparing to stop application...', 'status': 'info'})
+        socketio.emit('refresh_status', {'step': 'preparing', 'progress': 20})
         time.sleep(1)  # Give time for the message to be sent
         
-        # Step 2: Get repo URL (from environment or request)
+        # Step 3: Get repo URL (from environment or request)
         repo_url = request.json.get('repo_url', github_repo_url)
         socketio.emit('refresh_log', {'message': f'Using repository: {repo_url}', 'status': 'info'})
+        socketio.emit('refresh_status', {'step': 'preparing_repo', 'progress': 30})
         
-        # Step 3: Create a temporary directory
+        # Step 4: Create a temporary directory
         temp_dir = tempfile.mkdtemp()
         socketio.emit('refresh_log', {'message': f'Created temporary directory: {temp_dir}', 'status': 'info'})
         
-        # Step 4: Clone the repository with --hard option
+        # Step 5: Clone the repository with --hard option
         socketio.emit('refresh_log', {'message': 'Cloning repository (hard pull)...', 'status': 'info'})
+        socketio.emit('refresh_status', {'step': 'cloning_repo', 'progress': 40})
         git.Repo.clone_from(repo_url, temp_dir)
         socketio.emit('refresh_log', {'message': 'Repository successfully cloned', 'status': 'info'})
+        socketio.emit('refresh_status', {'step': 'repo_cloned', 'progress': 60})
         
-        # Step 5: Copy new files to the application directory
+        # Step 6: Copy new files to the application directory
         app_dir = os.path.dirname(os.path.abspath(__file__))
         socketio.emit('refresh_log', {'message': f'Copying files to application directory: {app_dir}', 'status': 'info'})
+        socketio.emit('refresh_status', {'step': 'copying_files', 'progress': 70})
         
         # Copy files while preserving the app instance
         for item in os.listdir(temp_dir):
@@ -694,12 +708,14 @@ def refresh_application():
                     shutil.copy2(src, dst)
                     socketio.emit('refresh_log', {'message': f'Copied file: {item}', 'status': 'info'})
         
-        # Step 6: Clean up
+        # Step 7: Clean up
         shutil.rmtree(temp_dir)
         socketio.emit('refresh_log', {'message': 'Cleaned up temporary files', 'status': 'info'})
+        socketio.emit('refresh_status', {'step': 'cleanup_complete', 'progress': 90})
         
-        # Step 7: Prepare for restart
+        # Step 8: Prepare for restart
         socketio.emit('refresh_log', {'message': 'All files updated. Preparing to restart application...', 'status': 'info'})
+        socketio.emit('refresh_status', {'step': 'preparing_restart', 'progress': 100})
         
         # Return success response (the client will then call restart)
         return jsonify({"status": "success", "message": "Application ready for restart"})

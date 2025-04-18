@@ -542,6 +542,12 @@ function fetchResourcesForAllTabs() {
         // Get the active tab
         const activeTabId = document.querySelector('.tab-pane.active')?.id;
         
+        // Check if app is refreshing - if so, don't load data
+        if (window.app.isRefreshing) {
+            console.log('Application is refreshing, data loading paused');
+            return;
+        }
+        
         // Only load data for the active tab immediately
         if (activeTabId && resourceTypes.includes(activeTabId)) {
             console.log(`Loading active tab: ${activeTabId}`);
@@ -559,6 +565,12 @@ function fetchResourcesForAllTabs() {
                 const tabElement = document.querySelector(`#${resourceType}-tab`);
                 if (tabElement) {
                     tabElement.addEventListener('click', () => {
+                        // Check if app is refreshing before loading data
+                        if (window.app.isRefreshing) {
+                            console.log('Application is refreshing, data loading paused');
+                            return;
+                        }
+                        
                         if (!window.app.loadedResources || !window.app.loadedResources[resourceType]) {
                             console.log(`Lazy loading ${resourceType} data...`);
                             fetchResourceData(resourceType, 'all', false);
@@ -1364,6 +1376,12 @@ function refreshApplication() {
     
     statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Refreshing application...';
     
+    // Create global progress bar on home page
+    createGlobalProgressBar();
+    
+    // Setup Socket.IO event listeners for progress updates
+    setupRefreshProgressListeners();
+    
     fetch('/refresh_application', {
         method: 'POST',
         headers: {
@@ -1392,6 +1410,7 @@ function refreshApplication() {
         } else if (data && data.error) {
             logMessage(refreshLog, `Error: ${data.error}`, 'error');
             statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+            removeGlobalProgressBar();
         }
     })
     .catch(error => {
@@ -1399,8 +1418,82 @@ function refreshApplication() {
             console.error('Error:', error);
             logMessage(refreshLog, `Error: ${error.message}`, 'error');
             statusDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            removeGlobalProgressBar();
         }
     });
+}
+
+// Create a global progress bar to block the home page during application refresh
+function createGlobalProgressBar() {
+    // Remove any existing progress bar
+    removeGlobalProgressBar();
+    
+    // Block all resource tabs and prevent data loading
+    window.app.isRefreshing = true;
+    
+    // Create the global overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'globalRefreshOverlay';
+    overlay.className = 'position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center';
+    overlay.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+    overlay.style.zIndex = '9999';
+    
+    // Create the progress container
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'text-center p-4 bg-white rounded shadow-sm';
+    progressContainer.style.maxWidth = '600px';
+    progressContainer.style.width = '80%';
+    
+    // Create the header
+    const header = document.createElement('h4');
+    header.className = 'mb-3';
+    header.innerHTML = '<i class="fas fa-sync-alt fa-spin me-2"></i> Refreshing Application';
+    
+    // Create the progress bar
+    const progressBarContainer = document.createElement('div');
+    progressBarContainer.className = 'progress mb-3';
+    progressBarContainer.style.height = '20px';
+    
+    const progressBar = document.createElement('div');
+    progressBar.id = 'globalRefreshProgressBar';
+    progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+    progressBar.style.width = '10%';
+    progressBar.setAttribute('role', 'progressbar');
+    progressBar.setAttribute('aria-valuenow', '10');
+    progressBar.setAttribute('aria-valuemin', '0');
+    progressBar.setAttribute('aria-valuemax', '100');
+    
+    // Create the status text
+    const statusText = document.createElement('div');
+    statusText.id = 'globalRefreshStatusText';
+    statusText.className = 'text-muted mb-3';
+    statusText.textContent = 'Clearing database...';
+    
+    // Create the detail text
+    const detailText = document.createElement('div');
+    detailText.id = 'globalRefreshDetailText';
+    detailText.className = 'small text-muted';
+    detailText.textContent = 'This process will restart the application. Please wait...';
+    
+    // Assemble the components
+    progressBarContainer.appendChild(progressBar);
+    progressContainer.appendChild(header);
+    progressContainer.appendChild(progressBarContainer);
+    progressContainer.appendChild(statusText);
+    progressContainer.appendChild(detailText);
+    overlay.appendChild(progressContainer);
+    
+    // Add to the document body
+    document.body.appendChild(overlay);
+}
+
+// Remove the global progress bar
+function removeGlobalProgressBar() {
+    const overlay = document.getElementById('globalRefreshOverlay');
+    if (overlay) {
+        overlay.remove();
+    }
+    window.app.isRefreshing = false;
 }
 
 // Helper to add log messages to the refresh log
@@ -1428,7 +1521,56 @@ function logMessage(refreshLog, message, status) {
     refreshLog.scrollTop = refreshLog.scrollHeight;
 }
 
-// Function to poll and wait for application to restart
+// Setup Socket.IO listeners for refresh progress
+function setupRefreshProgressListeners() {
+    if (typeof io !== 'undefined') {
+        const socket = io();
+        
+        socket.on('refresh_status', function(data) {
+            updateGlobalProgressBar(data.progress, getStepMessage(data.step));
+        });
+        
+        socket.on('refresh_log', function(data) {
+            const detailText = document.getElementById('globalRefreshDetailText');
+            if (detailText) {
+                detailText.textContent = data.message;
+            }
+        });
+    }
+}
+
+// Update the global progress bar
+function updateGlobalProgressBar(progress, message) {
+    const progressBar = document.getElementById('globalRefreshProgressBar');
+    const statusText = document.getElementById('globalRefreshStatusText');
+    
+    if (progressBar) {
+        progressBar.style.width = `${progress}%`;
+        progressBar.setAttribute('aria-valuenow', progress);
+    }
+    
+    if (statusText && message) {
+        statusText.textContent = message;
+    }
+}
+
+// Get message for the current refresh step
+function getStepMessage(step) {
+    const messages = {
+        'clearing_database': 'Clearing database...',
+        'preparing': 'Preparing for update...',
+        'preparing_repo': 'Preparing repository...',
+        'cloning_repo': 'Downloading latest version...',
+        'repo_cloned': 'Downloaded latest version',
+        'copying_files': 'Updating application files...',
+        'cleanup_complete': 'Finalizing update...',
+        'preparing_restart': 'Preparing to restart...'
+    };
+    
+    return messages[step] || 'Updating application...';
+}
+
+// Modified waitForApplicationRestart to handle global progress bar
 function waitForApplicationRestart(statusDiv, refreshLog = null) {
     const MAX_ATTEMPTS = 30; // Try for up to 30 seconds
     let attempts = 0;
@@ -1452,6 +1594,9 @@ function waitForApplicationRestart(statusDiv, refreshLog = null) {
     if (refreshLog) {
         logMessage(refreshLog, "Application is restarting. Waiting for it to come back online...", "info");
     }
+    
+    // Update global progress bar
+    updateGlobalProgressBar(95, 'Restarting application...');
     
     // Set up polling
     const checkServer = function() {
@@ -1485,6 +1630,9 @@ function waitForApplicationRestart(statusDiv, refreshLog = null) {
                 if (refreshLog) {
                     logMessage(refreshLog, "Application is back online! Refreshing page in 3 seconds...", "success");
                 }
+                
+                // Update global progress bar
+                updateGlobalProgressBar(100, 'Restart complete!');
                 
                 // Refresh the page after a short delay to let the user see the success message
                 setTimeout(() => {
@@ -1525,6 +1673,9 @@ function waitForApplicationRestart(statusDiv, refreshLog = null) {
         if (refreshLog) {
             logMessage(refreshLog, "Application is taking longer than expected to restart. You may need to refresh manually.", "warning");
         }
+        
+        // Update global progress bar
+        updateGlobalProgressBar(95, 'Restart taking longer than expected...');
     };
     
     // Start polling after a short delay to allow the server to begin restarting
@@ -3067,6 +3218,9 @@ function initializeResourcesPage() {
     if (!window.app.CACHE_TIMEOUT) {
         window.app.CACHE_TIMEOUT = 60000; // 1 minute cache
     }
+    
+    // Initialize the refresh flag
+    window.app.isRefreshing = false;
     
     // Set up search handler
     const searchInput = document.getElementById('resourceSearchInput');

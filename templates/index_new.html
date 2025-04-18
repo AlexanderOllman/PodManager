@@ -435,6 +435,12 @@ function hideLoading(resourceType) {
 }
 
 function fetchResourceData(resourceType) {
+    // Check if application is refreshing
+    if (window.app && window.app.isRefreshing) {
+        console.log('Application is refreshing, data loading paused');
+        return;
+    }
+    
     showLoading(resourceType);
     fetch('/get_resources', {
         method: 'POST',
