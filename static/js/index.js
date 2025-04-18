@@ -5,6 +5,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Since scripts are loaded in head, we can initialize right away
     initializeApp();
     
+    // Initialize GPU pods and namespace metrics sections if they exist
+    if (document.getElementById('gpu-pods-container')) {
+        fetchGpuPods();
+    }
+    
+    if (document.getElementById('namespace-metrics-container')) {
+        fetchNamespaceMetrics('gpu');
+    }
+    
     // Add page visibility change detection for better navigation handling
     document.addEventListener('visibilitychange', function() {
         if (document.visibilityState === 'visible') {
@@ -611,22 +620,21 @@ function addResourceControls(resourceType) {
         </select>
     `;
     
-    // Create refresh button
-    const refreshButton = document.createElement('button');
-    refreshButton.className = 'btn btn-primary';
-    refreshButton.innerHTML = `<i class="fas fa-sync-alt"></i> Refresh ${capitalizeFirstLetter(resourceType)}`;
-    refreshButton.onclick = function() { 
-        // Force refresh by clearing the cached data
-        if (window.loadedResources) {
-            delete window.loadedResources[resourceType];
-        }
-        fetchResourceData(resourceType); 
-    };
+    // Create refresh info and button container
+    const refreshContainer = document.createElement('div');
+    refreshContainer.className = 'd-flex align-items-center';
+    refreshContainer.innerHTML = `
+        <span id="${resourceType}Count" class="me-3 text-muted small"></span>
+        <span id="${resourceType}LastRefreshTime" class="me-3 text-muted small">Last refreshed: Never</span>
+        <button class="btn btn-primary" onclick="refreshResourceType('${resourceType}')">
+            <i class="fas fa-sync-alt"></i> Refresh ${capitalizeFirstLetter(resourceType)}
+        </button>
+    `;
     
     // Add components to the container
     controlsContainer.appendChild(searchContainer);
     controlsContainer.appendChild(namespaceContainer);
-    controlsContainer.appendChild(refreshButton);
+    controlsContainer.appendChild(refreshContainer);
     
     // Insert controls before the table
     tableContainer.parentNode.insertBefore(controlsContainer, tableContainer);
@@ -638,12 +646,9 @@ function addResourceControls(resourceType) {
     const searchInput = document.getElementById(`${resourceType}Search`);
     if (searchInput) {
         searchInput.addEventListener('input', function() {
-            filterResources(resourceType, this.value);
+            filterResources(resourceType);
         });
     }
-    
-    // Load namespaces for the selector
-    loadNamespacesForSelector(resourceType);
 }
 
 // Capitalize first letter helper (for button labels)
@@ -662,62 +667,151 @@ function clearSearch(resourceType) {
 
 // Filter resources based on search term
 function filterResources(resourceType) {
-    // Find the search input - check different possible IDs
-    let searchInput = document.getElementById(`${resourceType}SearchInput`);
+    const searchInput = document.getElementById(`${resourceType}Search`) || document.getElementById('resourceSearchInput');
+    if (!searchInput) return;
     
-    // If not found with the first ID pattern, try alternative (the search box in the screenshot)
-    if (!searchInput) {
-        searchInput = document.querySelector(`input[placeholder^="Filter ${resourceType}"]`);
+    const searchTerm = searchInput.value.trim().toLowerCase();
+    console.log(`Filtering ${resourceType} with search term: ${searchTerm}`);
+    
+    // If search term is empty, just refresh the data
+    if (!searchTerm) {
+        // Get current namespace filter
+        const namespaceSelector = document.getElementById(`${resourceType}Namespace`) || document.getElementById('resourceNamespaceSelector');
+        const namespace = namespaceSelector ? namespaceSelector.value : 'all';
+        
+        // Refetch data without search filter
+        fetchResourceData(resourceType, namespace, false, 0, true);
+        return;
     }
     
-    // If still not found, try a more generic selector
-    if (!searchInput) {
-        searchInput = document.querySelector(`#${resourceType} input[type="search"], #${resourceType} input[type="text"]`);
+    // Get the resource data
+    const resourceState = window.app.state.resources[resourceType];
+    if (!resourceState || !resourceState.items) {
+        console.error(`No data available for ${resourceType}`);
+        return;
     }
     
-    // Default to empty string if we can't find the search input
-    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+    // Add a filter indicator
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    if (tableContainer) {
+        // Remove any existing indicator
+        const existingIndicator = tableContainer.querySelector('.filter-indicator');
+        if (existingIndicator) {
+            existingIndicator.remove();
+        }
+        
+        // Add new indicator
+        const indicator = document.createElement('div');
+        indicator.className = 'filter-indicator alert alert-info mb-2';
+        indicator.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+                <span>
+                    <i class="fas fa-filter me-2"></i>
+                    Filtering ${resourceType} by: "${searchTerm}"
+                </span>
+                <button class="btn btn-sm btn-outline-info" onclick="clearResourceSearch('${resourceType}')">
+                    <i class="fas fa-times me-1"></i>Clear
+                </button>
+            </div>
+        `;
+        tableContainer.prepend(indicator);
+    }
     
-    // Get the full dataset - safely access the cache
-    const fullDataset = window.app.cache.resources?.[resourceType]?.data?.items || 
-                       window.app.state.resources?.[resourceType]?.items || [];
+    // Send search request to the API
+    const namespaceSelector = document.getElementById(`${resourceType}Namespace`) || document.getElementById('resourceNamespaceSelector');
+    const namespace = namespaceSelector ? namespaceSelector.value : 'all';
     
-    // Filter based on search term
-    const filteredItems = searchTerm 
-        ? fullDataset.filter(item => {
-            // Search in name and namespace
-            return item.metadata.name.toLowerCase().includes(searchTerm) || 
-                   item.metadata.namespace.toLowerCase().includes(searchTerm);
-        })
-        : fullDataset;
+    // Create form data for the request
+    const formData = new FormData();
+    formData.append('resource_type', resourceType);
+    formData.append('namespace', namespace);
+    formData.append('search', searchTerm);
+    formData.append('offset', 0);
+    formData.append('limit', 100); // Get more items when filtering
     
-    // Update state with filtered items and reset to first page
-    window.app.state.resources[resourceType] = {
-        items: filteredItems,
-        currentPage: 1,
-        pageSize: 10
-    };
+    // Show loading indicator
+    showLoading(resourceType);
     
-    // Render the first page
-    renderCurrentPage(resourceType);
-    
-    // Add no results message if needed
-    if (filteredItems.length === 0 && searchTerm) {
-        const tableBody = document.querySelector(`#${resourceType}Table tbody`);
-        if (tableBody) {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center py-4">
-                        <i class="fas fa-search me-2 text-muted"></i>
-                        No resources found matching "<span class="fw-bold">${searchTerm}</span>".
-                        <button class="btn btn-sm btn-outline-secondary ms-3" onclick="clearSearch('${resourceType}')">
-                            <i class="fas fa-times me-1"></i> Clear Search
-                        </button>
-                    </td>
-                </tr>
+    // Make the fetch request
+    fetch('/api/resources/' + resourceType, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Process the filtered data
+        if (window.app.state.resources[resourceType]) {
+            window.app.state.resources[resourceType].items = data.items;
+            window.app.state.resources[resourceType].totalCount = data.totalCount;
+            window.app.state.resources[resourceType].currentOffset = data.items.length;
+            window.app.state.resources[resourceType].hasMoreItems = data.hasMore;
+        }
+        
+        // Render the filtered data
+        renderCurrentPage(resourceType);
+        
+        // Hide loading indicator
+        hideLoading(resourceType);
+        
+        // Update count in the filter indicator
+        const indicator = tableContainer?.querySelector('.filter-indicator');
+        if (indicator) {
+            const countSpan = indicator.querySelector('span');
+            if (countSpan) {
+                countSpan.innerHTML = `
+                    <i class="fas fa-filter me-2"></i>
+                    Found ${data.items.length} of ${data.totalCount} ${resourceType} matching: "${searchTerm}"
+                `;
+            }
+        }
+    })
+    .catch(error => {
+        console.error(`Error filtering ${resourceType}:`, error);
+        hideLoading(resourceType);
+        
+        // Show error message
+        const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+        if (tableContainer) {
+            tableContainer.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    Error filtering ${resourceType}: ${error.message}
+                </div>
             `;
         }
+    });
+}
+
+// Clear search and reset resources
+function clearResourceSearch(resourceType) {
+    resourceType = resourceType || window.app.currentResourceType;
+    
+    // Clear search input
+    const searchInput = document.getElementById(`${resourceType}Search`) || document.getElementById('resourceSearchInput');
+    if (searchInput) {
+        searchInput.value = '';
     }
+    
+    // Remove filter indicator
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    if (tableContainer) {
+        const existingIndicator = tableContainer.querySelector('.filter-indicator');
+        if (existingIndicator) {
+            existingIndicator.remove();
+        }
+    }
+    
+    // Get current namespace filter
+    const namespaceSelector = document.getElementById(`${resourceType}Namespace`) || document.getElementById('resourceNamespaceSelector');
+    const namespace = namespaceSelector ? namespaceSelector.value : 'all';
+    
+    // Refetch data without search filter
+    fetchResourceData(resourceType, namespace, false, 0, true);
 }
 
 // Helper function to render current page
@@ -771,446 +865,16 @@ function renderCurrentPage(resourceType) {
     if (items.length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="7" class="text-center text-muted py-4">
-                    <i class="fas fa-info-circle me-2"></i> No ${resourceType} found
+                <td colspan="7" class="text-center py-4">
+                    <i class="fas fa-search me-2 text-muted"></i>
+                    No resources found matching "<span class="fw-bold">${searchTerm}</span>".
+                    <button class="btn btn-sm btn-outline-secondary ms-3" onclick="clearSearch('${resourceType}')">
+                        <i class="fas fa-times me-1"></i> Clear Search
+                    </button>
                 </td>
             </tr>
         `;
-        return;
     }
-    
-    // Add count message
-    const countInfo = document.createElement('div');
-    countInfo.className = 'text-muted small mb-2 count-info';
-    countInfo.innerHTML = `Showing ${items.length} of ${totalCount} ${resourceType}`;
-    tableContainer.insertBefore(countInfo, tableContainer.firstChild);
-    
-    // Render items based on resource type
-    items.forEach(item => {
-        const row = document.createElement('tr');
-        
-        switch (resourceType) {
-            case 'pods':
-                const podResources = getResourceUsage(item);
-                row.innerHTML = `
-                    <td>${item.metadata.namespace}</td>
-                    <td>${item.metadata.name}</td>
-                    <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${podResources.cpu || '0'}</td>
-                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${podResources.gpu || '0'}</td>
-                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${podResources.memory || '0Mi'}</td>
-                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                `;
-                break;
-                
-            case 'services':
-                // Get service type and ports
-                const serviceType = item.spec?.type || 'ClusterIP';
-                const clusterIP = item.spec?.clusterIP || '-';
-                const externalIP = item.status?.loadBalancer?.ingress?.[0]?.ip || '-';
-                
-                // Format ports as a string
-                let ports = '';
-                if (item.spec?.ports && item.spec.ports.length > 0) {
-                    ports = item.spec.ports.map(port => {
-                        return `${port.port}${port.targetPort ? ':'+port.targetPort : ''}/${port.protocol || 'TCP'}`;
-                    }).join(', ');
-                } else {
-                    ports = '-';
-                }
-                
-                // Calculate age
-                const creationTime = new Date(item.metadata.creationTimestamp);
-                const now = new Date();
-                const ageInDays = Math.floor((now - creationTime) / (1000 * 60 * 60 * 24));
-                const age = ageInDays > 0 ? `${ageInDays}d` : `${Math.floor((now - creationTime) / (1000 * 60 * 60))}h`;
-                
-                row.innerHTML = `
-                    <td>${item.metadata.namespace}</td>
-                    <td>${item.metadata.name}</td>
-                    <td>${serviceType}</td>
-                    <td>${clusterIP}</td>
-                    <td>${externalIP}</td>
-                    <td>${ports}</td>
-                    <td>${age}</td>
-                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                `;
-                break;
-                
-            case 'inferenceservices':
-                // Handle InferenceService rendering
-                const isvcStatus = item.status?.conditions?.[0]?.status === 'True' ? 'Ready' : 'Not Ready';
-                const isvcStatusIcon = isvcStatus === 'Ready' ? 
-                    '<i class="fas fa-check-circle text-success me-1"></i>' : 
-                    '<i class="fas fa-times-circle text-danger me-1"></i>';
-                
-                // Try to extract URL
-                let url = '-';
-                if (item.status?.url) {
-                    url = `<a href="${item.status.url}" target="_blank">${item.status.url}</a>`;
-                }
-                
-                row.innerHTML = `
-                    <td>${item.metadata.namespace}</td>
-                    <td>${item.metadata.name}</td>
-                    <td>${url}</td>
-                    <td>${isvcStatusIcon}${isvcStatus}</td>
-                    <td>${getResourceUsage(item).cpu || '-'}</td>
-                    <td>${getResourceUsage(item).gpu || '-'}</td>
-                    <td>${getResourceUsage(item).memory || '-'}</td>
-                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                `;
-                break;
-                
-            case 'deployments':
-                // Handle Deployment rendering
-                const readyReplicas = item.status?.readyReplicas || 0;
-                const totalReplicas = item.status?.replicas || 0;
-                const deploymentStatus = readyReplicas === totalReplicas ? 'Available' : 'Progressing';
-                const deploymentStatusIcon = deploymentStatus === 'Available' ? 
-                    '<i class="fas fa-check-circle text-success me-1"></i>' : 
-                    '<i class="fas fa-sync text-warning me-1"></i>';
-                
-                row.innerHTML = `
-                    <td>${item.metadata.namespace}</td>
-                    <td>${item.metadata.name}</td>
-                    <td>${readyReplicas}/${totalReplicas}</td>
-                    <td>${deploymentStatusIcon}${deploymentStatus}</td>
-                    <td>${getResourceUsage(item).cpu || '-'}</td>
-                    <td>${getResourceUsage(item).memory || '-'}</td>
-                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                `;
-                break;
-                
-            case 'configmaps':
-                // Handle ConfigMap rendering
-                const dataCount = Object.keys(item.data || {}).length;
-                
-                row.innerHTML = `
-                    <td>${item.metadata.namespace}</td>
-                    <td>${item.metadata.name}</td>
-                    <td>${dataCount} items</td>
-                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                `;
-                break;
-                
-            case 'secrets':
-                // Handle Secret rendering
-                const secretType = item.type || 'Opaque';
-                const secretDataCount = Object.keys(item.data || {}).length;
-                
-                row.innerHTML = `
-                    <td>${item.metadata.namespace}</td>
-                    <td>${item.metadata.name}</td>
-                    <td>${secretType}</td>
-                    <td>${secretDataCount} items</td>
-                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                `;
-                break;
-                
-            default:
-                // Generic handling for other resource types
-                row.innerHTML = `
-                    <td>${item.metadata.namespace || '-'}</td>
-                    <td>${item.metadata.name}</td>
-                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                `;
-        }
-        
-        tableBody.appendChild(row);
-    });
-    
-    // Check if we need to show the "Load More" button
-    if (items.length < totalCount) {
-        const loadMoreContainer = document.createElement('div');
-        loadMoreContainer.className = 'load-more-container text-center mt-3 mb-2';
-        loadMoreContainer.innerHTML = `
-            <button class="btn btn-outline-primary load-more-btn">
-                <i class="fas fa-chevron-down me-1"></i> 
-                Load More (showing ${items.length} of ${totalCount})
-            </button>
-        `;
-        tableContainer.appendChild(loadMoreContainer);
-        
-        // Add event listener to load more button
-        const loadMoreBtn = loadMoreContainer.querySelector('.load-more-btn');
-        loadMoreBtn.addEventListener('click', () => {
-            const nextPage = Math.ceil(items.length / pageSize) + 1;
-            // Show loading spinner on load more button
-            loadMoreBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Loading...';
-            loadMoreBtn.disabled = true;
-            
-            // Fetch next page
-            fetchResourceData(
-                resourceType, 
-                document.getElementById('resourceNamespaceSelector')?.value || 'all', 
-                false, 
-                nextPage
-            ).finally(() => {
-                // Re-enable button if more data can be loaded
-                const updatedResourceData = window.app.state.resources[resourceType];
-                if (updatedResourceData && updatedResourceData.items.length < updatedResourceData.totalCount) {
-                    loadMoreBtn.disabled = false;
-                    loadMoreBtn.innerHTML = `<i class="fas fa-chevron-down me-1"></i> Load More (showing ${updatedResourceData.items.length} of ${updatedResourceData.totalCount})`;
-                }
-            });
-        });
-    }
-    
-    // Make table visible with transition
-    setTimeout(() => {
-        if (tableContainer) {
-            tableContainer.style.opacity = '1';
-        }
-    }, 100);
-    
-    // Initialize all dropdowns
-    setTimeout(() => {
-        const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
-        dropdownElementList.map(function(dropdownToggleEl) {
-            return new bootstrap.Dropdown(dropdownToggleEl);
-        });
-    }, 100);
-}
-
-// Resource data fetching (for individual tab clicks or refresh button)
-function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false, page = 1, resetData = false) {
-    console.log(`Fetching ${resourceType} data for namespace ${namespace}${criticalOnly ? ' (critical only)' : ''}, page ${page}`);
-    
-    // Show loading indicators
-    if (page === 1) {
-        showLoading(resourceType);
-    }
-    
-    // Check if we need resource count first
-    if (page === 1 && resetData) {
-        // First just get the count to show progress
-        return fetchResourceCount(resourceType, namespace)
-            .then(count => {
-                // Update UI to show count information
-                const loadingText = document.getElementById(`${resourceType}LoadingText`);
-                if (loadingText) {
-                    loadingText.textContent = `Loading ${count} ${resourceType}...`;
-                }
-                
-                // Now fetch the first page
-                return fetchResourcePage(resourceType, namespace, criticalOnly, page);
-            })
-            .catch(error => {
-                console.error(`Error fetching ${resourceType} count:`, error);
-                // Continue with page fetch anyway
-                return fetchResourcePage(resourceType, namespace, criticalOnly, page);
-            });
-    } else {
-        // Just fetch the requested page
-        return fetchResourcePage(resourceType, namespace, criticalOnly, page);
-    }
-}
-
-// Function to fetch just the resource count
-function fetchResourceCount(resourceType, namespace = 'all') {
-    console.log(`Fetching count for ${resourceType} in namespace ${namespace}`);
-    
-    return new Promise((resolve, reject) => {
-        const formData = new FormData();
-        formData.append('resource_type', resourceType);
-        formData.append('namespace', namespace);
-        formData.append('count_only', 'true');
-        
-        // Use helper function to ensure URL is relative
-        const url = window.app.getRelativeUrl('/get_resources');
-        
-        fetch(url, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Network response was not ok: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            const count = data.data?.totalCount || 0;
-            console.log(`${resourceType} count: ${count}`);
-            
-            // Initialize the resource state if it doesn't exist
-            if (!window.app.state.resources[resourceType]) {
-                window.app.state.resources[resourceType] = {
-                    items: [],
-                    totalCount: count,
-                    currentPage: 1,
-                    pageSize: 50,
-                    loadedPages: []
-                };
-            } else {
-                window.app.state.resources[resourceType].totalCount = count;
-            }
-            
-            resolve(count);
-        })
-        .catch(error => {
-            console.error(`Error fetching ${resourceType} count:`, error);
-            reject(error);
-        });
-    });
-}
-
-// Function to fetch a specific page of resources
-function fetchResourcePage(resourceType, namespace = 'all', criticalOnly = false, page = 1) {
-    const pageSize = 50; // Match the server-side page size
-    const cacheKey = `${resourceType}-${namespace}-${criticalOnly ? 'critical' : 'full'}-${page}`;
-    
-    // Check if we have this page cached recently
-    const lastFetch = window.app.state.lastFetch[cacheKey];
-    if (lastFetch && (Date.now() - lastFetch) < window.app.CACHE_TIMEOUT) {
-        console.log(`Using cached data for ${resourceType} (${namespace}), page ${page}`);
-        
-        // Use the cached data
-        const cachedData = window.app.state.resources[cacheKey];
-        if (cachedData) {
-            processResourcePageData(resourceType, cachedData, page);
-            if (page === 1) {
-                hideLoading(resourceType);
-            }
-            return Promise.resolve(cachedData);
-        }
-    }
-    
-    // No cached data or cache expired, fetch from server
-    const startTime = performance.now();
-    
-    return new Promise((resolve, reject) => {
-        const formData = new FormData();
-        formData.append('resource_type', resourceType);
-        formData.append('namespace', namespace);
-        formData.append('critical_only', criticalOnly.toString());
-        formData.append('page', page.toString());
-        formData.append('page_size', pageSize.toString());
-        
-        // Use helper function to ensure URL is relative
-        const url = window.app.getRelativeUrl('/get_resources');
-        
-        fetch(url, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Network response was not ok: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log(`Fetched ${resourceType} data for page ${page} in ${Math.round(performance.now() - startTime)}ms`);
-            
-            // Update the last fetch time and cache the data
-            window.app.state.lastFetch[cacheKey] = Date.now();
-            window.app.state.resources[cacheKey] = data;
-            
-            // Process the data
-            processResourcePageData(resourceType, data, page);
-            
-            // Hide loading indicators if it's the first page
-            if (page === 1) {
-                hideLoading(resourceType);
-            }
-            
-            resolve(data);
-        })
-        .catch(error => {
-            console.error(`Error fetching ${resourceType} page ${page}:`, error);
-            
-            // Show error message
-            if (page === 1) {
-                hideLoading(resourceType);
-                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-                if (tableContainer) {
-                    tableContainer.innerHTML = `
-                        <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            Error loading ${resourceType}: ${error.message}
-                            <button class="btn btn-sm btn-outline-danger ms-3" onclick="fetchResourceData('${resourceType}', '${namespace}', ${criticalOnly}, 1, true)">
-                                <i class="fas fa-sync-alt me-1"></i> Retry
-                            </button>
-                        </div>
-                    `;
-                }
-            }
-            
-            reject(error);
-        });
-    });
-}
-
-// Helper function to process page data
-function processResourcePageData(resourceType, data, page) {
-    const processingStartTime = performance.now();
-    
-    // Initialize resource state if it doesn't exist
-    if (!window.app.state.resources[resourceType]) {
-        window.app.state.resources[resourceType] = {
-            items: [],
-            totalCount: data.data.totalCount || 0,
-            currentPage: page,
-            pageSize: data.data.pageSize || 50,
-            loadedPages: []
-        };
-    }
-    
-    // Update resource state with new data
-    const state = window.app.state.resources[resourceType];
-    
-    // If it's the first page or we're resetting, clear the existing items
-    if (page === 1 && !state.loadedPages.includes(page)) {
-        state.items = [];
-        state.loadedPages = [];
-    }
-    
-    // Add new items from this page if we haven't loaded it before
-    if (!state.loadedPages.includes(page)) {
-        const newItems = data.data.items || [];
-        state.items = [...state.items, ...newItems];
-        state.loadedPages.push(page);
-        state.loadedPages.sort((a, b) => a - b);
-    }
-    
-    // Update metadata
-    state.totalCount = data.data.totalCount || state.items.length;
-    state.totalPages = data.data.totalPages || Math.ceil(state.totalCount / state.pageSize);
-    
-    // If we're loading the first page, update dashboard metrics for pods
-    if (page === 1 && resourceType === 'pods') {
-        console.log('Updating dashboard metrics with data from –', data.data.items.length, '– "pods"');
-        updateDashboardMetrics(data.data.items);
-    }
-    
-    // Add sort functionality to the table
-    setTimeout(() => {
-        addSortingToResourceTable(resourceType);
-    }, 100);
-
-    // Render the current page
-    renderCurrentPage(resourceType);
-
-    // Update loading state
-    if (page === 1) {
-        const loadingContainer = document.getElementById(`${resourceType}Loading`);
-        if (loadingContainer) {
-            loadingContainer.style.display = 'none';
-        }
-        const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-        if (tableContainer) {
-            tableContainer.style.opacity = '1';
-        }
-    }
-
-    // Log performance info
-    const endTime = performance.now();
-    const processTime = endTime - processingStartTime;
-    console.log(`${resourceType} page ${page} processed in ${processTime.toFixed(0)}ms`);
-
-    return data;
 }
 
 // Load all service types (non-pods) at once
@@ -4806,4 +4470,939 @@ function renderCurrentPage(resourceType) {
             return new bootstrap.Dropdown(dropdownToggleEl);
         });
     }, 100);
+}
+
+// Test function for GPU Pods data
+function getTestGpuPodsData() {
+    return {
+        items: [
+            {
+                namespace: 'default',
+                name: 'ml-model-training-1',
+                node: 'worker-node-1',
+                status: 'Running',
+                gpu: '2',
+                created: '2023-05-15T10:30:45Z'
+            },
+            {
+                namespace: 'ml-workloads',
+                name: 'deep-learning-inference',
+                node: 'worker-node-2',
+                status: 'Running',
+                gpu: '4',
+                created: '2023-05-20T08:15:22Z'
+            },
+            {
+                namespace: 'research',
+                name: 'image-processing',
+                node: 'worker-node-1',
+                status: 'Pending',
+                gpu: '1',
+                created: '2023-05-25T14:45:10Z'
+            }
+        ]
+    };
+}
+
+// Test function for Namespace Metrics data
+function getTestNamespaceMetricsData(metricType) {
+    const metrics = {
+        gpu: [
+            {
+                namespace: 'ml-workloads',
+                used: 6,
+                total: 8,
+                percentage: 75,
+                updated_at: '2023-05-25T15:30:00Z'
+            },
+            {
+                namespace: 'research',
+                used: 3,
+                total: 4,
+                percentage: 75,
+                updated_at: '2023-05-25T15:30:00Z'
+            },
+            {
+                namespace: 'default',
+                used: 2,
+                total: 8,
+                percentage: 25,
+                updated_at: '2023-05-25T15:30:00Z'
+            }
+        ],
+        cpu: [
+            {
+                namespace: 'default',
+                used: 8,
+                total: 16,
+                percentage: 50,
+                updated_at: '2023-05-25T15:30:00Z'
+            },
+            {
+                namespace: 'web-services',
+                used: 6,
+                total: 8,
+                percentage: 75,
+                updated_at: '2023-05-25T15:30:00Z'
+            },
+            {
+                namespace: 'monitoring',
+                used: 4,
+                total: 8,
+                percentage: 50,
+                updated_at: '2023-05-25T15:30:00Z'
+            }
+        ],
+        memory: [
+            {
+                namespace: 'database',
+                used: 16,
+                total: 32,
+                percentage: 50,
+                updated_at: '2023-05-25T15:30:00Z'
+            },
+            {
+                namespace: 'ml-workloads',
+                used: 24,
+                total: 32,
+                percentage: 75,
+                updated_at: '2023-05-25T15:30:00Z'
+            },
+            {
+                namespace: 'default',
+                used: 8,
+                total: 32,
+                percentage: 25,
+                updated_at: '2023-05-25T15:30:00Z'
+            }
+        ]
+    };
+    
+    return { items: metrics[metricType] || [] };
+}
+
+// Function to test the GPU pods rendering
+function testRenderGpuPods() {
+    const data = getTestGpuPodsData();
+    renderGpuPods(data);
+}
+
+// Function to test the namespace metrics rendering
+function testRenderNamespaceMetrics(metricType) {
+    const data = getTestNamespaceMetricsData(metricType || 'gpu');
+    renderNamespaceMetrics(data, metricType || 'gpu');
+}
+
+// Function to fetch GPU pods
+function fetchGpuPods() {
+    showLoading('gpu-pods-loading');
+    
+    $.ajax({
+        url: '/api/gpu-pods',
+        type: 'GET',
+        success: function(data) {
+            renderGpuPods(data);
+        },
+        error: function(xhr, status, error) {
+            console.error('Error fetching GPU pods:', error);
+            $('#gpu-pods-container').html(`
+                <div class="alert alert-danger">
+                    Error fetching GPU pods: ${error}
+                </div>
+            `);
+        },
+        complete: function() {
+            hideLoading('gpu-pods-loading');
+        }
+    });
+}
+
+// Function to render GPU pods
+function renderGpuPods(data) {
+    const container = $('#gpu-pods-container');
+    
+    if (!data || !data.items || data.items.length === 0) {
+        container.html(`
+            <div class="alert alert-info">
+                No GPU pods found.
+            </div>
+        `);
+        return;
+    }
+    
+    // Sort pods by GPU count descending
+    const pods = data.items.sort((a, b) => parseInt(b.gpu) - parseInt(a.gpu));
+    
+    const tableHtml = `
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Namespace</th>
+                    <th>Name</th>
+                    <th>Node</th>
+                    <th>Status</th>
+                    <th>GPU(s)</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${pods.map(pod => `
+                    <tr>
+                        <td>${escapeHtml(pod.namespace)}</td>
+                        <td>${escapeHtml(pod.name)}</td>
+                        <td>${escapeHtml(pod.node || '')}</td>
+                        <td>
+                            <span class="badge ${getStatusBadgeClass(pod.status)}">
+                                ${escapeHtml(pod.status)}
+                            </span>
+                        </td>
+                        <td>${escapeHtml(pod.gpu)}</td>
+                        <td>${formatTimestamp(pod.created)}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-primary" 
+                                    onclick="viewPodDetails('${pod.namespace}', '${pod.name}')">
+                                    <i class="fa fa-info-circle"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" 
+                                    onclick="viewPodLogs('${pod.namespace}', '${pod.name}')">
+                                    <i class="fa fa-file-text-o"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    
+    container.html(tableHtml);
+}
+
+// Function to fetch namespace metrics
+function fetchNamespaceMetrics(metricType = 'gpu') {
+    showLoading('namespace-metrics-loading');
+    
+    $.ajax({
+        url: '/api/namespace-metrics',
+        type: 'GET',
+        data: { metric_type: metricType },
+        success: function(data) {
+            renderNamespaceMetrics(data, metricType);
+        },
+        error: function(xhr, status, error) {
+            console.error(`Error fetching ${metricType} metrics:`, error);
+            $('#namespace-metrics-container').html(`
+                <div class="alert alert-danger">
+                    Error fetching namespace metrics: ${error}
+                </div>
+            `);
+        },
+        complete: function() {
+            hideLoading('namespace-metrics-loading');
+        }
+    });
+}
+
+// Function to render namespace metrics
+function renderNamespaceMetrics(data, metricType = 'gpu') {
+    const container = $('#namespace-metrics-container');
+    
+    if (!data || !data.items || data.items.length === 0) {
+        container.html(`
+            <div class="alert alert-info">
+                No ${metricType.toUpperCase()} metrics found.
+            </div>
+        `);
+        return;
+    }
+    
+    // Sort metrics by usage
+    const metrics = data.items.sort((a, b) => b.used - a.used);
+    
+    let metricLabel = '';
+    let colorClass = '';
+    
+    switch(metricType) {
+        case 'gpu':
+            metricLabel = 'GPU(s)';
+            colorClass = 'bg-success';
+            break;
+        case 'cpu':
+            metricLabel = 'CPU Cores';
+            colorClass = 'bg-primary';
+            break;
+        case 'memory':
+            metricLabel = 'Memory (GB)';
+            colorClass = 'bg-info';
+            break;
+        default:
+            metricLabel = 'Resources';
+            colorClass = 'bg-secondary';
+    }
+    
+    const tableHtml = `
+        <div class="metric-type-selector mb-3">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-sm ${metricType === 'gpu' ? 'btn-success' : 'btn-outline-success'}" 
+                    onclick="fetchNamespaceMetrics('gpu')">GPU</button>
+                <button type="button" class="btn btn-sm ${metricType === 'cpu' ? 'btn-primary' : 'btn-outline-primary'}" 
+                    onclick="fetchNamespaceMetrics('cpu')">CPU</button>
+                <button type="button" class="btn btn-sm ${metricType === 'memory' ? 'btn-info' : 'btn-outline-info'}" 
+                    onclick="fetchNamespaceMetrics('memory')">Memory</button>
+            </div>
+        </div>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Namespace</th>
+                    <th>Used ${metricLabel}</th>
+                    <th>Total ${metricLabel}</th>
+                    <th>Usage</th>
+                    <th>Last Updated</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${metrics.map(metric => `
+                    <tr>
+                        <td>${escapeHtml(metric.namespace)}</td>
+                        <td>${metric.used}</td>
+                        <td>${metric.total > 0 ? metric.total : 'N/A'}</td>
+                        <td>
+                            <div class="progress">
+                                <div class="progress-bar ${colorClass}" role="progressbar" 
+                                    style="width: ${metric.percentage}%" 
+                                    aria-valuenow="${metric.percentage}" 
+                                    aria-valuemin="0" 
+                                    aria-valuemax="100">
+                                    ${metric.percentage}%
+                                </div>
+                            </div>
+                        </td>
+                        <td>${formatTimestamp(metric.updated_at)}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    
+    container.html(tableHtml);
+}
+
+// Helper function to get badge class based on pod status
+function getStatusBadgeClass(status) {
+    switch (status.toLowerCase()) {
+        case 'running':
+            return 'bg-success';
+        case 'pending':
+            return 'bg-warning';
+        case 'succeeded':
+            return 'bg-info';
+        case 'failed':
+            return 'bg-danger';
+        case 'unknown':
+            return 'bg-secondary';
+        default:
+            return 'bg-secondary';
+    }
+}
+
+// Helper function to escape HTML special characters
+function escapeHtml(text) {
+    if (!text) return '';
+    
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    
+    return text.toString().replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+// Helper function to format timestamp to a readable format
+function formatTimestamp(timestamp) {
+    if (!timestamp) return '';
+    
+    try {
+        const date = new Date(timestamp);
+        
+        // Check if date is valid
+        if (isNaN(date.getTime())) {
+            return timestamp;
+        }
+        
+        // If timestamp is recent (within 24 hours), show relative time
+        const now = new Date();
+        const diff = now - date;
+        
+        if (diff < 1000 * 60 * 60 * 24) {
+            // Less than 24 hours, show hours
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            if (hours < 1) {
+                const minutes = Math.floor(diff / (1000 * 60));
+                return minutes <= 1 ? 'just now' : `${minutes} minutes ago`;
+            }
+            return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        } else if (diff < 1000 * 60 * 60 * 24 * 7) {
+            // Less than a week, show days
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            return `${days} day${days > 1 ? 's' : ''} ago`;
+        } else {
+            // More than a week, show full date
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+    } catch (e) {
+        console.error('Error formatting timestamp:', e);
+        return timestamp;
+    }
+}
+
+// Function to refresh GPU pods and namespace metrics data
+function refreshMetricsAndGpuPods() {
+    // Refresh GPU pods
+    if (document.getElementById('gpu-pods-container')) {
+        fetchGpuPods();
+    }
+    
+    // Refresh namespace metrics
+    if (document.getElementById('namespace-metrics-container')) {
+        // Get the current metric type from the active button
+        let metricType = 'gpu';
+        const activeButton = document.querySelector('#namespace-metrics-container .btn-group .btn:not(.btn-outline-success):not(.btn-outline-primary):not(.btn-outline-info)');
+        if (activeButton) {
+            if (activeButton.classList.contains('btn-success') || activeButton.classList.contains('btn-outline-success')) {
+                metricType = 'gpu';
+            } else if (activeButton.classList.contains('btn-primary') || activeButton.classList.contains('btn-outline-primary')) {
+                metricType = 'cpu';
+            } else if (activeButton.classList.contains('btn-info') || activeButton.classList.contains('btn-outline-info')) {
+                metricType = 'memory';
+            }
+        }
+        
+        fetchNamespaceMetrics(metricType);
+    }
+}
+
+// Add auto-refresh for GPU pods and namespace metrics (every 30 seconds)
+let metricsRefreshInterval;
+function startMetricsRefresh() {
+    // Clear any existing interval
+    if (metricsRefreshInterval) {
+        clearInterval(metricsRefreshInterval);
+    }
+    
+    // Set up the new interval
+    metricsRefreshInterval = setInterval(() => {
+        refreshMetricsAndGpuPods();
+    }, 30000); // Refresh every 30 seconds
+}
+
+// Stop metrics refresh interval
+function stopMetricsRefresh() {
+    if (metricsRefreshInterval) {
+        clearInterval(metricsRefreshInterval);
+        metricsRefreshInterval = null;
+    }
+}
+
+// Update the document ready event handler to start the refresh interval
+document.addEventListener('DOMContentLoaded', function() {
+    // ... existing code ...
+    
+    // Start auto-refresh for metrics and GPU pods if sections exist
+    if (document.getElementById('gpu-pods-container') || document.getElementById('namespace-metrics-container')) {
+        startMetricsRefresh();
+    }
+});
+
+// Function to initialize all resources when the application starts
+function initializeAllResources() {
+    console.log('Initializing all resources...');
+    
+    // List of resource types to initialize
+    const resourceTypes = ['pods', 'services', 'deployments', 'inferenceservices', 'configmaps', 'secrets'];
+    
+    // Initialize each resource type
+    resourceTypes.forEach(resourceType => {
+        // Check if the tab exists
+        const tabElement = document.getElementById(resourceType);
+        if (!tabElement) {
+            console.log(`Tab element for ${resourceType} not found, skipping initialization`);
+            return;
+        }
+        
+        console.log(`Initializing ${resourceType} resources...`);
+        
+        // Set up the table controls
+        addResourceControls(resourceType);
+        
+        // Fetch initial data
+        fetchResourceData(resourceType, 'all', false, 0, true);
+        
+        // Load namespaces for the selector
+        loadNamespacesForSelector(resourceType);
+    });
+    
+    // Also initialize the unified resources view if it exists
+    const resourcesTableContainer = document.getElementById('resourcesTableContainer');
+    if (resourcesTableContainer) {
+        // Set up initial resource type (default: pods)
+        const initialResourceType = 'pods';
+        window.app.currentResourceType = initialResourceType;
+        
+        // Set up the resource controls
+        setupResourceControls();
+        
+        // Fetch initial data
+        fetchResourceData(initialResourceType, 'all', false, 0, true);
+    }
+}
+
+// Set up the unified resource controls
+function setupResourceControls() {
+    const controlsContainer = document.getElementById('resourceControlsContainer');
+    if (!controlsContainer) {
+        console.error('Resource controls container not found');
+        return;
+    }
+    
+    // Get the current resource type
+    const resourceType = window.app.currentResourceType || 'pods';
+    
+    // Clear existing controls
+    controlsContainer.innerHTML = '';
+    
+    // Create resource type selector
+    const resourceTypeSelector = document.createElement('div');
+    resourceTypeSelector.className = 'resource-type-selector me-3';
+    resourceTypeSelector.innerHTML = `
+        <select class="form-select" id="resourceTypeSelector" onchange="changeResourceType(this.value)">
+            <option value="pods" ${resourceType === 'pods' ? 'selected' : ''}>Pods</option>
+            <option value="services" ${resourceType === 'services' ? 'selected' : ''}>Services</option>
+            <option value="deployments" ${resourceType === 'deployments' ? 'selected' : ''}>Deployments</option>
+            <option value="inferenceservices" ${resourceType === 'inferenceservices' ? 'selected' : ''}>InferenceServices</option>
+            <option value="configmaps" ${resourceType === 'configmaps' ? 'selected' : ''}>ConfigMaps</option>
+            <option value="secrets" ${resourceType === 'secrets' ? 'selected' : ''}>Secrets</option>
+        </select>
+    `;
+    
+    // Create search input
+    const searchContainer = document.createElement('div');
+    searchContainer.className = 'input-group me-3';
+    searchContainer.style.width = '300px';
+    searchContainer.innerHTML = `
+        <input type="text" class="form-control" placeholder="Filter ${resourceType}..." id="resourceSearchInput">
+        <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    
+    // Create namespace selector
+    const namespaceContainer = document.createElement('div');
+    namespaceContainer.className = 'namespace-selector me-3';
+    namespaceContainer.innerHTML = `
+        <select class="form-select" id="resourceNamespaceSelector" onchange="namespaceChangedResource()">
+            <option value="all" selected>All Namespaces</option>
+            <option value="loading" disabled>Loading namespaces...</option>
+        </select>
+    `;
+    
+    // Create refresh info and button container
+    const refreshContainer = document.createElement('div');
+    refreshContainer.className = 'd-flex align-items-center';
+    refreshContainer.innerHTML = `
+        <span id="resourcesCount" class="me-3 text-muted small"></span>
+        <span id="resourcesLastRefreshTime" class="me-3 text-muted small">Last refreshed: Never</span>
+        <button class="btn btn-primary" onclick="refreshResourceType(window.app.currentResourceType)">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    `;
+    
+    // Add components to the container
+    controlsContainer.appendChild(resourceTypeSelector);
+    controlsContainer.appendChild(searchContainer);
+    controlsContainer.appendChild(namespaceContainer);
+    controlsContainer.appendChild(refreshContainer);
+    
+    // Add event listeners
+    const searchInput = document.getElementById('resourceSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            filterResources(resourceType);
+        });
+    }
+    
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', function() {
+            clearResourceSearch();
+        });
+    }
+    
+    // Load namespaces for the selector
+    loadNamespacesForSelector('resources');
+}
+
+// Add CSS for infinite scrolling
+document.addEventListener('DOMContentLoaded', function() {
+    // Add CSS for infinite scrolling
+    const style = document.createElement('style');
+    style.textContent = `
+        .table-responsive {
+            max-height: 600px;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .table-container {
+            position: relative;
+        }
+        
+        .infinite-scroll-loading {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-top: 1px solid #dee2e6;
+            position: sticky;
+            bottom: 0;
+            width: 100%;
+            z-index: 10;
+        }
+        
+        /* Hide pagination controls since we're using infinite scroll */
+        .pagination-container {
+            display: none !important;
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // Initialize app with first data load
+    if (typeof initializeApp === 'function') {
+        initializeApp();
+        
+        // Initialize all resources after a short delay to ensure UI is ready
+        setTimeout(() => {
+            initializeAllResources();
+        }, 500);
+    }
+});
+
+// Function to setup infinite scrolling for resources
+function setupResourceInfiniteScroll(resourceType) {
+    console.log(`Setting up infinite scroll for ${resourceType}`);
+    
+    // Get the table container element
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    if (!tableContainer) {
+        console.error(`Table container not found for ${resourceType}`);
+        return;
+    }
+    
+    // Remove any existing scroll event listeners
+    tableContainer.onscroll = null;
+    
+    // Add scroll event listener
+    tableContainer.onscroll = function() {
+        // If we're within 200px of the bottom, load more items
+        const scrollBottom = tableContainer.scrollHeight - tableContainer.scrollTop - tableContainer.clientHeight;
+        
+        if (scrollBottom < 200) {
+            // Only load more if we're not already loading and there are more items
+            const resourceState = window.app.state.resources[resourceType];
+            if (!resourceState) return;
+            
+            if (!resourceState.isLoading && resourceState.hasMoreItems) {
+                console.log(`Near bottom of scroll, loading more ${resourceType}...`);
+                resourceState.isLoading = true;
+                
+                // Get current namespace filter
+                const namespaceSelector = document.getElementById(`${resourceType}Namespace`) || document.getElementById('resourceNamespaceSelector');
+                const namespace = namespaceSelector ? namespaceSelector.value : 'all';
+                
+                // Get current search term if any
+                const searchInput = document.getElementById(`${resourceType}Search`) || document.getElementById('resourceSearchInput');
+                const searchTerm = searchInput && searchInput.value ? searchInput.value.trim() : '';
+                
+                if (searchTerm) {
+                    // If we're searching, use the filter function with the current offset
+                    const formData = new FormData();
+                    formData.append('resource_type', resourceType);
+                    formData.append('namespace', namespace);
+                    formData.append('search', searchTerm);
+                    formData.append('offset', resourceState.currentOffset);
+                    formData.append('limit', 50); // Fetch more items per request
+                    
+                    // Show loading indicator
+                    showInfiniteScrollLoading(resourceType);
+                    
+                    fetch('/api/resources/' + resourceType, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        processMoreResourceData(resourceType, data);
+                    })
+                    .catch(error => {
+                        console.error(`Error loading more ${resourceType} data:`, error);
+                        hideInfiniteScrollLoading(resourceType);
+                        resourceState.isLoading = false;
+                    });
+                } else {
+                    // Otherwise use the standard fetch function
+                    fetchResourceData(resourceType, namespace, false, resourceState.currentOffset, false)
+                    .finally(() => {
+                        resourceState.isLoading = false;
+                    });
+                }
+            }
+        }
+    };
+    
+    console.log(`Infinite scroll setup complete for ${resourceType}`);
+}
+
+// Process additional data loaded during scrolling
+function processMoreResourceData(resourceType, data) {
+    if (!data || !data.items) {
+        console.error(`Invalid data received for ${resourceType}`);
+        return;
+    }
+    
+    const resourceState = window.app.state.resources[resourceType];
+    if (!resourceState) return;
+    
+    // Add the new items to the existing items
+    resourceState.items = resourceState.items.concat(data.items);
+    resourceState.currentOffset += data.items.length;
+    resourceState.hasMoreItems = data.hasMore;
+    resourceState.isLoading = false;
+    
+    // Update count in any filter indicator
+    const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    const indicator = tableContainer?.querySelector('.filter-indicator');
+    if (indicator) {
+        const countSpan = indicator.querySelector('span');
+        if (countSpan) {
+            const searchInput = document.getElementById(`${resourceType}Search`) || document.getElementById('resourceSearchInput');
+            const searchTerm = searchInput && searchInput.value ? searchInput.value.trim() : '';
+            
+            countSpan.innerHTML = `
+                <i class="fas fa-filter me-2"></i>
+                Found ${resourceState.items.length} of ${data.totalCount} ${resourceType} matching: "${searchTerm}"
+            `;
+        }
+    }
+    
+    // Render just the new items in the table
+    renderMoreItems(resourceType, data.items);
+    
+    // Hide loading indicator
+    hideInfiniteScrollLoading(resourceType);
+}
+
+// Render additional items loaded during scrolling
+function renderMoreItems(resourceType, newItems) {
+    if (!newItems || newItems.length === 0) return;
+    
+    // Find the table body
+    const tableBody = document.querySelector(`#${resourceType}Table tbody`);
+    if (!tableBody) {
+        console.error(`Table body not found for ${resourceType}`);
+        return;
+    }
+    
+    // Render each new item
+    newItems.forEach(item => {
+        const row = document.createElement('tr');
+        
+        switch (resourceType) {
+            case 'pods':
+                const podResources = getResourceUsage(item);
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
+                    <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${podResources.cpu || '0'}</td>
+                    <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${podResources.gpu || '0'}</td>
+                    <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${podResources.memory || '0Mi'}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+                
+            case 'services':
+                // Get service type and ports
+                const serviceType = item.spec?.type || 'ClusterIP';
+                const clusterIP = item.spec?.clusterIP || '-';
+                const externalIP = item.status?.loadBalancer?.ingress?.[0]?.ip || '-';
+                
+                // Format ports as a string
+                let ports = '';
+                if (item.spec?.ports && item.spec.ports.length > 0) {
+                    ports = item.spec.ports.map(port => {
+                        return `${port.port}${port.targetPort ? ':'+port.targetPort : ''}/${port.protocol || 'TCP'}`;
+                    }).join(', ');
+                } else {
+                    ports = '-';
+                }
+                
+                // Calculate age
+                const creationTime = new Date(item.metadata.creationTimestamp);
+                const now = new Date();
+                const ageInDays = Math.floor((now - creationTime) / (1000 * 60 * 60 * 24));
+                const age = ageInDays > 0 ? `${ageInDays}d` : `${Math.floor((now - creationTime) / (1000 * 60 * 60))}h`;
+                
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${serviceType}</td>
+                    <td>${clusterIP}</td>
+                    <td>${externalIP}</td>
+                    <td>${ports}</td>
+                    <td>${age}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+                
+            case 'inferenceservices':
+                // Handle InferenceService rendering
+                const isvcStatus = item.status?.conditions?.[0]?.status === 'True' ? 'Ready' : 'Not Ready';
+                const isvcStatusIcon = isvcStatus === 'Ready' ? 
+                    '<i class="fas fa-check-circle text-success me-1"></i>' : 
+                    '<i class="fas fa-times-circle text-danger me-1"></i>';
+                
+                // Try to extract URL
+                let url = '-';
+                if (item.status?.url) {
+                    url = `<a href="${item.status.url}" target="_blank">${item.status.url}</a>`;
+                }
+                
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${url}</td>
+                    <td>${isvcStatusIcon}${isvcStatus}</td>
+                    <td>${getResourceUsage(item).cpu || '-'}</td>
+                    <td>${getResourceUsage(item).gpu || '-'}</td>
+                    <td>${getResourceUsage(item).memory || '-'}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+                
+            case 'deployments':
+                // Handle Deployment rendering
+                const readyReplicas = item.status?.readyReplicas || 0;
+                const totalReplicas = item.status?.replicas || 0;
+                const deploymentStatus = readyReplicas === totalReplicas ? 'Available' : 'Progressing';
+                const deploymentStatusIcon = deploymentStatus === 'Available' ? 
+                    '<i class="fas fa-check-circle text-success me-1"></i>' : 
+                    '<i class="fas fa-sync text-warning me-1"></i>';
+                
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${readyReplicas}/${totalReplicas}</td>
+                    <td>${deploymentStatusIcon}${deploymentStatus}</td>
+                    <td>${getResourceUsage(item).cpu || '-'}</td>
+                    <td>${getResourceUsage(item).memory || '-'}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+                
+            case 'configmaps':
+                // Handle ConfigMap rendering
+                const dataCount = Object.keys(item.data || {}).length;
+                
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${dataCount} items</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+                
+            case 'secrets':
+                // Handle Secret rendering
+                const secretType = item.type || 'Opaque';
+                const secretDataCount = Object.keys(item.data || {}).length;
+                
+                row.innerHTML = `
+                    <td>${item.metadata.namespace}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${secretType}</td>
+                    <td>${secretDataCount} items</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+                break;
+                
+            default:
+                // Generic handling for other resource types
+                row.innerHTML = `
+                    <td>${item.metadata.namespace || '-'}</td>
+                    <td>${item.metadata.name}</td>
+                    <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
+                `;
+        }
+        
+        tableBody.appendChild(row);
+    });
+    
+    // Initialize all dropdowns for new rows
+    setTimeout(() => {
+        const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+    }, 100);
+}
+
+// Update the process resource data function to call setup for infinite scrolling
+function processResourceData(resourceType, data, offset) {
+    console.log(`Processing ${resourceType} data:`, data);
+    
+    if (!data || !data.items) {
+        console.error(`Invalid ${resourceType} data received`);
+        return;
+    }
+    
+    // Get the resource state
+    const resourceState = window.app.state.resources[resourceType];
+    
+    // If this is a fresh load (offset 0), replace the data, otherwise append
+    if (offset === 0) {
+        resourceState.items = data.items;
+    } else {
+        resourceState.items = resourceState.items.concat(data.items);
+    }
+    
+    // Update metadata
+    resourceState.totalCount = data.totalCount || data.items.length;
+    resourceState.lastFetched = new Date();
+    resourceState.isLoading = false;
+    resourceState.currentOffset = resourceState.items.length;
+    resourceState.hasMoreItems = data.hasMore;
+    
+    // Render the updated data
+    renderCurrentPage(resourceType);
+    
+    // Hide loading indicators
+    hideLoading(resourceType);
+    hideInfiniteScrollLoading(resourceType);
+    
+    // Update last refresh time display
+    updateLastRefreshTime(resourceType);
+    
+    // Set up infinite scrolling after initial data is loaded
+    setupResourceInfiniteScroll(resourceType);
 }

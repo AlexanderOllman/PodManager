@@ -11,6 +11,8 @@ import time
 import signal
 import atexit
 import psutil
+import logging
+from database import get_db
 
 # We'll check for git availability at runtime rather than import time
 git_available = False
@@ -19,6 +21,10 @@ try:
     git_available = True
 except ImportError:
     print("Git module could not be imported. GitHub update functionality will be disabled.")
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 # Configure SocketIO with enhanced settings for reliability
@@ -1114,5 +1120,253 @@ def delete_pod():
         app.logger.error(f"Error deleting pod: {e}")
         return jsonify({"error": str(e)}), 500
 
+# Fetch function that gets data from Kubernetes and stores in database
+def fetch_k8s_data(resource_type):
+    """
+    Fetch data from Kubernetes and store in database
+    """
+    db = get_db()
+    try:
+        # Simulate fetching data from Kubernetes
+        # In real implementation, this would call kubernetes API
+        cmd = ["kubectl", "get", resource_type, "--all-namespaces", "-o", "json"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        
+        # Update database with new data
+        success = db.update_resource(resource_type, data.get('items', []))
+        
+        # Update namespace metrics if we've updated pods
+        if resource_type == 'pods':
+            db.update_namespace_metrics()
+            
+        return success
+    except Exception as e:
+        logger.error(f"Error fetching {resource_type}: {e}")
+        return False
+
+# API for refreshing all resources
+@app.route('/api/refresh/all', methods=['POST'])
+def refresh_all():
+    # Start a background thread to refresh all resources
+    thread = threading.Thread(target=refresh_all_resources)
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({'status': 'refresh started'})
+
+def refresh_all_resources():
+    """Background task to refresh all resources"""
+    resource_types = ['pods', 'services', 'deployments', 'configmaps', 'secrets', 'namespaces']
+    for resource_type in resource_types:
+        logger.info(f"Refreshing {resource_type}")
+        fetch_k8s_data(resource_type)
+        # Small delay to avoid overwhelming the API server
+        time.sleep(1)
+    
+    # Update namespace metrics
+    get_db().update_namespace_metrics()
+    logger.info("All resources refreshed")
+
+# API for namespaces
+@app.route('/api/namespaces')
+def get_namespaces_api():
+    # Get data from database
+    db = get_db()
+    
+    # Check if we should force refresh
+    refresh = request.args.get('refresh', 'false').lower() == 'true'
+    
+    if refresh:
+        fetch_k8s_data('namespaces')
+    
+    namespaces = db.get_namespaces_list()
+    return jsonify({'items': namespaces})
+
+# API for resources data
+@app.route('/api/resources/<resource_type>')
+def get_resources(resource_type):
+    namespace = request.args.get('namespace', 'all')
+    search = request.args.get('search', '')
+    page = int(request.args.get('page', 1))
+    page_size = int(request.args.get('page_size', 50))
+    sort_by = request.args.get('sort_by', None)
+    sort_desc = request.args.get('sort_desc', 'false').lower() == 'true'
+    
+    # Check if we should force refresh from Kubernetes
+    refresh = request.args.get('refresh', 'false').lower() == 'true'
+    
+    if refresh:
+        fetch_k8s_data(resource_type)
+    
+    # Get data from database
+    db = get_db()
+    result = db.get_resources(resource_type, namespace, search, page, page_size, sort_by, sort_desc)
+    
+    # Add last_updated timestamp
+    result['last_updated'] = db.get_last_updated(resource_type)
+    
+    return jsonify(result)
+
+# API for dashboard metrics
+@app.route('/api/dashboard/metrics')
+def get_dashboard_metrics():
+    # Get data from database
+    db = get_db()
+    
+    # Check if we should force refresh
+    refresh = request.args.get('refresh', 'false').lower() == 'true'
+    
+    if refresh:
+        fetch_k8s_data('pods')
+    
+    metrics = db.get_dashboard_metrics()
+    return jsonify(metrics)
+
+# API endpoint for GPU pods
+@app.route('/api/gpu-pods')
+def get_gpu_pods():
+    # Get data from database
+    db = get_db()
+    
+    # Check if we should force refresh
+    refresh = request.args.get('refresh', 'false').lower() == 'true'
+    
+    if refresh:
+        fetch_k8s_data('pods')
+    
+    pods = db.get_gpu_pods()
+    return jsonify({'items': pods})
+
+# API endpoint for namespace metrics
+@app.route('/api/namespace-metrics')
+def get_namespace_metrics():
+    metric_type = request.args.get('metric_type', 'gpu')
+    
+    # Get data from database
+    db = get_db()
+    
+    # Check if we should force refresh
+    refresh = request.args.get('refresh', 'false').lower() == 'true'
+    
+    if refresh:
+        fetch_k8s_data('pods')
+        fetch_k8s_data('namespaces')
+        db.update_namespace_metrics()
+    
+    metrics = db.get_namespace_metrics(metric_type)
+    return jsonify({'items': metrics})
+
+@app.route('/metrics-test')
+def metrics_test():
+    """Test page for GPU pods and namespace metrics"""
+    return render_template('metrics_test.html')
+
+# API endpoint for resources with offset/limit for infinite scrolling
+@app.route('/api/resources/<resource_type>', methods=['POST'])
+def api_resources(resource_type):
+    namespace = request.form.get('namespace', 'all')
+    search = request.form.get('search', '')
+    offset = int(request.form.get('offset', 0))
+    limit = int(request.form.get('limit', 50))
+    critical_only = request.form.get('critical_only', 'false').lower() == 'true'
+    
+    try:
+        # Build kubectl command based on resource type and namespace
+        if namespace and namespace != 'all':
+            command = f"kubectl get {resource_type} -n {namespace} -o json"
+        else:
+            command = f"kubectl get {resource_type} --all-namespaces -o json"
+        
+        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+        data = json.loads(result.stdout)
+        
+        # Get all items
+        all_items = data.get('items', [])
+        
+        # Apply filters if search is provided
+        if search:
+            search = search.lower()
+            filtered_items = []
+            for item in all_items:
+                name = item.get('metadata', {}).get('name', '').lower()
+                ns = item.get('metadata', {}).get('namespace', '').lower()
+                if search in name or search in ns:
+                    filtered_items.append(item)
+            all_items = filtered_items
+        
+        # Get total count
+        total_count = len(all_items)
+        
+        # Apply pagination
+        paginated_items = all_items[offset:offset+limit]
+        
+        # For critical-only loads, strip out non-essential data
+        if critical_only:
+            for item in paginated_items:
+                # Keep only essential metadata and status
+                minimal_item = {
+                    'metadata': {
+                        'name': item['metadata'].get('name'),
+                        'namespace': item['metadata'].get('namespace'),
+                        'creationTimestamp': item['metadata'].get('creationTimestamp')
+                    },
+                    'status': {}
+                }
+                
+                # Keep essential status fields based on resource type
+                if resource_type == 'pods':
+                    minimal_item['status'] = {
+                        'phase': item['status'].get('phase'),
+                        'containerStatuses': [{
+                            'ready': status.get('ready'),
+                            'restartCount': status.get('restartCount'),
+                            'state': status.get('state')
+                        } for status in item['status'].get('containerStatuses', [])]
+                    }
+                    # Include spec data for pods to calculate resource usage
+                    minimal_item['spec'] = {
+                        'containers': [{
+                            'name': container.get('name'),
+                            'resources': container.get('resources', {})
+                        } for container in item.get('spec', {}).get('containers', [])]
+                    }
+                elif resource_type == 'services':
+                    minimal_item['spec'] = {
+                        'type': item['spec'].get('type'),
+                        'clusterIP': item['spec'].get('clusterIP')
+                    }
+                elif resource_type == 'deployments':
+                    minimal_item['status'] = {
+                        'replicas': item['status'].get('replicas'),
+                        'readyReplicas': item['status'].get('readyReplicas')
+                    }
+                
+                item.clear()
+                item.update(minimal_item)
+        
+        # Return response with metadata for infinite scrolling
+        response = {
+            'items': paginated_items,
+            'totalCount': total_count,
+            'offset': offset,
+            'limit': limit,
+            'hasMore': offset + len(paginated_items) < total_count
+        }
+        
+        return jsonify(response)
+    
+    except subprocess.CalledProcessError as e:
+        app.logger.error(f"Error executing kubectl command: {e}")
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        app.logger.error(f"Error fetching {resource_type}: {e}")
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
+    # Initialize the database with a background thread
+    init_thread = threading.Thread(target=init_app)
+    init_thread.daemon = True
+    init_thread.start()
+    
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
