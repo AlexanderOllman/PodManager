@@ -97,7 +97,6 @@ class Database:
     
     def update_resource(self, resource_type, items):
         """Update resources in the database from a list of items"""
-        print(f"[DB] update_resource() - Updating {resource_type} with {len(items)} items")
         with get_connection() as conn:
             cursor = conn.cursor()
             
@@ -107,10 +106,9 @@ class Database:
             try:
                 # Delete existing resources of this type
                 cursor.execute("DELETE FROM resources WHERE resource_type = ?", (resource_type,))
-                print(f"[DB] Deleted existing {resource_type} resources from database")
                 
                 # Insert new resources
-                for i, resource in enumerate(items):
+                for resource in items:
                     resource_id = f"{resource_type}:{resource.get('metadata', {}).get('namespace', 'default')}:{resource.get('metadata', {}).get('name', '')}"
                     namespace = resource.get('metadata', {}).get('namespace', 'default')
                     name = resource.get('metadata', {}).get('name', '')
@@ -177,10 +175,6 @@ class Database:
                         datetime.now().isoformat(),
                         datetime.now().isoformat()
                     ))
-                    
-                    # Print progress for large updates
-                    if (i+1) % 50 == 0 or i+1 == len(items):
-                        print(f"[DB] Inserted {i+1}/{len(items)} {resource_type} resources")
                 
                 # Update last updated timestamp
                 now = datetime.now().isoformat()
@@ -188,15 +182,12 @@ class Database:
                 INSERT OR REPLACE INTO metadata (key, value)
                 VALUES (?, ?)
                 ''', (f"last_updated_{resource_type}", now))
-                print(f"[DB] Updated timestamp for {resource_type}: {now}")
                 
                 conn.commit()
-                print(f"[DB] Transaction committed - {len(items)} {resource_type} stored in database")
                 logging.info(f"Updated {len(items)} {resource_type} in database")
                 return True
             except Exception as e:
                 conn.rollback()
-                print(f"[DB] Error updating {resource_type}: {str(e)}")
                 logging.error(f"Failed to update {resource_type}: {str(e)}")
                 raise
     
@@ -222,9 +213,10 @@ class Database:
     
     def get_resources(self, resource_type, namespace='all', search='', page=1, page_size=50, sort_by=None, sort_desc=False):
         """Get resources from the database with filtering and pagination"""
-        print(f"[DB] Database.get_resources() - Fetching {resource_type}, namespace={namespace}, search='{search}', page={page}/{page_size}")
         with get_connection() as conn:
             cursor = conn.cursor()
+            
+            print(f"[DATABASE] DB Query for {resource_type}, namespace={namespace}, page={page}")
             
             # Base query
             query = "SELECT * FROM resources WHERE resource_type = ?"
@@ -240,12 +232,13 @@ class Database:
                 query += " AND (name LIKE ? OR namespace LIKE ? OR data LIKE ?)"
                 search_param = f"%{search}%"
                 params.extend([search_param, search_param, search_param])
+                print(f"[DATABASE] Applying search filter: {search}")
             
             # Count total results
             count_query = f"SELECT COUNT(*) FROM ({query})"
             cursor.execute(count_query, params)
             total_count = cursor.fetchone()[0]
-            print(f"[DB] Found {total_count} total {resource_type} resources matching criteria")
+            print(f"[DATABASE] Total count for {resource_type}: {total_count}")
             
             # Add sorting
             if sort_by:
@@ -263,12 +256,12 @@ class Database:
             offset = (page - 1) * page_size
             query += " LIMIT ? OFFSET ?"
             params.extend([page_size, offset])
+            print(f"[DATABASE] Applying pagination: limit={page_size}, offset={offset}")
             
             # Execute query
-            print(f"[DB] Executing query: {query} with params: {params}")
             cursor.execute(query, params)
             rows = cursor.fetchall()
-            print(f"[DB] Retrieved {len(rows)} {resource_type} rows from database")
+            print(f"[DATABASE] Query returned {len(rows)} rows")
             
             # Format results
             items = []
@@ -283,7 +276,6 @@ class Database:
             # Calculate total pages
             total_pages = (total_count + page_size - 1) // page_size
             
-            print(f"[DB] Returning {len(items)} items of {resource_type}, page {page}/{total_pages}")
             return {
                 'items': items,
                 'total': total_count,
@@ -294,17 +286,11 @@ class Database:
     
     def get_last_updated(self, resource_type):
         """Get the last updated timestamp for a resource type"""
-        print(f"[DB] get_last_updated() - Checking timestamp for {resource_type}")
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT value FROM metadata WHERE key = ?", (f"last_updated_{resource_type}",))
             row = cursor.fetchone()
-            if row:
-                print(f"[DB] {resource_type} last updated: {row['value']}")
-                return row['value']
-            else:
-                print(f"[DB] No update timestamp found for {resource_type}")
-                return None
+            return row['value'] if row else None
     
     def get_dashboard_metrics(self):
         """Get metrics for the dashboard"""

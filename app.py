@@ -74,127 +74,147 @@ def get_resources():
     if not resource_type:
         return jsonify(error="Resource type is required")
     
-    print(f"[DB] Processing /get_resources request for {resource_type}")
-    
-    # Get database instance
-    db = get_db()
-    
-    # Check when was the last update for this resource type
-    last_updated = db.get_last_updated(resource_type)
-    current_time = datetime.now().isoformat()
-    
-    # If resources haven't been loaded or are stale (older than 5 minutes), populate from kubectl
-    if not last_updated or (
-        datetime.fromisoformat(last_updated) < 
-        datetime.fromisoformat(current_time) - timedelta(minutes=5)
-    ):
-        print(f"[DB] Data for {resource_type} is stale (last updated: {last_updated}) or missing, fetching from Kubernetes")
-        app.logger.info(f"Data for {resource_type} is stale or missing, fetching from Kubernetes")
-        fetch_success = fetch_k8s_data(resource_type)
-        if not fetch_success:
-            print(f"[DB] Failed to fetch {resource_type} from Kubernetes")
-            return jsonify(error=f"Failed to fetch {resource_type} from Kubernetes")
-    else:
-        print(f"[DB] Using cached data for {resource_type} - last updated: {last_updated}")
-    
     try:
-        # If count_only is true, just return the count from the database
-        if count_only:
-            print(f"[DB] Getting count for {resource_type} from database")
-            count_result = db.get_resources(resource_type, namespace)
-            count = count_result['total']
-            print(f"[DB] Found {count} {resource_type} in database")
-            return jsonify(data={"totalCount": count})
+        # Get database instance
+        db = get_db()
         
-        # Get paginated resources from database
-        print(f"[DB] Getting resources for {resource_type} from database - page {page}, page_size {page_size}")
-        result = db.get_resources(
-            resource_type=resource_type, 
-            namespace=namespace,
-            page=page,
-            page_size=page_size
-        )
-        print(f"[DB] Retrieved {len(result['items'])} {resource_type} items from database (total: {result['total']})")
+        # Check when was the last update for this resource type
+        last_updated = db.get_last_updated(resource_type)
+        current_time = datetime.now().isoformat()
         
-        # Format data to match the expected structure from kubectl
-        paginated_data = {
-            'totalCount': result['total'],
-            'page': result['page'],
-            'pageSize': result['page_size'],
-            'totalPages': result['total_pages'],
-            'items': result['items']
+        print(f"[DATABASE] Get resources request for {resource_type}, namespace={namespace}, page={page}")
+        if last_updated:
+            print(f"[DATABASE] Last updated: {last_updated}")
+        else:
+            print(f"[DATABASE] No last_updated found for {resource_type}")
+        
+        # If resources haven't been loaded or are stale (older than 5 minutes), populate from kubectl
+        if not last_updated or (
+            datetime.fromisoformat(last_updated) < 
+            datetime.fromisoformat(current_time) - timedelta(minutes=5)
+        ):
+            app.logger.info(f"Data for {resource_type} is stale or missing, fetching from Kubernetes")
+            print(f"[DATABASE] Fetching fresh data for {resource_type} from Kubernetes")
+            try:
+                fetch_success = fetch_k8s_data(resource_type)
+                if not fetch_success:
+                    print(f"[DATABASE] Failed to fetch {resource_type} from Kubernetes, but continuing with what we have")
+                    # Continue with what we have - don't return error
+            except Exception as e:
+                print(f"[DATABASE] Error fetching {resource_type} from Kubernetes: {str(e)}")
+                # Continue with what we have - don't return error
+        
+        try:
+            # If count_only is true, just return the count from the database
+            if count_only:
+                count_result = db.get_resources(resource_type, namespace)
+                count = count_result['total']
+                print(f"[DATABASE] Count query returned {count} {resource_type}")
+                return jsonify(data={"totalCount": count})
+            
+            # Get paginated resources from database
+            print(f"[DATABASE] Retrieving {resource_type} from database")
+            result = db.get_resources(
+                resource_type=resource_type, 
+                namespace=namespace,
+                page=page,
+                page_size=page_size
+            )
+            print(f"[DATABASE] Retrieved {len(result['items'])} {resource_type} items from database")
+            
+            # Format data to match the expected structure from kubectl
+            paginated_data = {
+                'totalCount': result['total'],
+                'page': result['page'],
+                'pageSize': result['page_size'],
+                'totalPages': result['total_pages'],
+                'items': result['items'],
+                'source': 'database'
+            }
+            
+            # For critical-only loads, strip out non-essential data
+            if critical_only and 'items' in paginated_data:
+                for item in paginated_data['items']:
+                    # Keep only essential metadata and status
+                    minimal_item = {
+                        'metadata': {
+                            'name': item['metadata'].get('name'),
+                            'namespace': item['metadata'].get('namespace'),
+                            'creationTimestamp': item['metadata'].get('creationTimestamp')
+                        },
+                        'status': {}
+                    }
+                    
+                    # Keep essential status fields based on resource type
+                    if resource_type == 'pods':
+                        minimal_item['status'] = {
+                            'phase': item['status'].get('phase'),
+                            'containerStatuses': [
+                                {
+                                    'ready': status.get('ready'),
+                                    'restartCount': status.get('restartCount'),
+                                    'state': status.get('state')
+                                } for status in item['status'].get('containerStatuses', [])
+                            ]
+                        }
+                        # Include spec data for pods to calculate resource usage
+                        minimal_item['spec'] = {
+                            'containers': [
+                                {
+                                    'name': container.get('name'),
+                                    'resources': container.get('resources', {})
+                                } for container in item.get('spec', {}).get('containers', [])
+                            ]
+                        }
+                    elif resource_type == 'services':
+                        minimal_item['spec'] = {
+                            'type': item['spec'].get('type'),
+                            'clusterIP': item['spec'].get('clusterIP')
+                        }
+                    elif resource_type == 'deployments':
+                        minimal_item['status'] = {
+                            'replicas': item['status'].get('replicas'),
+                            'readyReplicas': item['status'].get('readyReplicas')
+                        }
+                    
+                    item.clear()
+                    item.update(minimal_item)
+            
+            return jsonify(data=paginated_data)
+        except Exception as db_error:
+            print(f"[DATABASE] Error retrieving {resource_type} from database: {str(db_error)}")
+            # Continue to kubectl fallback
+            raise
+            
+    except Exception as e:
+        app.logger.error(f"Error retrieving {resource_type} from database: {str(e)}")
+        
+        # Return empty result with message instead of error
+        empty_data = {
+            'totalCount': 0,
+            'page': page,
+            'pageSize': page_size,
+            'totalPages': 0,
+            'items': [],
+            'source': 'fallback',
+            'message': f"Could not retrieve data: {str(e)}"
         }
         
-        # For critical-only loads, strip out non-essential data
-        if critical_only and 'items' in paginated_data:
-            print(f"[DB] Applying critical_only filter for {resource_type}")
-            for item in paginated_data['items']:
-                # Keep only essential metadata and status
-                minimal_item = {
-                    'metadata': {
-                        'name': item['metadata'].get('name'),
-                        'namespace': item['metadata'].get('namespace'),
-                        'creationTimestamp': item['metadata'].get('creationTimestamp')
-                    },
-                    'status': {}
-                }
-                
-                # Keep essential status fields based on resource type
-                if resource_type == 'pods':
-                    minimal_item['status'] = {
-                        'phase': item['status'].get('phase'),
-                        'containerStatuses': [
-                            {
-                                'ready': status.get('ready'),
-                                'restartCount': status.get('restartCount'),
-                                'state': status.get('state')
-                            } for status in item['status'].get('containerStatuses', [])
-                        ]
-                    }
-                    # Include spec data for pods to calculate resource usage
-                    minimal_item['spec'] = {
-                        'containers': [
-                            {
-                                'name': container.get('name'),
-                                'resources': container.get('resources', {})
-                            } for container in item.get('spec', {}).get('containers', [])
-                        ]
-                    }
-                elif resource_type == 'services':
-                    minimal_item['spec'] = {
-                        'type': item['spec'].get('type'),
-                        'clusterIP': item['spec'].get('clusterIP')
-                    }
-                elif resource_type == 'deployments':
-                    minimal_item['status'] = {
-                        'replicas': item['status'].get('replicas'),
-                        'readyReplicas': item['status'].get('readyReplicas')
-                    }
-                
-                item.clear()
-                item.update(minimal_item)
-        
-        return jsonify(data=paginated_data)
-    except Exception as e:
-        print(f"[DB] Error retrieving {resource_type} from database: {str(e)}")
-        app.logger.error(f"Error retrieving {resource_type} from database: {str(e)}")
         # Fallback to kubectl if database query fails
         try:
-            print(f"[DB] Falling back to kubectl for {resource_type}")
             app.logger.info(f"Falling back to kubectl for {resource_type}")
+            print(f"[DATABASE] Falling back to kubectl for {resource_type}")
             # Build kubectl command based on resource type and namespace
             if namespace and namespace != 'all':
                 command = f"kubectl get {resource_type} -n {namespace} -o json"
             else:
                 command = f"kubectl get {resource_type} --all-namespaces -o json"
                 
-            print(f"[DB] Executing kubectl command: {command}")
             output = run_kubectl_command(command)
             data = json.loads(output)
             
             # Get total count before pagination
             total_count = len(data.get('items', []))
-            print(f"[DB] Retrieved {total_count} {resource_type} items from kubectl")
             
             # Apply pagination to limit memory usage
             start_idx = (page - 1) * page_size
@@ -205,7 +225,8 @@ def get_resources():
                 'totalCount': total_count,
                 'page': page,
                 'pageSize': page_size,
-                'totalPages': (total_count + page_size - 1) // page_size
+                'totalPages': (total_count + page_size - 1) // page_size,
+                'source': 'kubectl'
             }
             
             # Paginate the results
@@ -214,8 +235,9 @@ def get_resources():
             
             return jsonify(data=paginated_data)
         except Exception as fallback_error:
-            print(f"[DB] Error with kubectl fallback for {resource_type}: {str(fallback_error)}")
-            return jsonify(error=f"Failed to get {resource_type}: {str(fallback_error)}")
+            print(f"[DATABASE] Kubectl fallback also failed for {resource_type}: {str(fallback_error)}")
+            # Return empty data if both database and kubectl fail
+            return jsonify(data=empty_data)
 
 @app.route('/run_action', methods=['POST'])
 def run_action():
@@ -1186,33 +1208,23 @@ def fetch_k8s_data(resource_type):
     """
     Fetch data from Kubernetes and store in database
     """
-    print(f"[DB] fetch_k8s_data() - Fetching {resource_type} from Kubernetes")
     db = get_db()
     try:
         # Simulate fetching data from Kubernetes
         # In real implementation, this would call kubernetes API
         cmd = ["kubectl", "get", resource_type, "--all-namespaces", "-o", "json"]
-        print(f"[DB] Executing kubectl command: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         data = json.loads(result.stdout)
         
-        # Count items to be stored
-        item_count = len(data.get('items', []))
-        print(f"[DB] Retrieved {item_count} {resource_type} from Kubernetes")
-        
         # Update database with new data
-        print(f"[DB] Storing {item_count} {resource_type} in database")
         success = db.update_resource(resource_type, data.get('items', []))
         
         # Update namespace metrics if we've updated pods
         if resource_type == 'pods':
-            print(f"[DB] Updating namespace metrics based on new pod data")
             db.update_namespace_metrics()
-        
-        print(f"[DB] Successfully updated {resource_type} in database")
+            
         return success
     except Exception as e:
-        print(f"[DB] Error fetching {resource_type} from Kubernetes: {str(e)}")
         logger.error(f"Error fetching {resource_type}: {e}")
         return False
 
@@ -1255,85 +1267,6 @@ def get_namespaces_api():
     return jsonify({'items': namespaces})
 
 # API for resources data
-@app.route('/api/resources/<resource_type>')
-def get_resources(resource_type):
-    namespace = request.args.get('namespace', 'all')
-    search = request.args.get('search', '')
-    page = int(request.args.get('page', 1))
-    page_size = int(request.args.get('page_size', 50))
-    sort_by = request.args.get('sort_by', None)
-    sort_desc = request.args.get('sort_desc', 'false').lower() == 'true'
-    
-    # Check if we should force refresh from Kubernetes
-    refresh = request.args.get('refresh', 'false').lower() == 'true'
-    
-    if refresh:
-        fetch_k8s_data(resource_type)
-    
-    # Get data from database
-    db = get_db()
-    result = db.get_resources(resource_type, namespace, search, page, page_size, sort_by, sort_desc)
-    
-    # Add last_updated timestamp
-    result['last_updated'] = db.get_last_updated(resource_type)
-    
-    return jsonify(result)
-
-# API for dashboard metrics
-@app.route('/api/dashboard/metrics')
-def get_dashboard_metrics():
-    # Get data from database
-    db = get_db()
-    
-    # Check if we should force refresh
-    refresh = request.args.get('refresh', 'false').lower() == 'true'
-    
-    if refresh:
-        fetch_k8s_data('pods')
-    
-    metrics = db.get_dashboard_metrics()
-    return jsonify(metrics)
-
-# API endpoint for GPU pods
-@app.route('/api/gpu-pods')
-def get_gpu_pods():
-    # Get data from database
-    db = get_db()
-    
-    # Check if we should force refresh
-    refresh = request.args.get('refresh', 'false').lower() == 'true'
-    
-    if refresh:
-        fetch_k8s_data('pods')
-    
-    pods = db.get_gpu_pods()
-    return jsonify({'items': pods})
-
-# API endpoint for namespace metrics
-@app.route('/api/namespace-metrics')
-def get_namespace_metrics():
-    metric_type = request.args.get('metric_type', 'gpu')
-    
-    # Get data from database
-    db = get_db()
-    
-    # Check if we should force refresh
-    refresh = request.args.get('refresh', 'false').lower() == 'true'
-    
-    if refresh:
-        fetch_k8s_data('pods')
-        fetch_k8s_data('namespaces')
-        db.update_namespace_metrics()
-    
-    metrics = db.get_namespace_metrics(metric_type)
-    return jsonify({'items': metrics})
-
-@app.route('/metrics-test')
-def metrics_test():
-    """Test page for GPU pods and namespace metrics"""
-    return render_template('metrics_test.html')
-
-# API endpoint for resources with offset/limit for infinite scrolling
 @app.route('/api/resources/<resource_type>', methods=['POST'])
 def api_resources(resource_type):
     namespace = request.form.get('namespace', 'all')
@@ -1350,85 +1283,115 @@ def api_resources(resource_type):
         last_updated = db.get_last_updated(resource_type)
         current_time = datetime.now().isoformat()
         
+        print(f"[DATABASE] Infinite scroll request for {resource_type}, offset={offset}, limit={limit}")
+        if last_updated:
+            print(f"[DATABASE] Last updated: {last_updated}")
+        else:
+            print(f"[DATABASE] No last_updated found for {resource_type}")
+        
         # If resources haven't been loaded or are stale (older than 5 minutes), populate from kubectl
         if not last_updated or (
             datetime.fromisoformat(last_updated) < 
             datetime.fromisoformat(current_time) - timedelta(minutes=5)
         ):
             app.logger.info(f"Data for {resource_type} is stale or missing, fetching from Kubernetes")
-            fetch_success = fetch_k8s_data(resource_type)
-            if not fetch_success:
-                return jsonify({"error": f"Failed to fetch {resource_type} from Kubernetes"}), 500
+            print(f"[DATABASE] Fetching fresh data for {resource_type} from Kubernetes")
+            try:
+                fetch_success = fetch_k8s_data(resource_type)
+                if not fetch_success:
+                    print(f"[DATABASE] Failed to fetch {resource_type} from Kubernetes, but continuing with what we have")
+            except Exception as e:
+                print(f"[DATABASE] Error fetching {resource_type} from Kubernetes: {str(e)}")
         
-        # Get resources with pagination from database
-        # We use page_size=limit and calculate the page number from offset
-        page = (offset // limit) + 1
-        result = db.get_resources(
-            resource_type=resource_type,
-            namespace=namespace,
-            search=search,
-            page=page,
-            page_size=limit
-        )
-        
-        # Format for response
-        response = {
-            'items': result['items'],
-            'totalCount': result['total'],
-            'offset': offset,
-            'limit': limit,
-            'hasMore': (offset + len(result['items'])) < result['total']
-        }
-        
-        # For critical-only loads, strip out non-essential data
-        if critical_only and response['items']:
-            for item in response['items']:
-                # Keep only essential metadata and status
-                minimal_item = {
-                    'metadata': {
-                        'name': item['metadata'].get('name'),
-                        'namespace': item['metadata'].get('namespace'),
-                        'creationTimestamp': item['metadata'].get('creationTimestamp')
-                    },
-                    'status': {}
-                }
-                
-                # Keep essential status fields based on resource type
-                if resource_type == 'pods':
-                    minimal_item['status'] = {
-                        'phase': item['status'].get('phase'),
-                        'containerStatuses': [
-                            {
-                                'ready': status.get('ready'),
-                                'restartCount': status.get('restartCount'),
-                                'state': status.get('state')
-                            } for status in item['status'].get('containerStatuses', [])
-                        ]
+        try:
+            # Get resources with pagination from database
+            # We use page_size=limit and calculate the page number from offset
+            page = (offset // limit) + 1
+            print(f"[DATABASE] Retrieving {resource_type} from database for infinite scroll, page={page}")
+            result = db.get_resources(
+                resource_type=resource_type,
+                namespace=namespace,
+                search=search,
+                page=page,
+                page_size=limit
+            )
+            print(f"[DATABASE] Retrieved {len(result['items'])} {resource_type} items from database for infinite scroll")
+            
+            # Format for response
+            response = {
+                'items': result['items'],
+                'totalCount': result['total'],
+                'offset': offset,
+                'limit': limit,
+                'hasMore': (offset + len(result['items'])) < result['total'],
+                'source': 'database'
+            }
+            
+            # For critical-only loads, strip out non-essential data
+            if critical_only and response['items']:
+                for item in response['items']:
+                    # Keep only essential metadata and status
+                    minimal_item = {
+                        'metadata': {
+                            'name': item['metadata'].get('name'),
+                            'namespace': item['metadata'].get('namespace'),
+                            'creationTimestamp': item['metadata'].get('creationTimestamp')
+                        },
+                        'status': {}
                     }
                     
-                elif resource_type == 'services':
-                    minimal_item['spec'] = {
-                        'type': item['spec'].get('type'),
-                        'clusterIP': item['spec'].get('clusterIP')
-                    }
+                    # Keep essential status fields based on resource type
+                    if resource_type == 'pods':
+                        minimal_item['status'] = {
+                            'phase': item['status'].get('phase'),
+                            'containerStatuses': [
+                                {
+                                    'ready': status.get('ready'),
+                                    'restartCount': status.get('restartCount'),
+                                    'state': status.get('state')
+                                } for status in item['status'].get('containerStatuses', [])
+                            ]
+                        }
+                        
+                    elif resource_type == 'services':
+                        minimal_item['spec'] = {
+                            'type': item['spec'].get('type'),
+                            'clusterIP': item['spec'].get('clusterIP')
+                        }
+                        
+                    elif resource_type == 'deployments':
+                        minimal_item['status'] = {
+                            'replicas': item['status'].get('replicas'),
+                            'readyReplicas': item['status'].get('readyReplicas')
+                        }
                     
-                elif resource_type == 'deployments':
-                    minimal_item['status'] = {
-                        'replicas': item['status'].get('replicas'),
-                        'readyReplicas': item['status'].get('readyReplicas')
-                    }
-                
-                item.clear()
-                item.update(minimal_item)
-        
-        return jsonify(response)
+                    item.clear()
+                    item.update(minimal_item)
+            
+            return jsonify(response)
+        except Exception as db_error:
+            print(f"[DATABASE] Error retrieving {resource_type} from database: {str(db_error)}")
+            # Continue to kubectl fallback
+            raise
     
     except Exception as e:
         app.logger.error(f"Error retrieving {resource_type} from database: {str(e)}")
         
+        # Create empty response with message
+        empty_response = {
+            'items': [],
+            'totalCount': 0,
+            'offset': offset,
+            'limit': limit,
+            'hasMore': False,
+            'source': 'fallback',
+            'message': f"Could not retrieve data: {str(e)}"
+        }
+        
         # Fallback to kubectl if database query fails
         try:
             app.logger.info(f"Falling back to kubectl for {resource_type}")
+            print(f"[DATABASE] Falling back to kubectl for infinite scroll {resource_type}")
             # Build kubectl command based on resource type and namespace
             if namespace and namespace != 'all':
                 command = f"kubectl get {resource_type} -n {namespace} -o json"
@@ -1456,7 +1419,7 @@ def api_resources(resource_type):
             total_count = len(all_items)
             
             # Apply pagination
-            paginated_items = all_items[offset:offset+limit]
+            paginated_items = all_items[offset:offset+limit] if offset < len(all_items) else []
             
             # For critical-only loads, strip out non-essential data
             if critical_only:
@@ -1501,14 +1464,158 @@ def api_resources(resource_type):
                 'totalCount': total_count,
                 'offset': offset,
                 'limit': limit,
-                'hasMore': offset + len(paginated_items) < total_count
+                'hasMore': offset + len(paginated_items) < total_count,
+                'source': 'kubectl'
             }
             
             return jsonify(response)
         
         except Exception as fallback_error:
             app.logger.error(f"Error with kubectl fallback for {resource_type}: {str(fallback_error)}")
-            return jsonify({"error": str(fallback_error)}), 500
+            print(f"[DATABASE] Kubectl fallback also failed for infinite scroll {resource_type}: {str(fallback_error)}")
+            # Return empty data if both database and kubectl fail
+            return jsonify(empty_response)
+
+# API for resources data
+@app.route('/api/resources/<resource_type>')
+def get_resources_api(resource_type):
+    try:
+        namespace = request.args.get('namespace', 'all')
+        search = request.args.get('search', '')
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 50))
+        sort_by = request.args.get('sort_by', None)
+        sort_desc = request.args.get('sort_desc', 'false').lower() == 'true'
+        
+        # Check if we should force refresh from Kubernetes
+        refresh = request.args.get('refresh', 'false').lower() == 'true'
+        
+        if refresh:
+            try:
+                fetch_k8s_data(resource_type)
+            except Exception as e:
+                print(f"[DATABASE] Error during refresh: {str(e)}")
+                # Continue anyway
+        
+        # Get data from database
+        db = get_db()
+        result = db.get_resources(resource_type, namespace, search, page, page_size, sort_by, sort_desc)
+        
+        # Add last_updated timestamp
+        result['last_updated'] = db.get_last_updated(resource_type)
+        result['source'] = 'database'
+        
+        return jsonify(result)
+    except Exception as e:
+        # Return empty result instead of error
+        print(f"[DATABASE] Error in get_resources_api: {str(e)}")
+        return jsonify({
+            'items': [],
+            'total': 0,
+            'page': 1,
+            'page_size': 50,
+            'total_pages': 0,
+            'source': 'error',
+            'message': f"Could not retrieve data: {str(e)}"
+        })
+
+# API for dashboard metrics
+@app.route('/api/dashboard/metrics')
+def get_dashboard_metrics():
+    try:
+        # Get data from database
+        db = get_db()
+        
+        # Check if we should force refresh
+        refresh = request.args.get('refresh', 'false').lower() == 'true'
+        
+        if refresh:
+            try:
+                fetch_k8s_data('pods')
+            except Exception as e:
+                print(f"[DATABASE] Error during pods refresh: {str(e)}")
+                # Continue anyway
+        
+        metrics = db.get_dashboard_metrics()
+        return jsonify(metrics)
+    except Exception as e:
+        # Return empty metrics instead of error
+        print(f"[DATABASE] Error in dashboard metrics: {str(e)}")
+        return jsonify({
+            'pods': 0,
+            'deployments': 0,
+            'services': 0,
+            'namespaces': 0,
+            'running_pods': 0,
+            'failed_pods': 0,
+            'source': 'error',
+            'message': f"Could not retrieve metrics: {str(e)}"
+        })
+
+# API endpoint for GPU pods
+@app.route('/api/gpu-pods')
+def get_gpu_pods_api():
+    try:
+        # Get data from database
+        db = get_db()
+        
+        # Check if we should force refresh
+        refresh = request.args.get('refresh', 'false').lower() == 'true'
+        
+        if refresh:
+            try:
+                fetch_k8s_data('pods')
+            except Exception as e:
+                print(f"[DATABASE] Error during pods refresh: {str(e)}")
+                # Continue anyway
+        
+        pods = db.get_gpu_pods()
+        return jsonify({'items': pods, 'source': 'database'})
+    except Exception as e:
+        # Return empty result instead of error
+        print(f"[DATABASE] Error in get_gpu_pods: {str(e)}")
+        return jsonify({
+            'items': [],
+            'source': 'error',
+            'message': f"Could not retrieve GPU pods: {str(e)}"
+        })
+
+# API endpoint for namespace metrics
+@app.route('/api/namespace-metrics')
+def get_namespace_metrics_api():
+    try:
+        metric_type = request.args.get('metric_type', 'gpu')
+        
+        # Get data from database
+        db = get_db()
+        
+        # Check if we should force refresh
+        refresh = request.args.get('refresh', 'false').lower() == 'true'
+        
+        if refresh:
+            try:
+                fetch_k8s_data('pods')
+                fetch_k8s_data('namespaces')
+                db.update_namespace_metrics()
+            except Exception as e:
+                print(f"[DATABASE] Error during metrics refresh: {str(e)}")
+                # Continue anyway
+        
+        metrics = db.get_namespace_metrics(metric_type)
+        return jsonify({'items': metrics, 'source': 'database'})
+    except Exception as e:
+        # Return empty metrics instead of error
+        print(f"[DATABASE] Error in namespace metrics: {str(e)}")
+        return jsonify({
+            'items': [],
+            'source': 'error',
+            'message': f"Could not retrieve namespace metrics: {str(e)}"
+        })
+
+@app.route('/metrics-test')
+def metrics_test():
+    """Test page for GPU pods and namespace metrics"""
+    return render_template('metrics_test.html')
 
 if __name__ == '__main__':
     # Initialize the database with a background thread

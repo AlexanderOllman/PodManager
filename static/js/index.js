@@ -5306,6 +5306,21 @@ function setupResourceInfiniteScroll(resourceType) {
                         return response.json();
                     })
                     .then(data => {
+                        console.log(`[FRONTEND] Received more ${resourceType} data from infinite scroll`);
+                        
+                        // Check if data has source information
+                        if (data.source) {
+                            console.log(`[FRONTEND] Data source for infinite scroll: ${data.source}`);
+                        }
+                        
+                        // Log data size
+                        if (data.items) {
+                            console.log(`[FRONTEND] Received ${data.items.length} ${resourceType} items from infinite scroll`);
+                            if (data.totalCount) {
+                                console.log(`[FRONTEND] Total count for infinite scroll: ${data.totalCount}`);
+                            }
+                        }
+                        
                         processMoreResourceData(resourceType, data);
                     })
                     .catch(error => {
@@ -5329,13 +5344,44 @@ function setupResourceInfiniteScroll(resourceType) {
 
 // Process additional data loaded during scrolling
 function processMoreResourceData(resourceType, data) {
-    if (!data || !data.items) {
-        console.error(`Invalid data received for ${resourceType}`);
-        return;
-    }
-    
     const resourceState = window.app.state.resources[resourceType];
     if (!resourceState) return;
+    
+    // Check if we received error or empty data
+    if (!data || !data.items) {
+        console.error(`[FRONTEND] Invalid data received for ${resourceType} infinite scroll`);
+        
+        // Show error message in a toast or at the bottom of the table
+        const tableContainer = document.getElementById(`${resourceType}TableContainer`);
+        
+        // Create or get the error container
+        let errorContainer = tableContainer.querySelector('.infinite-scroll-error');
+        if (!errorContainer) {
+            errorContainer = document.createElement('div');
+            errorContainer.className = 'infinite-scroll-error alert alert-warning alert-dismissible fade show mt-3';
+            errorContainer.innerHTML = `
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <span>Error loading more data</span>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            tableContainer.appendChild(errorContainer);
+        }
+        
+        const errorMessage = errorContainer.querySelector('span');
+        if (data && data.message) {
+            errorMessage.textContent = `Error loading more data: ${data.message}`;
+        } else {
+            errorMessage.textContent = 'Could not load additional data. Please refresh the page.';
+        }
+        
+        // End infinite scrolling
+        resourceState.hasMoreItems = false;
+        resourceState.isLoading = false;
+        
+        // Hide loading indicator
+        hideInfiniteScrollLoading(resourceType);
+        return;
+    }
     
     // Add the new items to the existing items
     resourceState.items = resourceState.items.concat(data.items);
