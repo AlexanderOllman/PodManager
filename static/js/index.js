@@ -1683,10 +1683,16 @@ function fetchEvents(namespace) {
 function refreshApplication() {
     const refreshLog = document.getElementById('refreshLog');
     const statusDiv = document.getElementById('updateStatus');
+    const logContainer = document.getElementById('refreshLogContainer');
     
     if (!refreshLog || !statusDiv) {
         console.error('Required elements not found');
         return;
+    }
+    
+    // Show the log container
+    if (logContainer) {
+        logContainer.style.display = 'block';
     }
     
     // Clear the log
