@@ -2,4 +2,6 @@ flask
 requests
 gitpython
 flask-socketio
-psutil 
+psutil
+kubernetes
+python-dateutil 
