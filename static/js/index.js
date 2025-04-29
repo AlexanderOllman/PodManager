@@ -1683,16 +1683,10 @@ function fetchEvents(namespace) {
 function refreshApplication() {
     const refreshLog = document.getElementById('refreshLog');
     const statusDiv = document.getElementById('updateStatus');
-    const logContainer = document.getElementById('refreshLogContainer');
     
     if (!refreshLog || !statusDiv) {
         console.error('Required elements not found');
         return;
-    }
-    
-    // Show the log container
-    if (logContainer) {
-        logContainer.style.display = 'block';
     }
     
     // Clear the log
@@ -4814,48 +4808,52 @@ function renderCurrentPage(resourceType) {
     }, 100);
 }
 
-// Function to refresh the database cache
 function refreshDatabase() {
-    const statusDiv = document.getElementById('dbRefreshStatus');
+    const statusDiv = document.getElementById('databaseRefreshStatus');
     statusDiv.style.display = 'block';
+    statusDiv.innerHTML = `
+        <div class="alert alert-info">
+            <i class="fas fa-spinner fa-spin"></i> Refreshing database...
+        </div>
+    `;
 
     fetch('/api/refresh-database', {
-        method: 'POST'
+        method: 'POST',
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            Swal.fire({
-                icon: 'success',
-                title: 'Success',
-                text: 'Database cache has been refreshed successfully!',
-                showConfirmButton: false,
-                timer: 2000
-            }).then(() => {
-                // Refresh the current page data
-                if (window.app.state.navigation.activeTab === 'home') {
-                    initializeHomePage();
-                } else if (window.app.state.navigation.activeTab === 'resources') {
-                    refreshResourcesPage();
-                }
-            });
+            statusDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> ${data.message}
+                </div>
+            `;
+            // Refresh the current view
+            if (window.app.state.navigation.activeTab === 'home') {
+                initializeHomePage();
+            } else if (window.app.state.navigation.activeTab === 'resources') {
+                loadResourcesPage();
+            }
         } else {
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: data.error || 'Failed to refresh database cache'
-            });
+            statusDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle"></i> Error: ${data.error}
+                </div>
+            `;
         }
+        // Hide the status after 5 seconds
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 5000);
     })
     .catch(error => {
-        console.error('Error refreshing database:', error);
-        Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: 'Failed to refresh database cache. Please try again.'
-        });
-    })
-    .finally(() => {
-        statusDiv.style.display = 'none';
+        statusDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-circle"></i> Error: ${error}
+            </div>
+        `;
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 5000);
     });
 }
