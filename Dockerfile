@@ -4,7 +4,13 @@ FROM python:3.9-slim
 RUN apt-get update && apt-get install -y \
     curl \
     git \
-    kubectl \
+    apt-transport-https \
+    ca-certificates \
+    gnupg \
+    && curl -fsSLo /usr/share/keyrings/kubernetes-apt-keyring.gpg https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key \
+    && echo 'deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list \
+    && apt-get update \
+    && apt-get install -y kubectl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
