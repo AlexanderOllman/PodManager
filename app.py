@@ -69,49 +69,32 @@ def index():
 
 @app.route('/get_resources', methods=['POST'])
 def get_resources():
-    """Get Kubernetes resources based on type."""
+    """Get all Kubernetes resources of a given type from the database."""
     resource_type = request.form.get('resource_type')
     namespace = request.form.get('namespace', 'all')
-    critical_only = request.form.get('critical_only', 'false').lower() == 'true'
+    # critical_only = request.form.get('critical_only', 'false').lower() == 'true' # Keep if needed later
     
-    # Add pagination parameters
-    page = int(request.form.get('page', 1))
-    page_size = int(request.form.get('page_size', 50))
-    count_only = request.form.get('count_only', 'false').lower() == 'true'
+    # Remove pagination parameters
+    # page = int(request.form.get('page', 1))
+    # page_size = int(request.form.get('page_size', 50))
+    # count_only = request.form.get('count_only', 'false').lower() == 'true'
     
     if not resource_type:
-        return jsonify(error="Resource type is required")
+        return jsonify(error="Resource type is required"), 400
     
     try:
-        # Get resources from database
+        # Get all resources from database matching the type and namespace
         if namespace and namespace != 'all':
             resources = db.get_resources(resource_type, namespace)
         else:
             resources = db.get_resources(resource_type)
         
-        # If count_only is true, just return the count
-        if count_only:
-            return jsonify(data={"totalCount": len(resources)})
-        
-        # Apply pagination
-        total_count = len(resources)
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_resources = resources[start_idx:end_idx]
-        
-        # Add pagination metadata
-        paginated_data = {
-            'totalCount': total_count,
-            'page': page,
-            'pageSize': page_size,
-            'totalPages': (total_count + page_size - 1) // page_size,
-            'items': paginated_resources
-        }
-        
-        return jsonify(data=paginated_data)
+        # Return the full list directly
+        return jsonify(data=resources)
+    
     except Exception as e:
-        logging.error(f"Error getting resources: {str(e)}")
-        return jsonify(error=f"Failed to get {resource_type}: {str(e)}")
+        logging.error(f"Error getting all resources for {resource_type}: {str(e)}")
+        return jsonify(error=f"Failed to get {resource_type}: {str(e)}"), 500
 
 @app.route('/run_action', methods=['POST'])
 def run_action():
