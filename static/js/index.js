@@ -988,10 +988,10 @@ function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false
     }
 
     showLoading(resourceType);
-
+    
     const formData = new FormData();
     formData.append('resource_type', resourceType);
-    formData.append('namespace', namespace);
+        formData.append('namespace', namespace);
     if (criticalOnly) {
         formData.append('critical_only', 'true');
     }
@@ -1005,20 +1005,20 @@ function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false
 
     const controller = new AbortController();
     window.app.state.activeRequests.set(resourceType, controller);
-
-    return fetch('/get_resources', {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal
-    })
-    .then(response => {
+        
+        return fetch('/get_resources', {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal
+        })
+        .then(response => {
         window.app.state.activeRequests.delete(resourceType); // Remove from active requests
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        return response.json();
-    })
-    .then(data => {
+            return response.json();
+        })
+        .then(data => {
         if (data.error) {
             throw new Error(data.error);
         }
@@ -1029,13 +1029,13 @@ function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false
         window.app.cache.lastFetch[cacheKey] = Date.now();
         // Call the new combined processing/rendering function
         processAndRenderAllResources(resourceType, fullResourceList); 
-    })
-    .catch(error => {
-        if (error.name === 'AbortError') {
+        })
+        .catch(error => {
+            if (error.name === 'AbortError') {
             console.log(`Fetch aborted for ${resourceType}`);
         } else {
             console.error(`Error fetching ${resourceType}:`, error);
-            hideLoading(resourceType);
+                hideLoading(resourceType);
             // Display error to user in the table area
             const tableBody = document.getElementById(`${resourceType}TableBody`);
             if (tableBody) {
@@ -1227,7 +1227,7 @@ function searchResources() {
         console.error('Resource table body not found for search');
         return;
     }
-
+    
     if (window.app.cache.resources[cacheKey]) {
         const allResources = window.app.cache.resources[cacheKey];
         const filteredResources = allResources.filter(item => {
@@ -1263,7 +1263,7 @@ function getResourceUsage(item) {
             let memVal = 0;
             let gpuVal = 0;
 
-            item.spec.containers.forEach(container => {
+        item.spec.containers.forEach(container => {
                 const requests = container.resources?.requests || {};
                 // CPU (convert millicores)
                 if (requests.cpu) {
@@ -1395,7 +1395,7 @@ function updateDashboardMetrics(pods) {
                 if (requests.cpu) {
                      if (requests.cpu.endsWith('m')) {
                          totalCpuReq += parseInt(requests.cpu.slice(0, -1), 10);
-                     } else {
+                    } else {
                          totalCpuReq += parseInt(requests.cpu, 10) * 1000; // Convert cores to m cores
                      }
                 }
@@ -1439,7 +1439,7 @@ function updateDashboardMetrics(pods) {
          const cpuPercentage = ((totalCpuReq / 1000) / clusterCpuCapacity * 100).toFixed(1);
          if (cpuPercentageEl) cpuPercentageEl.textContent = cpuPercentage;
          if (cpuProgressEl) cpuProgressEl.style.width = `${Math.min(cpuPercentage, 100)}%`; // Cap at 100%
-     } else {
+    } else {
          if (cpuPercentageEl) cpuPercentageEl.textContent = '0.0';
          if (cpuProgressEl) cpuProgressEl.style.width = '0%';
          console.warn("Cluster CPU capacity is 0 or unknown, cannot calculate percentage.");
@@ -1458,4 +1458,201 @@ function updateDashboardMetrics(pods) {
     console.log(`Dashboard updated: Pods=${pods.length}, CPU=${(totalCpuReq/1000).toFixed(1)}/${clusterCpuCapacity}, GPU=${totalGpuReq}`);
 }
 
-// ... rest of index.js ...
+// Re-adding Application Refresh Functionality
+
+// Helper to add log messages to the refresh log
+function logMessage(refreshLog, message, status) {
+    if (!refreshLog) return;
+    
+    const logEntry = document.createElement('div');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    // Set class based on status
+    if (status === 'error') {
+        logEntry.className = 'text-danger';
+    } else if (status === 'warning') {
+        logEntry.className = 'text-warning';
+    } else if (status === 'success') {
+        logEntry.className = 'text-success';
+    } else {
+        logEntry.className = 'text-info'; // Default to info
+    }
+    
+    logEntry.innerHTML = `[${timestamp}] ${message}`;
+    refreshLog.appendChild(logEntry);
+    
+    // Auto-scroll to the bottom
+    refreshLog.scrollTop = refreshLog.scrollHeight;
+}
+
+// Function to poll and wait for application to restart
+function waitForApplicationRestart(statusDiv, refreshLog = null) {
+    const MAX_ATTEMPTS = 30; // Try for up to 30 seconds
+    let attempts = 0;
+    
+    // Update UI to show we're waiting
+    if (statusDiv) {
+        statusDiv.innerHTML = `
+            <div class="alert alert-info">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Waiting for application to restart...
+                </div>
+                <div class="progress mt-2" style="height: 5px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" style="width: 0%"></div>
+                </div>
+            </div>
+        `;
+    }
+    
+    if (refreshLog) {
+        logMessage(refreshLog, "Application is restarting. Waiting for it to come back online...", "info");
+    }
+    
+    // Set up polling
+    const checkServer = function() {
+        attempts++;
+        
+        // Update progress bar
+        if (statusDiv) {
+            const progressBar = statusDiv.querySelector('.progress-bar');
+            if (progressBar) {
+                progressBar.style.width = `${Math.min((attempts / MAX_ATTEMPTS) * 100, 100)}%`;
+            }
+        }
+        
+        // Try a lightweight request to check if server is back
+        fetch('/health_check', { 
+            method: 'GET',
+            headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        })
+        .then(response => {
+            if (response.ok) {
+                // Server is back online!
+                if (statusDiv) {
+                    statusDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i> Application restarted successfully!
+                        </div>
+                    `;
+                }
+                
+                if (refreshLog) {
+                    logMessage(refreshLog, "Application is back online! Refreshing page in 3 seconds...", "success");
+                }
+                
+                // Refresh the page after a short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
+            } else {
+                // Server responded but with an error
+                if (attempts < MAX_ATTEMPTS) {
+                    setTimeout(checkServer, 1000);
+                } else {
+                    handleTimeout();
+                }
+            }
+        })
+        .catch(error => {
+            // Server is still down, or network error
+            if (attempts < MAX_ATTEMPTS) {
+                setTimeout(checkServer, 1000);
+            } else {
+                handleTimeout();
+            }
+        });
+    };
+    
+    // Function to handle timeout case
+    const handleTimeout = function() {
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i> The application is taking longer than expected to restart.
+                    <button class="btn btn-sm btn-primary mt-2" onclick="window.location.reload()">
+                        Refresh Now
+                    </button>
+                </div>
+            `;
+        }
+        
+        if (refreshLog) {
+            logMessage(refreshLog, "Application is taking longer than expected to restart. You may need to refresh manually.", "warning");
+        }
+    };
+    
+    // Start polling after a short delay
+    setTimeout(checkServer, 2000);
+}
+
+// Application refresh function (for the refresh button in Settings)
+function refreshApplication() {
+    const refreshLog = document.getElementById('refreshLog');
+    const statusDiv = document.getElementById('updateStatus');
+    const logContainer = document.getElementById('refreshLogContainer');
+    
+    if (!refreshLog || !statusDiv || !logContainer) {
+        console.error('Required elements for application refresh not found (refreshLog, updateStatus, or refreshLogContainer)');
+        Swal.fire(
+            'UI Error',
+            'Could not find necessary elements to display refresh progress. Please check the console.',
+            'error'
+        );
+        return;
+    }
+    
+    // Make containers visible
+    logContainer.style.display = 'block'; 
+    statusDiv.style.display = 'block';
+
+    // Clear the log
+    refreshLog.innerHTML = '';
+    
+    // Add initial message
+    logMessage(refreshLog, 'Starting refresh process...', 'info');
+    
+    // Show initial status
+    statusDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Refreshing application...</div>';
+    
+    fetch('/refresh_application', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            repo_url: undefined // Placeholder, backend uses default or environment var
+        })
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        } else {
+            logMessage(refreshLog, 'Application restart initiated. Waiting for server to come back online...', 'info');
+            statusDiv.innerHTML = '<div class="alert alert-info">Application is restarting. Waiting for it to come back online...</div>';
+            waitForApplicationRestart(statusDiv, refreshLog);
+            throw new Error('restart_in_progress');
+        }
+    })
+    .then(data => {
+        if (data && data.status === 'success') {
+            logMessage(refreshLog, 'Refresh operation successful, application restart initiated.', 'success');
+            statusDiv.innerHTML = '<div class="alert alert-info">Application is restarting. Waiting for it to come back online...</div>';
+            waitForApplicationRestart(statusDiv, refreshLog);
+        } else if (data && data.error) {
+            logMessage(refreshLog, `Error: ${data.error}`, 'error');
+            statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Error: ${data.error}</div>`;
+        }
+    })
+    .catch(error => {
+        if (error.message !== 'restart_in_progress') {
+            console.error('Error:', error);
+            logMessage(refreshLog, `Error: ${error.message}`, 'error');
+            statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Error: ${error.message}</div>`;
+        }
+    });
+}
+
+// Ensure the DOMContentLoaded listener is the very last thing, 
+// or make sure these function definitions are placed before they are called.
