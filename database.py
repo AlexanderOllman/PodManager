@@ -53,27 +53,38 @@ class Database:
             raise
 
     def update_resource(self, resource_type: str, resources: List[Dict]) -> bool:
-        """Update or insert resource data."""
+        """Update or insert resource data, extracting name/namespace from metadata."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
+                updated_count = 0
                 for resource in resources:
+                    metadata = resource.get('metadata', {})
+                    namespace = metadata.get('namespace', 'default') # Default if missing, though unlikely for namespaced resources
+                    name = metadata.get('name')
+                    
+                    if not name:
+                        logging.warning(f"Skipping resource update due to missing name in metadata: {resource_type} / {namespace}")
+                        continue
+
                     cursor.execute('''
                         INSERT OR REPLACE INTO resources 
                         (resource_type, namespace, name, data, last_updated)
                         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
                     ''', (
                         resource_type,
-                        resource['namespace'],
-                        resource['name'],
-                        json.dumps(resource)
+                        namespace,
+                        name,
+                        json.dumps(resource) # Store the full resource dict
                     ))
+                    updated_count += 1
                 
                 conn.commit()
+                logging.info(f"Updated/Inserted {updated_count} {resource_type} resources.")
                 return True
         except Exception as e:
-            logging.error(f"Error updating resources: {str(e)}")
+            logging.error(f"Error updating resources for {resource_type}: {str(e)}")
             return False
 
     def get_resources(self, resource_type: str, namespace: Optional[str] = None) -> List[Dict]:
