@@ -4,6 +4,7 @@ import logging
 import time
 import threading
 from database import db
+from datetime import datetime, timezone # Added for age calculation
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,70 +23,96 @@ class KubernetesDataUpdater:
                                  capture_output=True, 
                                  text=True)
             if result.returncode == 0:
+                # Handle potential empty output for commands like get
+                if not result.stdout.strip():
+                    return {"items": []} 
                 return json.loads(result.stdout)
             else:
                 logger.error(f"kubectl command failed: {result.stderr}")
                 return {}
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding JSON from kubectl: {str(e)} - Output: {result.stdout[:500]}") # Log partial output
+            return {}
         except Exception as e:
             logger.error(f"Error running kubectl command: {str(e)}")
             return {}
 
+    def _get_age(self, creation_timestamp_str: str) -> str:
+        """Calculate age from creation timestamp string."""
+        try:
+            if not creation_timestamp_str:
+                return 'Unknown'
+            # Parse the timestamp (usually RFC3339 format from kubectl)
+            created_time = datetime.fromisoformat(creation_timestamp_str.replace('Z', '+00:00'))
+            current_time = datetime.now(timezone.utc)
+            delta = current_time - created_time
+            
+            if delta.days > 0:
+                return f"{delta.days}d"
+            elif delta.seconds >= 3600:
+                return f"{delta.seconds // 3600}h"
+            elif delta.seconds >= 60:
+                return f"{delta.seconds // 60}m"
+            else:
+                return f"{max(0, delta.seconds)}s" # Ensure non-negative age
+        except Exception as e:
+            logger.error(f"Error calculating age for {creation_timestamp_str}: {e}")
+            return 'Error'
+
     def _fetch_kubernetes_resources(self, resource_type: str) -> list:
-        """Fetch resources using kubectl."""
+        """Fetch resources using kubectl and add calculated age."""
         try:
             if resource_type == 'pods':
                 data = self.run_kubectl_command('get pods --all-namespaces')
-                return [{
-                    'namespace': pod['metadata']['namespace'],
-                    'name': pod['metadata']['name'],
-                    'status': pod['status']['phase'],
-                    'cpu': self._get_resource_requests(pod, 'cpu'),
-                    'gpu': self._get_resource_requests(pod, 'nvidia.com/gpu'),
-                    'memory': self._get_resource_requests(pod, 'memory'),
-                    'age': pod['metadata']['creationTimestamp']
-                } for pod in data.get('items', [])]
+                pods = data.get('items', [])
+                for pod in pods:
+                    pod['age'] = self._get_age(pod.get('metadata', {}).get('creationTimestamp'))
+                return pods
 
             elif resource_type == 'services':
                 data = self.run_kubectl_command('get services --all-namespaces')
-                return [{
-                    'namespace': svc['metadata']['namespace'],
-                    'name': svc['metadata']['name'],
-                    'type': svc['spec']['type'],
-                    'cluster_ip': svc['spec']['clusterIP'],
-                    'external_ip': svc['spec'].get('externalIPs', [None])[0],
-                    'ports': [{'port': port['port'], 'target_port': port['targetPort']} 
-                             for port in svc['spec']['ports']],
-                    'age': svc['metadata']['creationTimestamp']
-                } for svc in data.get('items', [])]
+                services = data.get('items', [])
+                for svc in services:
+                    svc['age'] = self._get_age(svc.get('metadata', {}).get('creationTimestamp'))
+                return services
+            
+            # Add other resource types here if needed, fetching raw data and adding age
 
-            return []
+            return [] # Return empty list if resource type not handled
         except Exception as e:
             logger.error(f"Error fetching {resource_type}: {str(e)}")
             return []
 
     def _get_resource_requests(self, pod: dict, resource_type: str) -> str:
         """Extract resource requests from pod spec."""
+        # This function might not be needed anymore if frontend calculates usage, 
+        # but keeping it for now in case background tasks use it later.
         try:
-            for container in pod['spec']['containers']:
-                if 'resources' in container and 'requests' in container['resources']:
-                    return container['resources']['requests'].get(resource_type, '0')
+            for container in pod.get('spec', {}).get('containers', []):
+                requests = container.get('resources', {}).get('requests', {})
+                if resource_type in requests:
+                    return requests[resource_type]
             return '0'
         except Exception:
             return '0'
 
     def _update_resources(self):
         """Update all resources in the database."""
-        resource_types = ['pods', 'services']
+        resource_types = ['pods', 'services'] # Add other types as needed
         
         for resource_type in resource_types:
             try:
                 resources = self._fetch_kubernetes_resources(resource_type)
                 if resources:
+                    # Pass the raw resource dictionaries (with added 'age') to the DB
                     success = db.update_resource(resource_type, resources)
                     if success:
                         logger.info(f"Successfully updated {len(resources)} {resource_type}")
                     else:
                         logger.error(f"Failed to update {resource_type} in database")
+                else:
+                    # Handle case where fetching might return empty list or None
+                    logger.info(f"No {resource_type} found or error fetching, skipping update.")
             except Exception as e:
                 logger.error(f"Error updating {resource_type}: {str(e)}")
 
