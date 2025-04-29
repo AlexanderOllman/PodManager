@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Settings</h2>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Resource Management</h5>
+        </div>
+        <div class="card-body">
+            <button id="refreshResourcesBtn" class="btn btn-primary mb-3">
+                <i class="fas fa-sync-alt"></i> Refresh Resources
+            </button>
+            <div id="refreshStatus" class="alert" style="display: none;"></div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Application Update</h5>
+        </div>
+        <div class="card-body">
+            <button id="updateBtn" class="btn btn-primary">
+                <i class="fas fa-cloud-download-alt"></i> Update Application
+            </button>
+            <div id="updateStatus" class="alert" style="display: none;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    // Refresh resources button handler
+    $('#refreshResourcesBtn').click(function() {
+        const btn = $(this);
+        const statusDiv = $('#refreshStatus');
+        
+        // Disable button and show loading state
+        btn.prop('disabled', true);
+        btn.html('<i class="fas fa-spinner fa-spin"></i> Refreshing...');
+        statusDiv.removeClass('alert-success alert-danger').hide();
+        
+        // Call the refresh API
+        $.ajax({
+            url: '/api/refresh-resources',
+            method: 'POST',
+            success: function(response) {
+                statusDiv.addClass('alert-success')
+                    .html('<i class="fas fa-check-circle"></i> ' + response.message)
+                    .show();
+            },
+            error: function(xhr) {
+                const message = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to refresh resources';
+                statusDiv.addClass('alert-danger')
+                    .html('<i class="fas fa-exclamation-circle"></i> ' + message)
+                    .show();
+            },
+            complete: function() {
+                // Reset button state
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-sync-alt"></i> Refresh Resources');
+            }
+        });
+    });
+
+    // Existing update button handler
+    $('#updateBtn').click(function() {
+        const btn = $(this);
+        const statusDiv = $('#updateStatus');
+        
+        btn.prop('disabled', true);
+        btn.html('<i class="fas fa-spinner fa-spin"></i> Updating...');
+        statusDiv.removeClass('alert-success alert-danger').hide();
+        
+        $.ajax({
+            url: '/update_from_github',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                repo_url: '{{ github_repo_url }}'
+            }),
+            success: function(response) {
+                if (response.status === 'success') {
+                    statusDiv.addClass('alert-success')
+                        .html('<i class="fas fa-check-circle"></i> ' + response.message)
+                        .show();
+                } else {
+                    statusDiv.addClass('alert-danger')
+                        .html('<i class="fas fa-exclamation-circle"></i> ' + response.message)
+                        .show();
+                }
+            },
+            error: function(xhr) {
+                statusDiv.addClass('alert-danger')
+                    .html('<i class="fas fa-exclamation-circle"></i> Failed to update application')
+                    .show();
+            },
+            complete: function() {
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-cloud-download-alt"></i> Update Application');
+            }
+        });
+    });
+});
+</script>
+{% endblock %} 

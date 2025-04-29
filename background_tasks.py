@@ -2,28 +2,48 @@ import threading
 import time
 import logging
 from typing import Dict, List
-import kubernetes.client
+import kubernetes
 from kubernetes.client import ApiClient
-from kubernetes.config import load_kube_config
 from database import db
 
 class KubernetesDataUpdater:
     def __init__(self, update_interval: int = 300):  # 5 minutes default
         self.update_interval = update_interval
-        self.running = False
-        self.thread = None
         self.api_client = None
-        self._initialize_kubernetes_client()
-
-    def _initialize_kubernetes_client(self):
-        """Initialize the Kubernetes client."""
+        self.stop_event = threading.Event()
+        
         try:
-            load_kube_config()
-            self.api_client = ApiClient()
-            logging.info("Kubernetes client initialized successfully")
-        except Exception as e:
-            logging.error(f"Error initializing Kubernetes client: {str(e)}")
-            self.api_client = None
+            kubernetes.config.load_incluster_config()
+        except kubernetes.config.ConfigException:
+            try:
+                kubernetes.config.load_kube_config()
+            except kubernetes.config.ConfigException:
+                logging.error("Could not configure kubernetes client")
+                return
+                
+        self.api_client = kubernetes.client.ApiClient()
+        logging.info("Kubernetes client initialized successfully")
+        
+        # Start the update thread
+        self.update_thread = threading.Thread(target=self._update_loop, daemon=True)
+        self.update_thread.start()
+        logging.info("Resource update thread started")
+
+    def _update_loop(self):
+        """Main update loop that runs periodically."""
+        while not self.stop_event.is_set():
+            try:
+                self._update_resources()
+            except Exception as e:
+                logging.error(f"Error in update loop: {str(e)}")
+            self.stop_event.wait(self.update_interval)
+
+    def stop(self):
+        """Stop the update thread."""
+        self.stop_event.set()
+        if self.update_thread.is_alive():
+            self.update_thread.join()
+            logging.info("Resource update thread stopped")
 
     def _fetch_kubernetes_resources(self, resource_type: str) -> List[Dict]:
         """Fetch resources from Kubernetes API."""
@@ -110,33 +130,6 @@ class KubernetesDataUpdater:
                         logging.error(f"Failed to update {resource_type} in database")
             except Exception as e:
                 logging.error(f"Error updating {resource_type}: {str(e)}")
-
-    def start(self):
-        """Start the background update thread."""
-        if self.running:
-            return
-
-        self.running = True
-        self.thread = threading.Thread(target=self._run)
-        self.thread.daemon = True
-        self.thread.start()
-        logging.info("Background updater started")
-
-    def stop(self):
-        """Stop the background update thread."""
-        self.running = False
-        if self.thread:
-            self.thread.join()
-        logging.info("Background updater stopped")
-
-    def _run(self):
-        """Main update loop."""
-        while self.running:
-            try:
-                self._update_resources()
-            except Exception as e:
-                logging.error(f"Error in background updater: {str(e)}")
-            time.sleep(self.update_interval)
 
 # Create a global instance
 updater = KubernetesDataUpdater() 
