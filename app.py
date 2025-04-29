@@ -11,6 +11,8 @@ import time
 import signal
 import atexit
 import psutil
+from database import db
+import logging
 
 # We'll check for git availability at runtime rather than import time
 git_available = False
@@ -67,104 +69,36 @@ def get_resources():
     if not resource_type:
         return jsonify(error="Resource type is required")
     
-    # Build kubectl command based on resource type and namespace
-    if namespace and namespace != 'all':
-        command = f"kubectl get {resource_type} -n {namespace} -o json"
-    else:
-        command = f"kubectl get {resource_type} --all-namespaces -o json"
-    
     try:
-        # If count_only is true, just return the count using field selectors to minimize data
+        # Get resources from database
+        if namespace and namespace != 'all':
+            resources = db.get_resources(resource_type, namespace)
+        else:
+            resources = db.get_resources(resource_type)
+        
+        # If count_only is true, just return the count
         if count_only:
-            # Use a more efficient way to get just the count
-            if namespace and namespace != 'all':
-                count_command = f"kubectl get {resource_type} -n {namespace} --no-headers | wc -l"
-            else:
-                count_command = f"kubectl get {resource_type} --all-namespaces --no-headers | wc -l"
-            
-            count_result = subprocess.run(count_command, shell=True, check=True, capture_output=True, text=True)
-            count = int(count_result.stdout.strip())
-            return jsonify(data={"totalCount": count})
+            return jsonify(data={"totalCount": len(resources)})
         
-        output = run_kubectl_command(command)
-        data = json.loads(output)
-        
-        # Get total count before pagination
-        total_count = len(data.get('items', []))
-        
-        # Apply pagination to limit memory usage
+        # Apply pagination
+        total_count = len(resources)
         start_idx = (page - 1) * page_size
         end_idx = start_idx + page_size
+        paginated_resources = resources[start_idx:end_idx]
         
         # Add pagination metadata
         paginated_data = {
             'totalCount': total_count,
             'page': page,
             'pageSize': page_size,
-            'totalPages': (total_count + page_size - 1) // page_size
+            'totalPages': (total_count + page_size - 1) // page_size,
+            'items': paginated_resources
         }
         
-        # Paginate the results
-        if 'items' in data:
-            # Slice the items for the current page
-            paginated_items = data['items'][start_idx:end_idx]
-            
-            # Preserve metadata
-            metadata = {k: v for k, v in data.items() if k != 'items'}
-            paginated_data.update(metadata)
-            
-            # For critical-only loads, strip out non-essential data
-            if critical_only:
-                for item in paginated_items:
-                    # Keep only essential metadata and status
-                    minimal_item = {
-                        'metadata': {
-                            'name': item['metadata'].get('name'),
-                            'namespace': item['metadata'].get('namespace'),
-                            'creationTimestamp': item['metadata'].get('creationTimestamp')
-                        },
-                        'status': {}
-                    }
-                    
-                    # Keep essential status fields based on resource type
-                    if resource_type == 'pods':
-                        minimal_item['status'] = {
-                            'phase': item['status'].get('phase'),
-                            'containerStatuses': [{
-                                'ready': status.get('ready'),
-                                'restartCount': status.get('restartCount'),
-                                'state': status.get('state')
-                            } for status in item['status'].get('containerStatuses', [])]
-                        }
-                        # Include spec data for pods to calculate resource usage
-                        minimal_item['spec'] = {
-                            'containers': [{
-                                'name': container.get('name'),
-                                'resources': container.get('resources', {})
-                            } for container in item.get('spec', {}).get('containers', [])]
-                        }
-                    elif resource_type == 'services':
-                        minimal_item['spec'] = {
-                            'type': item['spec'].get('type'),
-                            'clusterIP': item['spec'].get('clusterIP')
-                        }
-                    elif resource_type == 'deployments':
-                        minimal_item['status'] = {
-                            'replicas': item['status'].get('replicas'),
-                            'readyReplicas': item['status'].get('readyReplicas')
-                        }
-                    
-                    item.clear()
-                    item.update(minimal_item)
-            
-            # Update the items with the paginated subset
-            paginated_data['items'] = paginated_items
-        
         return jsonify(data=paginated_data)
-    except subprocess.CalledProcessError as e:
-        return jsonify(error=f"Failed to get {resource_type}: {e.stderr}")
-    except json.JSONDecodeError:
-        return jsonify(error=f"Invalid JSON response from kubectl")
+    except Exception as e:
+        logging.error(f"Error getting resources: {str(e)}")
+        return jsonify(error=f"Failed to get {resource_type}: {str(e)}")
 
 @app.route('/run_action', methods=['POST'])
 def run_action():
@@ -951,19 +885,15 @@ def get_gpu_pods():
     try:
         namespace = request.args.get('namespace')
         
-        # Get all pods
-        pods = []
+        # Get pods from database
         if namespace:
-            command = f"kubectl get pods -n {namespace} -o json"
+            pods = db.get_resources('pods', namespace)
         else:
-            command = "kubectl get pods --all-namespaces -o json"
-        
-        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-        pod_list = json.loads(result.stdout)
+            pods = db.get_resources('pods')
         
         # Filter pods that use GPU resources
         gpu_pods = []
-        for pod in pod_list.get('items', []):
+        for pod in pods:
             has_gpu = False
             gpu_count = 0
             
@@ -992,11 +922,8 @@ def get_gpu_pods():
         
         return jsonify(gpu_pods)
     
-    except subprocess.CalledProcessError as e:
-        app.logger.error(f"Error executing kubectl command: {e}")
-        return jsonify({"error": str(e)}), 500
     except Exception as e:
-        app.logger.error(f"Error fetching GPU pods: {e}")
+        logging.error(f"Error getting GPU pods: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/namespace-metrics', methods=['GET'])
@@ -1004,91 +931,24 @@ def get_namespace_metrics():
     try:
         metric_type = request.args.get('metric', 'gpu')
         
-        # Get all pods
-        command = "kubectl get pods --all-namespaces -o json"
-        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-        pod_list = json.loads(result.stdout)
+        # Get metrics from database
+        metrics = db.get_metrics(metric_type)
         
-        # Group pods by namespace and calculate resource usage
-        namespace_metrics = {}
-        
-        for pod in pod_list.get('items', []):
-            namespace = pod.get('metadata', {}).get('namespace', 'default')
-            
-            if namespace not in namespace_metrics:
-                namespace_metrics[namespace] = {
-                    'namespace': namespace,
-                    'pod_count': 0,
-                    'gpu_usage': 0,
-                    'cpu_usage': 0,
-                    'memory_usage': 0
-                }
-            
-            # Increment pod count
-            namespace_metrics[namespace]['pod_count'] += 1
-            
-            # Calculate resource usage from containers
-            for container in pod.get('spec', {}).get('containers', []):
-                resources = container.get('resources', {})
-                limits = resources.get('limits', {})
-                
-                # CPU
-                cpu = limits.get('cpu', '')
-                if cpu:
-                    cpu_cores = 0
-                    if cpu.endswith('m'):
-                        cpu_cores = float(cpu[:-1]) / 1000
-                    else:
-                        try:
-                            cpu_cores = float(cpu)
-                        except ValueError:
-                            pass
-                    namespace_metrics[namespace]['cpu_usage'] += cpu_cores
-                
-                # Memory
-                memory = limits.get('memory', '')
-                if memory:
-                    memory_bytes = 0
-                    if memory.endswith('Ki'):
-                        memory_bytes = float(memory[:-2]) * 1024
-                    elif memory.endswith('Mi'):
-                        memory_bytes = float(memory[:-2]) * 1024 * 1024
-                    elif memory.endswith('Gi'):
-                        memory_bytes = float(memory[:-2]) * 1024 * 1024 * 1024
-                    else:
-                        try:
-                            memory_bytes = float(memory)
-                        except ValueError:
-                            pass
-                    namespace_metrics[namespace]['memory_usage'] += memory_bytes
-                
-                # GPU
-                for resource_name, value in limits.items():
-                    if 'nvidia.com' in resource_name or 'gpu' in resource_name:
-                        try:
-                            namespace_metrics[namespace]['gpu_usage'] += int(value)
-                        except ValueError:
-                            pass
-        
-        # Convert to list and sort by the requested metric
-        metrics_list = list(namespace_metrics.values())
+        # Sort by the requested metric
         if metric_type == 'gpu':
-            metrics_list.sort(key=lambda x: x['gpu_usage'], reverse=True)
+            metrics.sort(key=lambda x: x.get('gpu_usage', 0), reverse=True)
         elif metric_type == 'cpu':
-            metrics_list.sort(key=lambda x: x['cpu_usage'], reverse=True)
+            metrics.sort(key=lambda x: x.get('cpu_usage', 0), reverse=True)
         elif metric_type == 'memory':
-            metrics_list.sort(key=lambda x: x['memory_usage'], reverse=True)
+            metrics.sort(key=lambda x: x.get('memory_usage', 0), reverse=True)
         
         # Return only namespaces with the relevant resource usage
-        filtered_metrics = [m for m in metrics_list if m[f'{metric_type}_usage'] > 0]
+        filtered_metrics = [m for m in metrics if m.get(f'{metric_type}_usage', 0) > 0]
         
         return jsonify(filtered_metrics[:10])  # Return top 10 namespaces
     
-    except subprocess.CalledProcessError as e:
-        app.logger.error(f"Error executing kubectl command: {e}")
-        return jsonify({"error": str(e)}), 500
     except Exception as e:
-        app.logger.error(f"Error calculating namespace metrics: {e}")
+        logging.error(f"Error getting namespace metrics: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/pods/delete', methods=['POST'])

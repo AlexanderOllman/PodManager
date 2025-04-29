@@ -1,0 +1,169 @@
+import sqlite3
+import json
+import logging
+from typing import Dict, List, Optional
+import os
+
+class Database:
+    def __init__(self, db_path: str = None):
+        # Get database path from environment variable or use default
+        self.db_path = db_path or os.environ.get('DB_PATH', 'kubernetes_cache.db')
+        self._initialize_database()
+
+    def _initialize_database(self):
+        """Initialize the database with required tables."""
+        try:
+            # Create directory if it doesn't exist
+            db_dir = os.path.dirname(self.db_path)
+            if db_dir:
+                os.makedirs(db_dir, exist_ok=True)
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Create resources table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS resources (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        resource_type TEXT NOT NULL,
+                        namespace TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        data TEXT NOT NULL,
+                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(resource_type, namespace, name)
+                    )
+                ''')
+                
+                # Create metrics table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS metrics (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        metric_type TEXT NOT NULL,
+                        namespace TEXT NOT NULL,
+                        data TEXT NOT NULL,
+                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(metric_type, namespace)
+                    )
+                ''')
+                
+                conn.commit()
+                logging.info(f"Database initialized successfully at {self.db_path}")
+        except Exception as e:
+            logging.error(f"Error initializing database: {str(e)}")
+            raise
+
+    def update_resource(self, resource_type: str, resources: List[Dict]) -> bool:
+        """Update or insert resource data."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                for resource in resources:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO resources 
+                        (resource_type, namespace, name, data, last_updated)
+                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ''', (
+                        resource_type,
+                        resource['namespace'],
+                        resource['name'],
+                        json.dumps(resource)
+                    ))
+                
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"Error updating resources: {str(e)}")
+            return False
+
+    def get_resources(self, resource_type: str, namespace: Optional[str] = None) -> List[Dict]:
+        """Retrieve resources from the database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                if namespace:
+                    cursor.execute('''
+                        SELECT data FROM resources 
+                        WHERE resource_type = ? AND namespace = ?
+                    ''', (resource_type, namespace))
+                else:
+                    cursor.execute('''
+                        SELECT data FROM resources 
+                        WHERE resource_type = ?
+                    ''', (resource_type,))
+                
+                results = cursor.fetchall()
+                return [json.loads(row[0]) for row in results]
+        except Exception as e:
+            logging.error(f"Error retrieving resources: {str(e)}")
+            return []
+
+    def update_metrics(self, metric_type: str, namespace: str, data: Dict) -> bool:
+        """Update or insert metrics data."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    INSERT OR REPLACE INTO metrics 
+                    (metric_type, namespace, data, last_updated)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (
+                    metric_type,
+                    namespace,
+                    json.dumps(data)
+                ))
+                
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"Error updating metrics: {str(e)}")
+            return False
+
+    def get_metrics(self, metric_type: str, namespace: Optional[str] = None) -> List[Dict]:
+        """Retrieve metrics from the database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                if namespace:
+                    cursor.execute('''
+                        SELECT data FROM metrics 
+                        WHERE metric_type = ? AND namespace = ?
+                    ''', (metric_type, namespace))
+                else:
+                    cursor.execute('''
+                        SELECT data FROM metrics 
+                        WHERE metric_type = ?
+                    ''', (metric_type,))
+                
+                results = cursor.fetchall()
+                return [json.loads(row[0]) for row in results]
+        except Exception as e:
+            logging.error(f"Error retrieving metrics: {str(e)}")
+            return []
+
+    def clear_old_data(self, days: int = 7):
+        """Clear data older than specified number of days."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    DELETE FROM resources 
+                    WHERE last_updated < datetime('now', ?)
+                ''', (f'-{days} days',))
+                
+                cursor.execute('''
+                    DELETE FROM metrics 
+                    WHERE last_updated < datetime('now', ?)
+                ''', (f'-{days} days',))
+                
+                conn.commit()
+                logging.info(f"Cleared data older than {days} days")
+        except Exception as e:
+            logging.error(f"Error clearing old data: {str(e)}")
+
+# Create a global instance
+db = Database() 

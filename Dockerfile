@@ -1,26 +1,35 @@
 FROM python:3.9-slim
 
-# Set the working directory in the container
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    kubectl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . /app
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install git and kubectl
-RUN apt-get update && \
-    apt-get install -y curl git && \
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
-    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
-    rm kubectl
+# Copy application code
+COPY . .
 
-# Install any needed dependencies specified in requirements.txt
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Create data directory for database
+RUN mkdir -p /data && chmod 777 /data
 
-# Define the GitHub repository URL
-ENV GITHUB_REPO_URL="https://github.com/AlexanderOllman/PodManager.git"
+# Initialize database
+RUN python init_db.py
 
-# Make port 80 available to the world outside this container
-EXPOSE 80
+# Set environment variables
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=production
+ENV DB_PATH=/data/kubernetes_cache.db
+
+# Expose port
 EXPOSE 8080
-# Run app.py when the container launches
-CMD ["python3", "app.py"]
+
+# Start the application
+CMD ["python", "app.py"]
