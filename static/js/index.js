@@ -4807,3 +4807,49 @@ function renderCurrentPage(resourceType) {
         });
     }, 100);
 }
+
+// Function to refresh the database cache
+function refreshDatabase() {
+    const statusDiv = document.getElementById('dbRefreshStatus');
+    statusDiv.style.display = 'block';
+
+    fetch('/api/refresh-database', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: 'Database cache has been refreshed successfully!',
+                showConfirmButton: false,
+                timer: 2000
+            }).then(() => {
+                // Refresh the current page data
+                if (window.app.state.navigation.activeTab === 'home') {
+                    initializeHomePage();
+                } else if (window.app.state.navigation.activeTab === 'resources') {
+                    refreshResourcesPage();
+                }
+            });
+        } else {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.error || 'Failed to refresh database cache'
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error refreshing database:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Failed to refresh database cache. Please try again.'
+        });
+    })
+    .finally(() => {
+        statusDiv.style.display = 'none';
+    });
+}

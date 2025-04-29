@@ -29,8 +29,12 @@ ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 ENV DB_PATH=/data/kubernetes_cache.db
 
+# Create startup script
+RUN echo '#!/bin/bash\npython background_tasks.py & python app.py' > start.sh && \
+    chmod +x start.sh
+
 # Expose port
 EXPOSE 8080
 
-# Start the application
-CMD ["python", "app.py"]
+# Start the application using the startup script
+CMD ["./start.sh"]

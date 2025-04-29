@@ -15,9 +15,6 @@ from database import db
 import logging
 from background_tasks import KubernetesDataUpdater
 
-# Initialize the background updater
-kubernetes_updater = KubernetesDataUpdater()
-
 # We'll check for git availability at runtime rather than import time
 git_available = False
 try:
@@ -978,29 +975,22 @@ def delete_pod():
         app.logger.error(f"Error deleting pod: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/refresh-resources', methods=['POST'])
-def refresh_resources():
-    """Manually trigger a refresh of Kubernetes resources."""
+@app.route('/api/refresh-database', methods=['POST'])
+def refresh_database():
+    """Manually trigger a database refresh."""
     try:
-        if kubernetes_updater:
-            kubernetes_updater._update_resources()
-            return jsonify({
-                'status': 'success',
-                'message': 'Resources refreshed successfully'
-            })
-        else:
-            return jsonify({
-                'status': 'error',
-                'message': 'Kubernetes updater not initialized'
-            }), 500
-    except Exception as e:
-        logging.error(f"Error refreshing resources: {str(e)}")
+        updater = KubernetesDataUpdater()
+        updater._update_resources()  # Force an immediate update
         return jsonify({
-            'status': 'error',
-            'message': str(e)
+            'success': True,
+            'message': 'Database refresh completed successfully'
+        })
+    except Exception as e:
+        logging.error(f"Error refreshing database: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
 
 if __name__ == '__main__':
-    # Start the background updater before running the app
-    kubernetes_updater.start()
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
