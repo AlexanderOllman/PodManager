@@ -134,8 +134,7 @@ function initializeApp() {
     initializeBootstrapComponents();
     
     // Initialize components that don't require special dependencies
-    fetchResourcesForAllTabs();
-    fetchClusterCapacity(); // Add this line to fetch cluster capacity on initialization
+    fetchClusterCapacity();
     checkGitAvailability();
     fetchNamespaces();
     setupDropZone();
@@ -1301,6 +1300,162 @@ function getResourceUsage(item) {
     }
 
     return { cpu, memory, gpu };
+}
+
+// --- Add fetchClusterCapacity function ---
+function fetchClusterCapacity() {
+    console.log("Fetching cluster capacity...");
+    fetch('/get_cluster_capacity')
+        .then(response => {
+            if (!response.ok) {
+                // Try to parse error from backend if possible
+                return response.json().then(errData => {
+                    throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("Cluster capacity data received:", data);
+            if (data.error) {
+                 throw new Error(data.error);
+            }
+            // Store capacity globally for percentage calculations
+            if (!window.app.state) window.app.state = {};
+            window.app.state.clusterCapacity = {
+                cpu: data.cpu || 0,
+                memory: data.memory || 0, // Memory in Gi
+                gpu: data.gpu || 0
+            };
+
+            // Update the UI elements that show TOTAL capacity
+            const cpuCapacityEl = document.getElementById('totalCPUCapacity');
+            if (cpuCapacityEl) {
+                cpuCapacityEl.textContent = data.cpu || '?';
+            }
+             // Update total GPU count card (if needed - updateDashboardMetrics might handle usage count)
+            const totalGpuEl = document.getElementById('totalGPUCount');
+             if (totalGpuEl && totalGpuEl.textContent === '-') { // Only set if not updated by pod count yet
+                 totalGpuEl.textContent = data.gpu || '0';
+             }
+
+            // Re-calculate dashboard metrics now that we have capacity
+             if (window.app.cache.resources['pods-all-full']) {
+                console.log("Re-updating dashboard metrics with new capacity info.");
+                 updateDashboardMetrics(window.app.cache.resources['pods-all-full']);
+             }
+
+        })
+        .catch(error => {
+            console.error('Error fetching cluster capacity:', error);
+            // Set fallback values in UI
+            const cpuCapacityEl = document.getElementById('totalCPUCapacity');
+             if (cpuCapacityEl) cpuCapacityEl.textContent = '?';
+            const totalGpuEl = document.getElementById('totalGPUCount');
+             if (totalGpuEl) totalGpuEl.textContent = '?';
+             const cpuPercentageEl = document.getElementById('totalCPUPercentage');
+             if (cpuPercentageEl) cpuPercentageEl.textContent = '?';
+             const cpuProgressEl = document.getElementById('cpuProgressBar');
+             if (cpuProgressEl) cpuProgressEl.style.width = '0%';
+
+            // Store fallback capacity
+             if (!window.app.state) window.app.state = {};
+            window.app.state.clusterCapacity = { cpu: 0, memory: 0, gpu: 0 };
+        });
+}
+
+// --- Modify updateDashboardMetrics to use stored capacity ---
+function updateDashboardMetrics(pods) {
+    console.log("Updating dashboard metrics with pod data:", pods);
+    if (!pods) {
+        console.warn("No pods data provided to updateDashboardMetrics");
+        return;
+    }
+
+    let running = 0, succeeded = 0, error = 0;
+    let totalCpuReq = 0; // in millicores
+    let totalMemReq = 0; // in Mi
+    let totalGpuReq = 0; // count
+
+    pods.forEach(pod => {
+        const phase = pod.status?.phase;
+        if (phase === 'Running' || phase === 'Pending') { // Count Pending as needing resources
+            running++;
+        } else if (phase === 'Succeeded') {
+            succeeded++;
+        } else if (phase === 'Failed' || phase === 'Unknown') {
+            error++;
+        }
+
+        // Calculate resource requests
+        if (pod.spec && pod.spec.containers) {
+            pod.spec.containers.forEach(container => {
+                const requests = container.resources?.requests || {};
+                // CPU
+                if (requests.cpu) {
+                     if (requests.cpu.endsWith('m')) {
+                         totalCpuReq += parseInt(requests.cpu.slice(0, -1), 10);
+                     } else {
+                         totalCpuReq += parseInt(requests.cpu, 10) * 1000; // Convert cores to m cores
+                     }
+                }
+                 // Memory (convert to Mi)
+                if (requests.memory) {
+                     if (requests.memory.endsWith('Ki')) {
+                         totalMemReq += parseInt(requests.memory.slice(0, -2)) / 1024;
+                     } else if (requests.memory.endsWith('Mi')) {
+                         totalMemReq += parseInt(requests.memory.slice(0, -2));
+                     } else if (requests.memory.endsWith('Gi')) {
+                         totalMemReq += parseInt(requests.memory.slice(0, -2)) * 1024;
+                     } // Add more units if needed (Ti, Pi, etc.) or handle raw bytes
+                }
+                // GPU
+                if (requests['nvidia.com/gpu']) {
+                    totalGpuReq += parseInt(requests['nvidia.com/gpu'], 10);
+                }
+            });
+        }
+    });
+
+    // Update Pod Counts
+    const totalPodsEl = document.getElementById('totalPodsCount');
+    if (totalPodsEl) totalPodsEl.textContent = pods.length;
+    const runningPodsEl = document.getElementById('runningPodsCount');
+    if (runningPodsEl) runningPodsEl.textContent = running;
+    const succeededPodsEl = document.getElementById('succeededPodsCount');
+    if (succeededPodsEl) succeededPodsEl.textContent = succeeded;
+    const errorPodsEl = document.getElementById('errorPodsCount');
+    if (errorPodsEl) errorPodsEl.textContent = error;
+
+    // Update CPU Usage Card (using stored total capacity)
+    const totalCpuCountEl = document.getElementById('totalCPUCount');
+    const cpuPercentageEl = document.getElementById('totalCPUPercentage');
+    const cpuProgressEl = document.getElementById('cpuProgressBar');
+    const clusterCpuCapacity = window.app.state?.clusterCapacity?.cpu || 0; // Get from stored state
+
+    if (totalCpuCountEl) totalCpuCountEl.textContent = (totalCpuReq / 1000).toFixed(1); // Display as cores
+
+     if (clusterCpuCapacity > 0) {
+         const cpuPercentage = ((totalCpuReq / 1000) / clusterCpuCapacity * 100).toFixed(1);
+         if (cpuPercentageEl) cpuPercentageEl.textContent = cpuPercentage;
+         if (cpuProgressEl) cpuProgressEl.style.width = `${Math.min(cpuPercentage, 100)}%`; // Cap at 100%
+     } else {
+         if (cpuPercentageEl) cpuPercentageEl.textContent = '0.0';
+         if (cpuProgressEl) cpuProgressEl.style.width = '0%';
+         console.warn("Cluster CPU capacity is 0 or unknown, cannot calculate percentage.");
+     }
+    // Update total capacity display (might already be set by fetchClusterCapacity)
+    const cpuCapacityEl = document.getElementById('totalCPUCapacity');
+    if (cpuCapacityEl && clusterCpuCapacity > 0) {
+         cpuCapacityEl.textContent = clusterCpuCapacity;
+    }
+
+
+    // Update GPU Resources Card (Show requested GPU count)
+    const totalGpuEl = document.getElementById('totalGPUCount');
+    if (totalGpuEl) totalGpuEl.textContent = totalGpuReq;
+
+    console.log(`Dashboard updated: Pods=${pods.length}, CPU=${(totalCpuReq/1000).toFixed(1)}/${clusterCpuCapacity}, GPU=${totalGpuReq}`);
 }
 
 // ... rest of index.js ...
