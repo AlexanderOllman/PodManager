@@ -14,10 +14,42 @@ import psutil
 from database import db
 import logging
 from background_tasks import KubernetesDataUpdater
+from kubernetes import client, config
+from kubernetes.client import ApiClient
+from kubernetes.config import load_kube_config, load_incluster_config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize Kubernetes client
+def initialize_kubernetes_client():
+    """Initialize the Kubernetes client with in-cluster or kubeconfig."""
+    try:
+        # Try in-cluster config first (when running in a pod)
+        try:
+            load_incluster_config()
+            logger.info("Initialized Kubernetes client using in-cluster config")
+        except config.ConfigException:
+            # Fall back to kubeconfig
+            load_kube_config()
+            logger.info("Initialized Kubernetes client using kubeconfig file")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error initializing Kubernetes client: {str(e)}")
+        return False
+
+# Initialize the client at startup
+has_kubernetes_access = initialize_kubernetes_client()
+
+def run_k8s_command(api_func, *args, **kwargs):
+    """Execute a Kubernetes API function with proper error handling."""
+    try:
+        return api_func(*args, **kwargs)
+    except Exception as e:
+        logger.error(f"Error executing Kubernetes API call: {str(e)}")
+        return None
 
 # We'll check for git availability at runtime rather than import time
 git_available = False
@@ -26,32 +58,6 @@ try:
     git_available = True
 except ImportError:
     logger.warning("Git module could not be imported. GitHub update functionality will be disabled.")
-
-def check_kubernetes_access():
-    """Check if we have access to Kubernetes cluster."""
-    try:
-        result = subprocess.run(
-            ["kubectl", "cluster-info"], 
-            capture_output=True, 
-            text=True
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
-
-def run_kubectl_command(command, check_access=True):
-    """Run a kubectl command with proper error handling."""
-    if check_access and not check_kubernetes_access():
-        return "Error: No Kubernetes access available. Using cached data where possible."
-    
-    try:
-        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return result.stdout.decode('utf-8')
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode('utf-8')
-        if "Invalid kube-config file" in error_msg:
-            return "Error: Invalid or missing kubeconfig. Using cached data where possible."
-        return f"Error: {error_msg}"
 
 app = Flask(__name__)
 # Configure SocketIO with enhanced settings for reliability
@@ -75,15 +81,7 @@ socketio = SocketIO(
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
 
 # Check and store initial Kubernetes access status
-has_kubernetes_access = check_kubernetes_access()
 logger.info(f"Initial Kubernetes access status: {'Available' if has_kubernetes_access else 'Not available'}")
-
-def run_kubectl_command(command):
-    try:
-        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return result.stdout.decode('utf-8')
-    except subprocess.CalledProcessError as e:
-        return f"Error: {e.stderr.decode('utf-8')}"
 
 @app.route('/')
 def index():
@@ -199,114 +197,84 @@ def upload_yaml():
 
 @app.route('/get_namespaces', methods=['GET'])
 def get_namespaces():
-    command = "kubectl get namespaces -o json"
-    output = run_kubectl_command(command)
-    
     try:
-        namespaces = json.loads(output)
-        # Extract just the namespace names for simplicity
-        namespace_names = [ns['metadata']['name'] for ns in namespaces.get('items', [])]
-        return jsonify(namespaces=namespace_names)
-    except json.JSONDecodeError:
+        v1 = client.CoreV1Api()
+        namespaces = run_k8s_command(v1.list_namespace)
+        if namespaces:
+            namespace_names = [ns.metadata.name for ns in namespaces.items]
+            return jsonify(namespaces=namespace_names)
         return jsonify(namespaces=[], error="Unable to fetch namespaces")
+    except Exception as e:
+        logger.error(f"Error fetching namespaces: {str(e)}")
+        return jsonify(namespaces=[], error=str(e))
 
 @app.route('/get_namespace_details', methods=['GET'])
 def get_namespace_details():
     """Get detailed information about all namespaces including resource usage."""
-    # Get all namespaces
-    ns_command = "kubectl get namespaces -o json"
-    ns_output = run_kubectl_command(ns_command)
-    
     try:
-        namespaces_data = json.loads(ns_output)
-        namespaces = []
+        v1 = client.CoreV1Api()
+        namespaces = run_k8s_command(v1.list_namespace)
+        if not namespaces:
+            return jsonify(namespaces=[], error="Unable to fetch namespaces")
+
+        namespace_details = []
+        for ns in namespaces.items:
+            namespace_name = ns.metadata.name
+            
+            # Get pods in namespace
+            pods = run_k8s_command(v1.list_namespaced_pod, namespace_name)
+            if not pods:
+                continue
+                
+            # Calculate resource usage
+            cpu_usage = 0
+            gpu_usage = 0
+            memory_usage = 0
+            
+            for pod in pods.items:
+                if pod.spec.containers:
+                    for container in pod.spec.containers:
+                        if container.resources and container.resources.requests:
+                            cpu_req = container.resources.requests.get('cpu', '0')
+                            memory_req = container.resources.requests.get('memory', '0')
+                            gpu_req = container.resources.requests.get('nvidia.com/gpu', '0')
+                            
+                            # Convert CPU millicores to cores
+                            if isinstance(cpu_req, str) and cpu_req.endswith('m'):
+                                cpu_usage += int(cpu_req[:-1]) / 1000
+                            else:
+                                try:
+                                    cpu_usage += float(cpu_req)
+                                except ValueError:
+                                    pass
+                            
+                            # Convert memory to Mi
+                            if isinstance(memory_req, str):
+                                if memory_req.endswith('Ki'):
+                                    memory_usage += int(memory_req[:-2]) / 1024
+                                elif memory_req.endswith('Mi'):
+                                    memory_usage += int(memory_req[:-2])
+                                elif memory_req.endswith('Gi'):
+                                    memory_usage += int(memory_req[:-2]) * 1024
+                            
+                            # Add GPU usage
+                            try:
+                                gpu_usage += int(gpu_req)
+                            except ValueError:
+                                pass
+            
+            namespace_details.append({
+                'name': namespace_name,
+                'pod_count': len(pods.items),
+                'cpu_usage': round(cpu_usage, 2),
+                'memory_usage': round(memory_usage, 2),
+                'gpu_usage': gpu_usage
+            })
         
-        # For each namespace, get pod count and resource usage
-        for ns in namespaces_data['items']:
-            namespace_name = ns['metadata']['name']
-            
-            # Get pod count
-            pod_command = f"kubectl get pods -n {namespace_name} -o json"
-            pod_output = run_kubectl_command(pod_command)
-            
-            try:
-                pods_data = json.loads(pod_output)
-                pod_count = len(pods_data['items'])
-                
-                # Calculate resource usage
-                cpu_usage = 0
-                gpu_usage = 0
-                memory_usage = 0
-                
-                for pod in pods_data['items']:
-                    if 'containers' in pod.get('spec', {}):
-                        for container in pod['spec']['containers']:
-                            if 'resources' in container and 'requests' in container['resources']:
-                                requests = container['resources']['requests']
-                                
-                                # CPU usage
-                                if 'cpu' in requests:
-                                    cpu_req = requests['cpu']
-                                    # Convert to numeric value
-                                    if cpu_req.endswith('m'):
-                                        cpu_usage += float(cpu_req[:-1]) / 1000
-                                    else:
-                                        try:
-                                            cpu_usage += float(cpu_req)
-                                        except ValueError:
-                                            pass
-                                
-                                # Memory usage
-                                if 'memory' in requests:
-                                    mem_req = requests['memory']
-                                    # Convert to MB for display
-                                    if mem_req.endswith('Mi'):
-                                        memory_usage += float(mem_req[:-2])
-                                    elif mem_req.endswith('Gi'):
-                                        memory_usage += float(mem_req[:-2]) * 1024
-                                    elif mem_req.endswith('Ki'):
-                                        memory_usage += float(mem_req[:-2]) / 1024
-                                    else:
-                                        try:
-                                            # Assume bytes if no unit
-                                            memory_usage += float(mem_req) / (1024 * 1024)
-                                        except ValueError:
-                                            pass
-                                
-                                # GPU usage
-                                if 'nvidia.com/gpu' in requests:
-                                    try:
-                                        gpu_usage += float(requests['nvidia.com/gpu'])
-                                    except ValueError:
-                                        pass
-                
-                # Format the resource usage for display
-                namespace_info = {
-                    'name': namespace_name,
-                    'podCount': pod_count,
-                    'resources': {
-                        'cpu': round(cpu_usage, 2),
-                        'gpu': round(gpu_usage, 2),
-                        'memory': round(memory_usage, 2)  # Memory in MB
-                    },
-                    'metadata': ns.get('metadata', {})
-                }
-                
-                namespaces.append(namespace_info)
-                
-            except json.JSONDecodeError:
-                # If we can't get pod data, still include the namespace with zero counts
-                namespaces.append({
-                    'name': namespace_name,
-                    'podCount': 0,
-                    'resources': {'cpu': 0, 'gpu': 0, 'memory': 0},
-                    'metadata': ns.get('metadata', {})
-                })
-                
-        return jsonify(namespaces=namespaces)
-    
-    except json.JSONDecodeError:
-        return jsonify(error="Unable to fetch namespace details")
+        return jsonify(namespaces=namespace_details)
+    except Exception as e:
+        logger.error(f"Error fetching namespace details: {str(e)}")
+        return jsonify(namespaces=[], error=str(e))
 
 @app.route('/api/namespace/describe', methods=['POST'])
 def api_namespace_describe():
@@ -490,11 +458,16 @@ def api_pod_logs():
         if not namespace or not pod_name:
             return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
             
-        command = f"kubectl logs {pod_name} -n {namespace} --tail={tail_lines}"
-        output = run_kubectl_command(command)
-        return jsonify({"output": output})
+        v1 = client.CoreV1Api()
+        logs = run_k8s_command(
+            v1.read_namespaced_pod_log,
+            name=pod_name,
+            namespace=namespace,
+            tail_lines=int(tail_lines)
+        )
+        return jsonify({"output": logs if logs else ""})
     except Exception as e:
-        app.logger.error(f"Error in api_pod_logs: {str(e)}")
+        logger.error(f"Error in api_pod_logs: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/pod/exec', methods=['POST'])
@@ -536,73 +509,31 @@ def api_pod_details():
         if not namespace or not pod_name:
             return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
         
-        # Fetch the pod details using kubectl
-        command = f"kubectl get pod {pod_name} -n {namespace} -o json"
-        output = run_kubectl_command(command)
+        v1 = client.CoreV1Api()
+        pod = run_k8s_command(v1.read_namespaced_pod, name=pod_name, namespace=namespace)
+        if not pod:
+            return jsonify({"error": "Pod not found"}), 404
+            
+        # Extract the relevant fields
+        pod_details = {
+            'name': pod.metadata.name,
+            'namespace': pod.metadata.namespace,
+            'creation_timestamp': pod.metadata.creation_timestamp.isoformat() if pod.metadata.creation_timestamp else '',
+            'pod_ip': pod.status.pod_ip if pod.status else '',
+            'node': pod.spec.node_name if pod.spec else '',
+            'status': pod.status.phase if pod.status else '',
+            'labels': pod.metadata.labels or {},
+            'annotations': pod.metadata.annotations or {}
+        }
         
-        try:
-            pod_data = json.loads(output)
-            
-            # Extract the relevant fields
-            pod_details = {
-                'name': pod_data.get('metadata', {}).get('name', ''),
-                'namespace': pod_data.get('metadata', {}).get('namespace', ''),
-                'creation_timestamp': pod_data.get('metadata', {}).get('creationTimestamp', ''),
-                'pod_ip': pod_data.get('status', {}).get('podIP', ''),
-                'node': pod_data.get('spec', {}).get('nodeName', ''),
-                'status': pod_data.get('status', {}).get('phase', ''),
-                'labels': pod_data.get('metadata', {}).get('labels', {}),
-                'annotations': pod_data.get('metadata', {}).get('annotations', {})
-            }
-            
-            # Calculate ready containers count
-            containers = pod_data.get('spec', {}).get('containers', [])
-            total_containers = len(containers)
-            
-            # Check container statuses
-            container_statuses = pod_data.get('status', {}).get('containerStatuses', [])
-            ready_containers = sum(1 for status in container_statuses if status.get('ready', False))
-            pod_details['ready'] = f"{ready_containers}/{total_containers}"
-            
-            # Calculate restarts
-            restart_count = sum(status.get('restartCount', 0) for status in container_statuses)
-            pod_details['restarts'] = str(restart_count)
-            
-            # Calculate age
-            if pod_details['creation_timestamp']:
-                from datetime import datetime, timezone
-                created_time = datetime.fromisoformat(pod_details['creation_timestamp'].replace('Z', '+00:00'))
-                current_time = datetime.now(timezone.utc)
-                delta = current_time - created_time
-                
-                if delta.days > 0:
-                    age = f"{delta.days}d"
-                elif delta.seconds >= 3600:
-                    age = f"{delta.seconds // 3600}h"
-                elif delta.seconds >= 60:
-                    age = f"{delta.seconds // 60}m"
-                else:
-                    age = f"{delta.seconds}s"
-                    
-                pod_details['age'] = age
-            
-            # Extract container information including resource requests and limits
-            pod_details['containers'] = []
-            for container in containers:
-                container_info = {
-                    'name': container.get('name', ''),
-                    'image': container.get('image', ''),
-                    'resources': container.get('resources', {})
-                }
-                pod_details['containers'].append(container_info)
-            
-            return jsonify(pod_details)
-            
-        except json.JSONDecodeError:
-            return jsonify({"error": "Unable to parse pod details"}), 500
-            
+        # Calculate ready containers count
+        total_containers = len(pod.spec.containers)
+        ready_containers = sum(1 for status in (pod.status.container_statuses or []) if status.ready)
+        pod_details['ready'] = f"{ready_containers}/{total_containers}"
+        
+        return jsonify(pod_details)
     except Exception as e:
-        app.logger.error(f"Error in api_pod_details: {str(e)}")
+        logger.error(f"Error in api_pod_details: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/git_status', methods=['GET'])
@@ -682,67 +613,65 @@ def health_check():
 
 @app.route('/get_cluster_capacity', methods=['GET'])
 def get_cluster_capacity():
-    """
-    Get the total capacity of the Kubernetes cluster
-    Returns CPU cores, memory in Gi, and GPU count
-    """
+    """Get the total capacity of the Kubernetes cluster."""
     try:
-        # Get nodes information
-        command = "kubectl get nodes -o json"
-        output = run_kubectl_command(command)
-        nodes_data = json.loads(output)
-        
+        v1 = client.CoreV1Api()
+        nodes = run_k8s_command(v1.list_node)
+        if not nodes:
+            return jsonify({"error": "Unable to fetch nodes"}), 500
+            
         total_cpu = 0
         total_memory_ki = 0
         total_gpu = 0
         
-        # Sum up allocatable resources from all nodes
-        for node in nodes_data.get("items", []):
-            allocatable = node.get("status", {}).get("allocatable", {})
+        for node in nodes.items:
+            allocatable = node.status.allocatable if node.status else {}
             
-            # CPU - convert from Kubernetes format (can be in cores or millicores)
-            cpu_str = allocatable.get("cpu", "0")
-            if cpu_str.endswith('m'):
-                # Convert millicores to cores
+            # CPU
+            cpu_str = allocatable.get('cpu', '0')
+            if isinstance(cpu_str, str) and cpu_str.endswith('m'):
                 total_cpu += int(cpu_str[:-1]) / 1000
             else:
-                total_cpu += int(cpu_str)
+                try:
+                    total_cpu += float(cpu_str)
+                except (ValueError, TypeError):
+                    pass
             
-            # Memory - convert from Kubernetes format (usually in Ki)
-            memory_str = allocatable.get("memory", "0")
-            if memory_str.endswith('Ki'):
-                total_memory_ki += int(memory_str[:-2])
-            elif memory_str.endswith('Mi'):
-                total_memory_ki += int(memory_str[:-2]) * 1024
-            elif memory_str.endswith('Gi'):
-                total_memory_ki += int(memory_str[:-2]) * 1024 * 1024
+            # Memory
+            memory_str = allocatable.get('memory', '0')
+            if isinstance(memory_str, str):
+                if memory_str.endswith('Ki'):
+                    total_memory_ki += int(memory_str[:-2])
+                elif memory_str.endswith('Mi'):
+                    total_memory_ki += int(memory_str[:-2]) * 1024
+                elif memory_str.endswith('Gi'):
+                    total_memory_ki += int(memory_str[:-2]) * 1024 * 1024
             
-            # GPU - look for NVIDIA GPUs or any custom GPU resource
-            gpu_count = allocatable.get("nvidia.com/gpu", 0)
-            if gpu_count:
+            # GPU
+            gpu_count = allocatable.get('nvidia.com/gpu', '0')
+            try:
                 total_gpu += int(gpu_count)
+            except (ValueError, TypeError):
+                pass
             
-            # Also check for generic 'gpu' resource
-            generic_gpu = allocatable.get("gpu", 0)
-            if generic_gpu:
+            # Check for generic GPU resource
+            generic_gpu = allocatable.get('gpu', '0')
+            try:
                 total_gpu += int(generic_gpu)
+            except (ValueError, TypeError):
+                pass
         
         # Convert memory to Gi for easier display
         total_memory_gi = round(total_memory_ki / (1024 * 1024), 1)
         
         return jsonify({
-            "cpu": round(total_cpu, 1),
-            "memory": total_memory_gi,
-            "gpu": total_gpu
+            'cpu_cores': round(total_cpu, 1),
+            'memory_gi': total_memory_gi,
+            'gpu_count': total_gpu
         })
     except Exception as e:
-        app.logger.error(f"Error getting cluster capacity: {str(e)}")
-        return jsonify({
-            "cpu": 256,  # Default fallback
-            "memory": 1024,
-            "gpu": 0,
-            "error": str(e)
-        }), 500
+        logger.error(f"Error getting cluster capacity: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @socketio.on('connect')
 def handle_connect():
@@ -995,18 +924,19 @@ def delete_pod():
         if not namespace or not name:
             return jsonify({"error": "Namespace and pod name are required"}), 400
         
-        # Execute kubectl delete command
-        command = f"kubectl delete pod {name} -n {namespace}"
-        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+        v1 = client.CoreV1Api()
+        result = run_k8s_command(
+            v1.delete_namespaced_pod,
+            name=name,
+            namespace=namespace
+        )
         
-        return jsonify({"success": True, "message": f"Pod {name} deleted successfully"})
-    
-    except subprocess.CalledProcessError as e:
-        app.logger.error(f"Error deleting pod: {e}")
-        error_message = e.stderr if e.stderr else str(e)
-        return jsonify({"error": error_message}), 500
+        if result:
+            return jsonify({"success": True, "message": f"Pod {name} deleted successfully"})
+        return jsonify({"error": "Failed to delete pod"}), 500
+        
     except Exception as e:
-        app.logger.error(f"Error deleting pod: {e}")
+        logger.error(f"Error deleting pod: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/refresh-database', methods=['POST'])

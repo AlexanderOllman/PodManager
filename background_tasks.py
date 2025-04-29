@@ -4,7 +4,7 @@ import logging
 from typing import Dict, List
 import kubernetes.client
 from kubernetes.client import ApiClient
-from kubernetes.config import load_kube_config
+from kubernetes.config import load_kube_config, load_incluster_config
 from database import db
 
 class KubernetesDataUpdater:
@@ -18,7 +18,15 @@ class KubernetesDataUpdater:
     def _initialize_kubernetes_client(self):
         """Initialize the Kubernetes client."""
         try:
-            load_kube_config()
+            # Try in-cluster config first (when running in a pod)
+            try:
+                load_incluster_config()
+                logging.info("Initialized Kubernetes client using in-cluster config")
+            except kubernetes.config.ConfigException:
+                # Fall back to kubeconfig file
+                load_kube_config()
+                logging.info("Initialized Kubernetes client using kubeconfig file")
+            
             self.api_client = ApiClient()
             logging.info("Kubernetes client initialized successfully")
         except Exception as e:
