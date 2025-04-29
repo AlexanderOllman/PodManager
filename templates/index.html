@@ -5,10 +5,26 @@
 {% block additional_styles %}
 <style>
     /* Any page-specific styles that aren't included in main.css */
+    .k8s-warning {
+        margin: 10px 20px;
+        padding: 10px 15px;
+        border-radius: 4px;
+        background-color: #fff3cd;
+        border: 1px solid #ffeeba;
+        color: #856404;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+{% if not has_kubernetes_access %}
+<div class="k8s-warning">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <strong>Limited Functionality:</strong> No direct Kubernetes access available. Using cached data where possible.
+    Some features like the interactive terminal and real-time updates may be disabled.
+</div>
+{% endif %}
+
 <div class="tab-content" id="mainContent">
     <div class="tab-pane fade show active" id="home" role="tabpanel" aria-labelledby="home-tab">
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">

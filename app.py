@@ -15,13 +15,43 @@ from database import db
 import logging
 from background_tasks import KubernetesDataUpdater
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # We'll check for git availability at runtime rather than import time
 git_available = False
 try:
     import git
     git_available = True
 except ImportError:
-    print("Git module could not be imported. GitHub update functionality will be disabled.")
+    logger.warning("Git module could not be imported. GitHub update functionality will be disabled.")
+
+def check_kubernetes_access():
+    """Check if we have access to Kubernetes cluster."""
+    try:
+        result = subprocess.run(
+            ["kubectl", "cluster-info"], 
+            capture_output=True, 
+            text=True
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+def run_kubectl_command(command, check_access=True):
+    """Run a kubectl command with proper error handling."""
+    if check_access and not check_kubernetes_access():
+        return "Error: No Kubernetes access available. Using cached data where possible."
+    
+    try:
+        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return result.stdout.decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode('utf-8')
+        if "Invalid kube-config file" in error_msg:
+            return "Error: Invalid or missing kubeconfig. Using cached data where possible."
+        return f"Error: {error_msg}"
 
 app = Flask(__name__)
 # Configure SocketIO with enhanced settings for reliability
@@ -44,6 +74,10 @@ socketio = SocketIO(
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
 
+# Check and store initial Kubernetes access status
+has_kubernetes_access = check_kubernetes_access()
+logger.info(f"Initial Kubernetes access status: {'Available' if has_kubernetes_access else 'Not available'}")
+
 def run_kubectl_command(command):
     try:
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -53,7 +87,7 @@ def run_kubectl_command(command):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', has_kubernetes_access=has_kubernetes_access)
 
 @app.route('/get_resources', methods=['POST'])
 def get_resources():
