@@ -15,6 +15,9 @@ from database import db
 import logging
 from background_tasks import KubernetesDataUpdater
 
+# Initialize the background updater
+kubernetes_updater = KubernetesDataUpdater()
+
 # We'll check for git availability at runtime rather than import time
 git_available = False
 try:
@@ -40,9 +43,6 @@ socketio = SocketIO(
     http_compression=True,     # Enable HTTP compression
     compression_threshold=1024 # Compress messages larger than 1KB
 )
-
-# Initialize the Kubernetes data updater
-k8s_updater = KubernetesDataUpdater()
 
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
@@ -982,11 +982,25 @@ def delete_pod():
 def refresh_resources():
     """Manually trigger a refresh of Kubernetes resources."""
     try:
-        k8s_updater._update_resources()
-        return jsonify({"status": "success", "message": "Resources refreshed successfully"})
+        if kubernetes_updater:
+            kubernetes_updater._update_resources()
+            return jsonify({
+                'status': 'success',
+                'message': 'Resources refreshed successfully'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Kubernetes updater not initialized'
+            }), 500
     except Exception as e:
         logging.error(f"Error refreshing resources: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
 if __name__ == '__main__':
+    # Start the background updater before running the app
+    kubernetes_updater.start()
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)

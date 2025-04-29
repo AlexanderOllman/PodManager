@@ -1,53 +1,63 @@
-import threading
-import time
-import logging
-from typing import Dict, List
 import kubernetes
-from kubernetes.client import ApiClient
+import logging
+import time
+import threading
+from typing import Dict, List
 from database import db
 
 class KubernetesDataUpdater:
     def __init__(self, update_interval: int = 300):  # 5 minutes default
         self.update_interval = update_interval
         self.api_client = None
-        self.stop_event = threading.Event()
-        
+        self.running = False
+        self.thread = None
+        self._initialize_kubernetes()
+
+    def _initialize_kubernetes(self):
+        """Initialize Kubernetes client."""
         try:
             kubernetes.config.load_incluster_config()
         except kubernetes.config.ConfigException:
             try:
                 kubernetes.config.load_kube_config()
-            except kubernetes.config.ConfigException:
-                logging.error("Could not configure kubernetes client")
+            except kubernetes.config.ConfigException as e:
+                logging.error(f"Failed to initialize Kubernetes client: {str(e)}")
                 return
-                
+        
         self.api_client = kubernetes.client.ApiClient()
         logging.info("Kubernetes client initialized successfully")
-        
-        # Start the update thread
-        self.update_thread = threading.Thread(target=self._update_loop, daemon=True)
-        self.update_thread.start()
-        logging.info("Resource update thread started")
 
-    def _update_loop(self):
-        """Main update loop that runs periodically."""
-        while not self.stop_event.is_set():
-            try:
-                self._update_resources()
-            except Exception as e:
-                logging.error(f"Error in update loop: {str(e)}")
-            self.stop_event.wait(self.update_interval)
+    def start(self):
+        """Start the background updater thread."""
+        if self.running:
+            return
+        
+        self.running = True
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+        
+        # Do an initial update immediately
+        self._update_resources()
+        logging.info("Background updater started")
 
     def stop(self):
-        """Stop the update thread."""
-        self.stop_event.set()
-        if self.update_thread.is_alive():
-            self.update_thread.join()
-            logging.info("Resource update thread stopped")
+        """Stop the background updater thread."""
+        self.running = False
+        if self.thread:
+            self.thread.join()
+        logging.info("Background updater stopped")
+
+    def _run(self):
+        """Run the background update loop."""
+        while self.running:
+            time.sleep(self.update_interval)
+            if self.running:  # Check again in case we were stopped
+                self._update_resources()
 
     def _fetch_kubernetes_resources(self, resource_type: str) -> List[Dict]:
         """Fetch resources from Kubernetes API."""
         if not self.api_client:
+            logging.error("Kubernetes client not initialized")
             return []
 
         try:
@@ -77,8 +87,7 @@ class KubernetesDataUpdater:
                     'age': self._get_age(svc.metadata.creation_timestamp)
                 } for svc in services]
 
-            # Add similar blocks for other resource types...
-
+            # Add other resource types as needed
             return []
         except Exception as e:
             logging.error(f"Error fetching {resource_type}: {str(e)}")
@@ -87,11 +96,22 @@ class KubernetesDataUpdater:
     def _get_resource_requests(self, pod, resource_type: str) -> str:
         """Get resource requests from pod spec."""
         try:
+            total = 0
             for container in pod.spec.containers:
                 if container.resources and container.resources.requests:
-                    return container.resources.requests.get(resource_type, '0')
-            return '0'
-        except Exception:
+                    request = container.resources.requests.get(resource_type, '0')
+                    if isinstance(request, str):
+                        if request.endswith('m'):  # millicores
+                            total += float(request[:-1]) / 1000
+                        elif request.endswith('Mi'):  # Mebibytes
+                            total += float(request[:-2])
+                        elif request.endswith('Gi'):  # Gibibytes
+                            total += float(request[:-2]) * 1024
+                        else:
+                            total += float(request)
+            return str(total)
+        except Exception as e:
+            logging.error(f"Error getting resource requests: {str(e)}")
             return '0'
 
     def _get_age(self, creation_timestamp) -> str:
@@ -108,16 +128,18 @@ class KubernetesDataUpdater:
                 return f"{int(age/3600)}h"
             else:
                 return f"{int(age/86400)}d"
-        except Exception:
+        except Exception as e:
+            logging.error(f"Error calculating age: {str(e)}")
             return 'Unknown'
 
     def _update_resources(self):
         """Update all resources in the database."""
         if not self.api_client:
-            logging.error("Kubernetes client not available")
+            logging.error("Kubernetes client not initialized")
             return
 
-        resource_types = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets']
+        resource_types = ['pods', 'services']
+        updated = False
         
         for resource_type in resource_types:
             try:
@@ -126,10 +148,13 @@ class KubernetesDataUpdater:
                     success = db.update_resource(resource_type, resources)
                     if success:
                         logging.info(f"Successfully updated {len(resources)} {resource_type}")
+                        updated = True
                     else:
                         logging.error(f"Failed to update {resource_type} in database")
             except Exception as e:
                 logging.error(f"Error updating {resource_type}: {str(e)}")
+        
+        return updated
 
 # Create a global instance
 updater = KubernetesDataUpdater() 

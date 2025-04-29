@@ -21,17 +21,22 @@
             <h5 class="mb-0">Application Update</h5>
         </div>
         <div class="card-body">
-            <button id="updateBtn" class="btn btn-primary">
-                <i class="fas fa-cloud-download-alt"></i> Update Application
-            </button>
-            <div id="updateStatus" class="alert" style="display: none;"></div>
+            <!-- Existing update form -->
+            <form id="updateForm">
+                <div class="mb-3">
+                    <label for="repoUrl" class="form-label">GitHub Repository URL</label>
+                    <input type="text" class="form-control" id="repoUrl" name="repoUrl" value="{{ github_repo_url }}">
+                </div>
+                <button type="submit" class="btn btn-primary">Update from GitHub</button>
+            </form>
+            <div id="updateStatus" class="alert mt-3" style="display: none;"></div>
         </div>
     </div>
 </div>
 
 <script>
 $(document).ready(function() {
-    // Refresh resources button handler
+    // Add refresh resources functionality
     $('#refreshResourcesBtn').click(function() {
         const btn = $(this);
         const statusDiv = $('#refreshStatus');
@@ -39,66 +44,79 @@ $(document).ready(function() {
         // Disable button and show loading state
         btn.prop('disabled', true);
         btn.html('<i class="fas fa-spinner fa-spin"></i> Refreshing...');
-        statusDiv.removeClass('alert-success alert-danger').hide();
         
-        // Call the refresh API
+        // Make API call to refresh resources
         $.ajax({
             url: '/api/refresh-resources',
             method: 'POST',
             success: function(response) {
-                statusDiv.addClass('alert-success')
-                    .html('<i class="fas fa-check-circle"></i> ' + response.message)
+                statusDiv.removeClass('alert-danger').addClass('alert-success')
+                    .html('Resources refreshed successfully')
                     .show();
+                setTimeout(() => statusDiv.fadeOut(), 3000);
             },
             error: function(xhr) {
-                const message = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to refresh resources';
-                statusDiv.addClass('alert-danger')
-                    .html('<i class="fas fa-exclamation-circle"></i> ' + message)
+                const error = xhr.responseJSON ? xhr.responseJSON.message : 'Failed to refresh resources';
+                statusDiv.removeClass('alert-success').addClass('alert-danger')
+                    .html(error)
                     .show();
             },
             complete: function() {
-                // Reset button state
+                // Re-enable button and restore original text
                 btn.prop('disabled', false);
                 btn.html('<i class="fas fa-sync-alt"></i> Refresh Resources');
             }
         });
     });
 
-    // Existing update button handler
-    $('#updateBtn').click(function() {
-        const btn = $(this);
-        const statusDiv = $('#updateStatus');
+    // Existing update form handler
+    $('#updateForm').submit(function(e) {
+        e.preventDefault();
         
-        btn.prop('disabled', true);
-        btn.html('<i class="fas fa-spinner fa-spin"></i> Updating...');
+        const statusDiv = $('#updateStatus');
+        const submitBtn = $(this).find('button[type="submit"]');
+        const repoUrl = $('#repoUrl').val();
+        
+        submitBtn.prop('disabled', true);
         statusDiv.removeClass('alert-success alert-danger').hide();
         
         $.ajax({
             url: '/update_from_github',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({
-                repo_url: '{{ github_repo_url }}'
-            }),
+            data: JSON.stringify({ repo_url: repoUrl }),
             success: function(response) {
                 if (response.status === 'success') {
                     statusDiv.addClass('alert-success')
-                        .html('<i class="fas fa-check-circle"></i> ' + response.message)
+                        .html('Update successful. The application will restart shortly.')
                         .show();
+                    
+                    // Attempt to restart the application
+                    setTimeout(function() {
+                        $.post('/restart')
+                            .fail(function() {
+                                // It's normal for this to fail as the app restarts
+                                console.log('Application restarting...');
+                            });
+                        
+                        // Reload the page after a short delay
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 5000);
+                    }, 1000);
                 } else {
                     statusDiv.addClass('alert-danger')
-                        .html('<i class="fas fa-exclamation-circle"></i> ' + response.message)
+                        .html('Update failed: ' + response.message)
                         .show();
                 }
             },
             error: function(xhr) {
                 statusDiv.addClass('alert-danger')
-                    .html('<i class="fas fa-exclamation-circle"></i> Failed to update application')
+                    .html('Update failed: ' + (xhr.responseJSON ? xhr.responseJSON.message : 'Unknown error'))
                     .show();
             },
             complete: function() {
-                btn.prop('disabled', false);
-                btn.html('<i class="fas fa-cloud-download-alt"></i> Update Application');
+                submitBtn.prop('disabled', false);
             }
         });
     });
