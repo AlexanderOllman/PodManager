@@ -118,32 +118,63 @@ function loadPodDetails() {
         .then(data => {
             const detailsContentElement = document.getElementById('detailsContent');
             if (!detailsContentElement) {
-                console.error("Could not find 'detailsContent' element.");
+                console.error("CRITICAL: Could not find 'detailsContent' element itself.");
                 hideLoadingState('details');
                 return;
             }
-            // Clear previous content
-            while (detailsContentElement.firstChild) {
-                detailsContentElement.removeChild(detailsContentElement.firstChild);
-            }
 
             if (data.error) {
+                while (detailsContentElement.firstChild) {
+                    detailsContentElement.removeChild(detailsContentElement.firstChild);
+                }
                 const alertDiv = document.createElement('div');
                 alertDiv.className = 'alert alert-danger';
                 alertDiv.textContent = `Error: ${String(data.error)}`;
                 detailsContentElement.appendChild(alertDiv);
+                detailsContentElement.style.display = 'block'; // Ensure error is visible
             } else {
-                // Restore original content structure if it was more complex than just the error
-                // For now, assuming the successful rendering path rebuilds everything.
-                document.getElementById('podDetailName').textContent = data.name;
-                document.getElementById('podDetailNamespace').textContent = data.namespace;
-                document.getElementById('podDetailStatus').innerHTML = data.status_icon + data.status_phase; // Potentially risky innerHTML
-                document.getElementById('podDetailReady').textContent = data.ready_containers;
-                document.getElementById('podDetailRestarts').textContent = data.restarts;
-                document.getElementById('podDetailAge').textContent = data.age;
-                document.getElementById('podDetailIP').textContent = data.ip;
-                document.getElementById('podDetailNode').textContent = data.node_name;
-                document.getElementById('podDetailCreated').textContent = new Date(data.creation_timestamp).toLocaleString();
+                detailsContentElement.style.display = 'block'; 
+
+                console.log("[DEBUG] detailsContentElement.innerHTML before assignment:", detailsContentElement.innerHTML); 
+                const podNameEl = document.getElementById('podDetailName');
+                console.log("[DEBUG] getElementById('podDetailName') result:", podNameEl);
+                if (podNameEl) {
+                    podNameEl.textContent = data.name;
+                } else {
+                    console.error("CRITICAL: 'podDetailName' element NOT FOUND before assignment!");
+                }
+
+                const podNamespaceEl = document.getElementById('podDetailNamespace');
+                if (podNamespaceEl) podNamespaceEl.textContent = data.namespace;
+                else console.error("CRITICAL: 'podDetailNamespace' element NOT FOUND!");
+
+                const statusElement = document.getElementById('podDetailStatus');
+                if (statusElement) statusElement.innerHTML = (data.status_icon || '') + (data.status_phase || '');
+                else console.error("CRITICAL: 'podDetailStatus' element NOT FOUND!");
+                
+                const readyEl = document.getElementById('podDetailReady');
+                if (readyEl) readyEl.textContent = data.ready_containers;
+                else console.error("CRITICAL: 'podDetailReady' element NOT FOUND!");
+
+                const restartsEl = document.getElementById('podDetailRestarts');
+                if (restartsEl) restartsEl.textContent = data.restarts;
+                else console.error("CRITICAL: 'podDetailRestarts' element NOT FOUND!");
+                
+                const ageEl = document.getElementById('podDetailAge');
+                if (ageEl) ageEl.textContent = data.age;
+                else console.error("CRITICAL: 'podDetailAge' element NOT FOUND!");
+
+                const ipEl = document.getElementById('podDetailIP');
+                if (ipEl) ipEl.textContent = data.ip;
+                else console.error("CRITICAL: 'podDetailIP' element NOT FOUND!");
+
+                const nodeEl = document.getElementById('podDetailNode');
+                if (nodeEl) nodeEl.textContent = data.node_name;
+                else console.error("CRITICAL: 'podDetailNode' element NOT FOUND!");
+                
+                const createdEl = document.getElementById('podDetailCreated');
+                if (createdEl) createdEl.textContent = new Date(data.creation_timestamp).toLocaleString();
+                else console.error("CRITICAL: 'podDetailCreated' element NOT FOUND!");
 
                 const populateTable = (tbodyId, items, type) => {
                     const tbody = document.getElementById(tbodyId);
@@ -151,36 +182,34 @@ function loadPodDetails() {
                         console.warn(`populateTable: tbody with id ${tbodyId} not found.`);
                         return;
                     }
-                    tbody.innerHTML = ''; // Clear previous rows
+                    tbody.innerHTML = ''; 
                     if (type === 'resources') {
-                        items.forEach(item => {
+                        (items || []).forEach(item => {
                             const row = tbody.insertRow();
                             row.insertCell().textContent = item.container;
                             row.insertCell().textContent = item.requests;
                             row.insertCell().textContent = item.limits;
                         });
                     } else if (type === 'gpu') {
-                         items.forEach(item => {
+                         (items || []).forEach(item => {
                             const row = tbody.insertRow();
                             row.insertCell().textContent = item.container;
                             row.insertCell().textContent = item.type || 'N/A';
                             row.insertCell().textContent = item.count;
                         });
-                    } else { // Labels, Annotations
-                        Object.entries(items).forEach(([key, value]) => {
+                    } else { 
+                        Object.entries(items || {}).forEach(([key, value]) => {
                             const row = tbody.insertRow();
                             row.insertCell().textContent = key;
                             row.insertCell().textContent = value;
                         });
                     }
                 };
-                populateTable('podDetailCPU', data.resources?.cpu || [], 'resources');
-                populateTable('podDetailMemory', data.resources?.memory || [], 'resources');
-                populateTable('podDetailGPU', data.resources?.gpu || [], 'gpu');
-                populateTable('podDetailLabels', data.labels || {}, 'labels');
-                populateTable('podDetailAnnotations', data.annotations || {}, 'annotations');
-                 // Ensure the main detailsContent div is visible if it was hidden by an error previously
-                detailsContentElement.style.display = 'block'; // Or remove display:none if that was used
+                populateTable('podDetailCPU', data.resources?.cpu, 'resources');
+                populateTable('podDetailMemory', data.resources?.memory, 'resources');
+                populateTable('podDetailGPU', data.resources?.gpu, 'gpu');
+                populateTable('podDetailLabels', data.labels, 'labels');
+                populateTable('podDetailAnnotations', data.annotations, 'annotations');
             }
             hideLoadingState('details');
         })
@@ -188,7 +217,6 @@ function loadPodDetails() {
             console.error('Error fetching or processing pod details:', error);
             const detailsContentElement = document.getElementById('detailsContent');
             if (detailsContentElement) {
-                // Clear previous content
                 while (detailsContentElement.firstChild) {
                     detailsContentElement.removeChild(detailsContentElement.firstChild);
                 }
@@ -202,8 +230,9 @@ function loadPodDetails() {
                 }
                 alertDiv.textContent = msg;
                 detailsContentElement.appendChild(alertDiv);
+                detailsContentElement.style.display = 'block'; // Ensure error is visible
             } else {
-                console.error("Could not find 'detailsContent' element to display fetch error.");
+                console.error("CRITICAL: Could not find 'detailsContent' element to display fetch error.");
             }
             hideLoadingState('details');
         });
