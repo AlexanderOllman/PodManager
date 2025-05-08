@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, make_response
 from flask_socketio import SocketIO, emit
 import subprocess
 import json
@@ -643,6 +643,50 @@ def api_get_pod_details_from_path(namespace, pod_name):
     except Exception as e:
         app.logger.error(f"Error in api_get_pod_details_from_path for {namespace}/{pod_name}: {str(e)}")
         return jsonify({"error": f"Server error fetching pod details: {str(e)}"}), 500
+
+@app.route('/api/pod/<namespace>/<pod_name>/describe', methods=['GET'])
+def api_get_pod_description_from_path(namespace, pod_name):
+    try:
+        if not namespace or not pod_name:
+            return jsonify({"error": "Missing namespace or pod_name in path"}), 400
+            
+        command = f"kubectl describe pod {pod_name} -n {namespace}"
+        output = run_kubectl_command(command)
+        # Check if kubectl command itself returned an error string
+        if output.startswith("Error:"):
+             return jsonify({"error": output}), 500 # Or a more appropriate status code like 404 if pod not found
+
+        return jsonify({"describe_output": output})
+    except Exception as e:
+        app.logger.error(f"Error in api_get_pod_description_from_path for {namespace}/{pod_name}: {str(e)}")
+        return jsonify({"error": f"Server error fetching pod description: {str(e)}"}), 500
+
+@app.route('/api/pod/<namespace>/<pod_name>/logs', methods=['GET'])
+def api_get_pod_logs_from_path(namespace, pod_name):
+    try:
+        if not namespace or not pod_name:
+            return jsonify({"error": "Missing namespace or pod_name in path"}), 400
+        
+        # Get tail_lines from query parameters, default to 100 if not provided
+        tail_lines = request.args.get('tail_lines', '100')
+        download = request.args.get('download', 'false').lower() == 'true'
+
+        command = f"kubectl logs {pod_name} -n {namespace} --tail={tail_lines}"
+        output = run_kubectl_command(command)
+
+        if output.startswith("Error:"):
+             return jsonify({"error": output}), 500
+        
+        if download:
+            response = make_response(output)
+            response.headers["Content-Disposition"] = f"attachment; filename={pod_name}_{namespace}_logs.txt"
+            response.headers["Content-Type"] = "text/plain"
+            return response
+
+        return jsonify({"logs": output})
+    except Exception as e:
+        app.logger.error(f"Error in api_get_pod_logs_from_path for {namespace}/{pod_name}: {str(e)}")
+        return jsonify({"error": f"Server error fetching pod logs: {str(e)}"}), 500
 
 @app.route('/git_status', methods=['GET'])
 def git_status():

@@ -243,15 +243,53 @@ function loadPodDescription() {
     showLoadingState('describe');
     const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/describe`);
     fetch(url)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errData => {
+                    throw new Error(errData.error || `HTTP error! status: ${response.status} - ${response.statusText}`);
+                }).catch(() => {
+                    throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                });
+            }
+            return response.json();
+        })
         .then(data => {
             const outputElement = document.getElementById('describeOutput');
-            outputElement.textContent = data.error || data.describe_output;
+            if (!outputElement) {
+                console.error("Element with ID 'describeOutput' not found.");
+                hideLoadingState('describe');
+                return;
+            }
+            // Clear previous content
+            outputElement.textContent = ''; 
+
+            if (data.error) {
+                // Create a div for the error message for consistent styling if needed, or just set textContent
+                outputElement.className = 'alert alert-danger'; // Assuming pre can also take alert classes or use a wrapper
+                outputElement.textContent = `Error: ${String(data.error)}`;
+            } else {
+                outputElement.className = 'bg-light p-3 rounded'; // Restore original classes if any
+                outputElement.textContent = data.describe_output;
+            }
             hideLoadingState('describe');
         })
         .catch(error => {
-            console.error('Error fetching pod description:', error);
-            document.getElementById('describeOutput').textContent = `Failed to load description: ${error}`;
+            console.error('Error fetching or processing pod description:', error);
+            const outputElement = document.getElementById('describeOutput');
+            if (outputElement) {
+                 // Clear previous content
+                outputElement.textContent = ''; 
+                outputElement.className = 'alert alert-danger';
+                let msg = 'Failed to load description: ';
+                if (error && error.message) {
+                    msg += String(error.message);
+                } else {
+                    msg += String(error);
+                }
+                outputElement.textContent = msg;
+            } else {
+                console.error("Could not find 'describeOutput' element to display fetch error.");
+            }
             hideLoadingState('describe');
         });
 }
@@ -260,22 +298,56 @@ function loadPodLogs() {
     showLoadingState('logs');
     const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/logs`);
     fetch(url)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errData => {
+                    throw new Error(errData.error || `HTTP error! status: ${response.status} - ${response.statusText}`);
+                }).catch(() => {
+                    throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                });
+            }
+            return response.json();
+        })
         .then(data => {
             const outputElement = document.getElementById('logsOutput');
-            outputElement.textContent = data.error || data.logs;
+            if (!outputElement) {
+                console.error("Element with ID 'logsOutput' not found.");
+                hideLoadingState('logs');
+                return;
+            }
+            outputElement.textContent = ''; // Clear previous content
+
+            if (data.error) {
+                outputElement.className = 'alert alert-danger';
+                outputElement.textContent = `Error: ${String(data.error)}`;
+            } else {
+                outputElement.className = 'bg-light p-3 rounded'; // Restore original styling
+                outputElement.textContent = data.logs;
+            }
             hideLoadingState('logs');
         })
         .catch(error => {
-            console.error('Error fetching pod logs:', error);
-            document.getElementById('logsOutput').textContent = `Failed to load logs: ${error}`;
+            console.error('Error fetching or processing pod logs:', error);
+            const outputElement = document.getElementById('logsOutput');
+            if (outputElement) {
+                outputElement.textContent = ''; // Clear previous content
+                outputElement.className = 'alert alert-danger';
+                let msg = 'Failed to load logs: ';
+                if (error && error.message) {
+                    msg += String(error.message);
+                } else {
+                    msg += String(error);
+                }
+                outputElement.textContent = msg;
+            } else {
+                console.error("Could not find 'logsOutput' element to display fetch error.");
+            }
             hideLoadingState('logs');
         });
 }
 
 function downloadPodLogs() {
     const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/logs?download=true`);
-    // Create a temporary link to trigger download
     const link = document.createElement('a');
     link.href = url;
     link.setAttribute('download', `${podName}_${namespace}_logs.txt`);
