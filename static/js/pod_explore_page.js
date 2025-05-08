@@ -105,14 +105,39 @@ function loadPodDetails() {
     showLoadingState('details');
     const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/details`);
     fetch(url)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errData => {
+                    throw new Error(errData.error || `HTTP error! status: ${response.status} - ${response.statusText}`);
+                }).catch(() => {
+                    throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                });
+            }
+            return response.json();
+        })
         .then(data => {
+            const detailsContentElement = document.getElementById('detailsContent');
+            if (!detailsContentElement) {
+                console.error("Could not find 'detailsContent' element.");
+                hideLoadingState('details');
+                return;
+            }
+            // Clear previous content
+            while (detailsContentElement.firstChild) {
+                detailsContentElement.removeChild(detailsContentElement.firstChild);
+            }
+
             if (data.error) {
-                document.getElementById('detailsContent').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-danger';
+                alertDiv.textContent = `Error: ${String(data.error)}`;
+                detailsContentElement.appendChild(alertDiv);
             } else {
+                // Restore original content structure if it was more complex than just the error
+                // For now, assuming the successful rendering path rebuilds everything.
                 document.getElementById('podDetailName').textContent = data.name;
                 document.getElementById('podDetailNamespace').textContent = data.namespace;
-                document.getElementById('podDetailStatus').innerHTML = data.status_icon + data.status_phase;
+                document.getElementById('podDetailStatus').innerHTML = data.status_icon + data.status_phase; // Potentially risky innerHTML
                 document.getElementById('podDetailReady').textContent = data.ready_containers;
                 document.getElementById('podDetailRestarts').textContent = data.restarts;
                 document.getElementById('podDetailAge').textContent = data.age;
@@ -122,8 +147,12 @@ function loadPodDetails() {
 
                 const populateTable = (tbodyId, items, type) => {
                     const tbody = document.getElementById(tbodyId);
-                    tbody.innerHTML = '';
-                    if (type === 'resources') { // CPU, Memory
+                    if (!tbody) {
+                        console.warn(`populateTable: tbody with id ${tbodyId} not found.`);
+                        return;
+                    }
+                    tbody.innerHTML = ''; // Clear previous rows
+                    if (type === 'resources') {
                         items.forEach(item => {
                             const row = tbody.insertRow();
                             row.insertCell().textContent = item.container;
@@ -150,12 +179,32 @@ function loadPodDetails() {
                 populateTable('podDetailGPU', data.resources?.gpu || [], 'gpu');
                 populateTable('podDetailLabels', data.labels || {}, 'labels');
                 populateTable('podDetailAnnotations', data.annotations || {}, 'annotations');
+                 // Ensure the main detailsContent div is visible if it was hidden by an error previously
+                detailsContentElement.style.display = 'block'; // Or remove display:none if that was used
             }
             hideLoadingState('details');
         })
         .catch(error => {
-            console.error('Error fetching pod details:', error);
-            document.getElementById('detailsContent').innerHTML = `<div class="alert alert-danger">Failed to load pod details: ${error}</div>`;
+            console.error('Error fetching or processing pod details:', error);
+            const detailsContentElement = document.getElementById('detailsContent');
+            if (detailsContentElement) {
+                // Clear previous content
+                while (detailsContentElement.firstChild) {
+                    detailsContentElement.removeChild(detailsContentElement.firstChild);
+                }
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-danger';
+                let msg = 'Failed to load pod details: ';
+                if (error && error.message) {
+                    msg += String(error.message);
+                } else {
+                    msg += String(error);
+                }
+                alertDiv.textContent = msg;
+                detailsContentElement.appendChild(alertDiv);
+            } else {
+                console.error("Could not find 'detailsContent' element to display fetch error.");
+            }
             hideLoadingState('details');
         });
 }
