@@ -163,31 +163,51 @@ function namespaceChanged(resourceType) {
     fetchResourceData(resourceType, selectedNamespace, false, 1, true); // page 1, reset data
 }
 
-// Loads namespaces and populates the selector for a given resource type
+// Load namespaces for the selector dropdown in resource tables
 function loadNamespacesForSelector(resourceType) {
     const selector = document.getElementById(`${resourceType}Namespace`);
-    if (!selector) return;
+    if (!selector) {
+        console.warn(`Namespace selector not found for ${resourceType}`);
+        return; // Exit if the selector doesn't exist for this resource type
+    }
 
-    // Use cached namespaces if available
-    if (window.app.namespaces && window.app.namespaces.length > 0) {
-        populateNamespaceSelector(resourceType, window.app.namespaces);
+    // Check if namespaces are already cached globally
+    if (window.app.state?.cache?.namespaces) {
+        console.log(`Using cached namespaces for ${resourceType} selector`);
+        populateNamespaceSelector(resourceType, window.app.state.cache.namespaces);
         return;
     }
 
-    // Fetch namespaces from the server
-    fetchNamespacesForSelectors() // This function is from api_service.js
-        .then(namespaces => {
-            populateNamespaceSelector(resourceType, namespaces);
-            document.dispatchEvent(new CustomEvent('namespacesLoaded', { detail: { resourceType: resourceType } }));
+    // Show loading state in selector
+    const loadingOption = selector.querySelector('option[value="loading"]');
+    if(loadingOption) loadingOption.style.display = 'block';
+    selector.disabled = true;
+
+    console.log(`Fetching namespaces for ${resourceType} selector...`);
+    const url = window.app.getRelativeUrl('/get_namespaces');
+    fetch(url)
+        .then(response => {
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return response.json();
+         })
+        .then(data => {
+            if (data.namespaces) {
+                // Cache namespaces globally in our state management
+                window.app.state.cache.namespaces = data.namespaces;
+                populateNamespaceSelector(resourceType, data.namespaces);
+                document.dispatchEvent(new CustomEvent('namespacesLoaded'));
+            } else {
+                console.error('Failed to load namespaces:', data.error || 'Invalid data format');
+                selector.innerHTML = '<option value="all">All (Error loading)</option>'; // Indicate error
+            }
         })
         .catch(error => {
-            console.error(`Error loading namespaces for ${resourceType} selector:`, error);
-            const errorOption = selector.querySelector('option[value="loading"]');
-            if (errorOption) {
-                errorOption.textContent = 'Error loading namespaces';
-                errorOption.disabled = false; 
-                errorOption.value = 'error';
-            }
+            console.error('Error fetching namespaces for selector:', error);
+            selector.innerHTML = '<option value="all">All (Error loading)</option>'; // Indicate error
+        })
+        .finally(() => {
+             if(loadingOption) loadingOption.style.display = 'none';
+             selector.disabled = false;
         });
 }
 

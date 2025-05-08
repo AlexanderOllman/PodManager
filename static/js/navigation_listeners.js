@@ -33,7 +33,7 @@ document.addEventListener('click', function(e) {
     
     // Add other global navigation click handlers here if needed
     // e.g., handling clicks on describe actions that might open modals or navigate
-    const actionLink = e.target.closest('a[onclick^="runAction(']');
+    const actionLink = e.target.closest('a[onclick^="runAction("]');
     if (actionLink) {
         // Optionally intercept or enhance these actions here
         // console.log('Action link clicked:', actionLink.getAttribute('onclick'));
