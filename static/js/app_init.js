@@ -432,4 +432,89 @@ function activateTab(tabId, triggerLoad = true) {
             console.warn(`loadResourcesForTab function not found, cannot load content for ${tabId}.`);
         }
     }
+}
+
+// Function to load content/initialize based on the activated tab ID
+function loadResourcesForTab(tabId) {
+    console.log(`Routing load for tab: ${tabId}`);
+
+    switch(tabId) {
+        case 'home':
+            if (typeof initializeHomePage === 'function') {
+                initializeHomePage(); // Let home_page.js handle its specific logic and sub-tabs
+            } else {
+                console.warn('initializeHomePage function not found.');
+            }
+            break;
+        case 'resources':
+            if (typeof loadResourcesPage === 'function') {
+                loadResourcesPage(); // Call the function from resource_explorer.js
+            } else {
+                console.warn('loadResourcesPage function not found.');
+            }
+            break;
+        case 'cli':
+            if (typeof initializeTerminal === 'function') {
+                initializeTerminal(); // From terminal.js
+            } else {
+                 console.warn('initializeTerminal function not found.');
+            }
+            break;
+        case 'yaml':
+            if (typeof setupDropZone === 'function') {
+                setupDropZone(); // From yaml_deploy.js
+            } else {
+                console.warn('setupDropZone function not found.');
+            }
+            break;
+        case 'namespaces':
+             if (typeof loadNamespacesViewData === 'function') {
+                loadNamespacesViewData(); // From namespaces_view.js
+            } else {
+                 console.warn('loadNamespacesViewData function not found.');
+            }
+            break;
+        case 'charts':
+            if (typeof refreshCharts === 'function') {
+                refreshCharts(); // From charts_page.js
+            } else {
+                console.warn('refreshCharts function not found.');
+            }
+            break;
+        case 'settings':
+            // Settings might load specific things like git status
+            if (typeof checkGitAvailability === 'function') {
+                checkGitAvailability(); // From settings.js
+            } else {
+                 console.warn('checkGitAvailability function not found.');
+            }
+             // Any other settings initializations...
+            break;
+        case 'events': // Assuming events tab is separate and handled by events_tab.js
+             if (typeof fetchNamespacesForEventsTab === 'function') {
+                fetchNamespacesForEventsTab();
+            } else {
+                 console.warn('fetchNamespacesForEventsTab function not found.');
+            }
+            break;
+        // Add cases for direct resource tabs if they exist outside 'home' or 'resources' explorer
+        case 'pods':
+        case 'services':
+        case 'deployments':
+        case 'inferenceservices':
+        case 'configmaps':
+        case 'secrets':
+             // If these can be top-level tabs, load their data directly
+             // This might be redundant if they are only ever inside 'home' or 'resources'
+             console.log(`Direct resource tab ${tabId} activated.`);
+             if (typeof fetchResourceData === 'function') {
+                 // Ensure the correct namespace context is used if needed
+                 const nsSelector = document.getElementById(`${tabId}Namespace`);
+                 const currentNamespace = nsSelector ? nsSelector.value : 'all';
+                 fetchResourceData(tabId, currentNamespace, false, 1, true);
+             }
+             break;
+        default:
+            console.log(`No specific load action defined for tab: ${tabId}`);
+    }
 } 
