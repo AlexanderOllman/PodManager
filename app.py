@@ -145,47 +145,109 @@ def run_action():
 
 def run_command(command, sid):
     logger.info(f"[sid:{sid}] Received command: {command}")
+    process = None # Initialize process to None
+    stdout_fd = None
+    stderr_fd = None
     try:
         logger.info(f"[sid:{sid}] Starting Popen for: {command}")
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        # Use preexec_fn=os.setsid to create a new session leader, allows killing process group
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                                   text=False, bufsize=0, # Use bytes, no buffer
+                                   preexec_fn=os.setsid) 
         logger.info(f"[sid:{sid}] Popen started, PID: {process.pid}")
-        
-        # Stream stdout
-        logger.info(f"[sid:{sid}] Reading stdout...")
-        stdout_emitted = False
-        for line in iter(process.stdout.readline, ''):
-            if line:
-                logger.debug(f"[sid:{sid}] Sending stdout line: {line.strip()}")
-                socketio.emit('terminal_output', {'data': line}, room=sid)
-                stdout_emitted = True
-            else:
-                # Should not happen with iter(readline, '') unless process closes stream early?
-                logger.debug(f"[sid:{sid}] Empty stdout line received.")
-                break # Exit loop if readline returns empty string indicating stream closed
-        process.stdout.close() # Close stdout pipe
-        logger.info(f"[sid:{sid}] Finished reading stdout. Emitted data: {stdout_emitted}")
-        
-        # Wait for process to finish and read stderr
-        stderr_output = process.stderr.read()
-        process.stderr.close()
-        return_code = process.wait()
-        logger.info(f"[sid:{sid}] Process finished with return code: {return_code}")
 
-        if stderr_output:
-            logger.warning(f"[sid:{sid}] Sending stderr output: {stderr_output.strip()}")
-            socketio.emit('terminal_output', {'data': f"\nError: {stderr_output}", 'error': True}, room=sid)
+        stdout_fd = process.stdout.fileno()
+        stderr_fd = process.stderr.fileno()
         
-        # Send completion signal
-        logger.info(f"[sid:{sid}] Sending completion signal.")
-        socketio.emit('terminal_output', {'complete': True}, room=sid)
+        # Make FDs non-blocking
+        fcntl.fcntl(stdout_fd, fcntl.F_SETFL, os.O_NONBLOCK)
+        fcntl.fcntl(stderr_fd, fcntl.F_SETFL, os.O_NONBLOCK)
+
+        fds = [stdout_fd, stderr_fd]
+        stdout_buffer = b''
+        stderr_buffer = b''
+        output_emitted = False
+
+        while process.poll() is None: # While process is running
+            ready_fds, _, _ = select.select(fds, [], [], 0.1) # Timeout 0.1s
+            
+            if not ready_fds:
+                socketio.sleep(0.05) # Small sleep if nothing is ready
+                continue
+
+            for fd in ready_fds:
+                try:
+                    data = os.read(fd, 1024) # Read chunks
+                    if not data: # EOF
+                        logger.info(f"[sid:{sid}] EOF received on FD {fd}. Closing.")
+                        fds.remove(fd)
+                        continue
+                    
+                    if fd == stdout_fd:
+                        stdout_buffer += data
+                        # Emit complete lines
+                        while b'\n' in stdout_buffer:
+                            line, stdout_buffer = stdout_buffer.split(b'\n', 1)
+                            line_str = line.decode('utf-8', errors='replace') + '\n'
+                            logger.debug(f"[sid:{sid}] Sending stdout line: {line_str.strip()}")
+                            socketio.emit('terminal_output', {'data': line_str}, room=sid)
+                            output_emitted = True
+                    elif fd == stderr_fd:
+                        stderr_buffer += data
+                        # Emit complete lines
+                        while b'\n' in stderr_buffer:
+                            line, stderr_buffer = stderr_buffer.split(b'\n', 1)
+                            line_str = line.decode('utf-8', errors='replace') + '\n'
+                            logger.warning(f"[sid:{sid}] Sending stderr line: {line_str.strip()}")
+                            socketio.emit('terminal_output', {'data': f'Error: {line_str}', 'error': True}, room=sid)
+                            output_emitted = True
+                            
+                except BlockingIOError:
+                    # Should not happen often with select, but handle anyway
+                    pass
+                except OSError as e:
+                    logger.error(f"[sid:{sid}] OSError reading FD {fd}: {e}")
+                    if fd in fds: fds.remove(fd) # Stop trying to read from faulty FD
+            
+            # Check again if process ended after reading
+            if not fds: # Both streams closed
+                break
+
+        # Process finished, emit any remaining buffer contents
+        if stdout_buffer:
+            line_str = stdout_buffer.decode('utf-8', errors='replace')
+            logger.debug(f"[sid:{sid}] Sending remaining stdout buffer: {line_str.strip()}")
+            socketio.emit('terminal_output', {'data': line_str}, room=sid)
+            output_emitted = True
+        if stderr_buffer:
+            line_str = stderr_buffer.decode('utf-8', errors='replace')
+            logger.warning(f"[sid:{sid}] Sending remaining stderr buffer: {line_str.strip()}")
+            socketio.emit('terminal_output', {'data': f'Error: {line_str}', 'error': True}, room=sid)
+            output_emitted = True
+            
+        return_code = process.returncode
+        logger.info(f"[sid:{sid}] Process finished with return code: {return_code}. Output emitted: {output_emitted}")
 
     except FileNotFoundError:
-         logger.error(f"[sid:{sid}] Command not found: {command.split()[0]}")
-         socketio.emit('terminal_output', {'data': f'\nError: command not found: {command.split()[0]}\n', 'error': True}, room=sid)
-         socketio.emit('terminal_output', {'complete': True}, room=sid)
+        logger.error(f"[sid:{sid}] Command not found: {command.split()[0]}")
+        socketio.emit('terminal_output', {'data': f'\nError: command not found: {command.split()[0]}\n', 'error': True}, room=sid)
     except Exception as e:
-        logger.error(f"[sid:{sid}] Exception in run_command for '{command}': {e}")
+        logger.error(f"[sid:{sid}] Exception in run_command for '{command}': {e}", exc_info=True)
         socketio.emit('terminal_output', {'data': f'\nError executing command: {str(e)}\n', 'error': True}, room=sid)
+    finally:
+        # Ensure pipes are closed even if loop exits early
+        if process and process.stdout: process.stdout.close()
+        if process and process.stderr: process.stderr.close()
+        # Ensure process group is terminated if something went wrong
+        if process and process.poll() is None: 
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM) 
+                logger.info(f"[sid:{sid}] Sent SIGTERM to process group {process.pid}")
+                process.wait(timeout=0.5) # Brief wait
+            except Exception as kill_e:
+                 logger.error(f"[sid:{sid}] Error terminating process group {process.pid}: {kill_e}")
+        # Send completion signal regardless of success/failure
+        logger.info(f"[sid:{sid}] Sending completion signal.")
         socketio.emit('terminal_output', {'complete': True}, room=sid)
 
 @app.route('/run_cli_command', methods=['POST'])
@@ -920,13 +982,14 @@ def handle_terminal_command(data):
     # Handle regular commands
     command = data.get('command', '')
     if not command:
+        # If empty command, just send completion to get a new prompt
+        socketio.emit('terminal_output', {'complete': True}, room=request.sid)
         return
     
-    print(f"Executing command: {command}")
+    logger.info(f"Queueing command execution for sid: {request.sid}")
     sid = request.sid
-    thread = threading.Thread(target=run_command, args=(command, sid))
-    thread.daemon = True
-    thread.start()
+    # Run in background thread
+    socketio.start_background_task(target=run_command, command=command, sid=sid)
 
 @app.route('/api/cli/exec', methods=['POST'])
 def api_cli_exec():
