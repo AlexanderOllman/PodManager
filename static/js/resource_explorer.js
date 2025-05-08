@@ -196,12 +196,10 @@ function namespaceChangedResource() {
 function searchResources() {
     const resourceType = window.app.currentResourceType;
     const searchInput = document.getElementById('resourceSearchInput');
-    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
-    const namespace = document.getElementById('resourceNamespaceSelector')?.value || 'all'; // Use selected namespace if available
+    const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
     
-    console.log(`Explorer searching ${resourceType} in namespace ${namespace} for: "${searchTerm}"`);
+    console.log(`Explorer client-side searching ${resourceType} for: "${searchTerm}"`);
     
-    // Indicate loading/searching state
     const loadingContainer = document.getElementById('resourcesLoading');
     const tableContainer = document.getElementById('resourcesTableContainer');
     const progressBar = document.getElementById('resourcesProgressBar');
@@ -210,108 +208,66 @@ function searchResources() {
     if (loadingContainer) loadingContainer.style.display = 'flex';
     if (tableContainer) tableContainer.style.opacity = '0.5'; 
     if (progressBar) progressBar.style.width = '10%';
-    if (loadingText) loadingText.textContent = 'Searching resources...';
+    if (loadingText) loadingText.textContent = 'Filtering resources...';
 
-    clearResourceSearchIndicator(); // Clear previous indicator
+    clearResourceSearchIndicator();
 
-    // Option 1: Client-side filtering (if all data is loaded or cached)
-    // This requires a mechanism to ensure all data is available client-side first.
-    // filterResourcesClientSide(resourceType, searchTerm, namespace);
+    const state = window.app.state.resources[resourceType];
+    if (!state) {
+        console.warn('No state found for resource type:', resourceType);
+        if (loadingContainer) loadingContainer.style.display = 'none';
+        if (tableContainer) tableContainer.style.opacity = '1';
+        return;
+    }
 
-    // Option 2: Server-side filtering (more robust for large datasets)
-    // Adapt fetchResourceData or use a dedicated search endpoint if available.
-    // For now, let's mimic client-side logic but fetch *all* pages first, then filter.
-    // WARNING: This is inefficient for large datasets!
-    fetchAllPagesAndFilter(resourceType, namespace, searchTerm);
+    // Ensure originalItems exists and is up-to-date if it's the first search
+    // or if we are clearing a search.
+    if (!state.originalItems || searchTerm === '') {
+        // If originalItems is not set, or we are clearing search, assume current items are the full list.
+        // This relies on the initial loadResourceType having fetched all items.
+        state.originalItems = [...state.items]; 
+    }
+
+    let itemsToFilter = state.originalItems || state.items;
+
+    const filteredItems = searchTerm
+        ? itemsToFilter.filter(item => {
+            const name = item.metadata?.name?.toLowerCase() || '';
+            const namespace = item.metadata?.namespace?.toLowerCase() || '';
+            // Add other fields to search if necessary
+            return name.includes(searchTerm) || namespace.includes(searchTerm);
+        })
+        : [...(state.originalItems || itemsToFilter)]; // If search term is empty, show original/all items
+
+    // Update the main items list in the state with the filtered results
+    state.items = filteredItems;
+    // Update totalCount to reflect the filtered items for display purposes, but keep original totalCount if needed elsewhere.
+    // For simplicity in rendering, we might just show the count of filtered items.
+    // state.totalCount = filteredItems.length; // This might be confusing if totalCount means total in cluster.
+    // Let renderResourcePage handle the display of count based on current items.length
+
+    if (progressBar) progressBar.style.width = '100%';
+    if (loadingText) loadingText.textContent = 'Rendering results...';
+
+    renderCurrentPage(resourceType); // This will call renderResourcePage
+
+    if (searchTerm) {
+        addResourceSearchIndicator(resourceType, searchTerm, filteredItems.length);
+    } else {
+        // If search term is empty, we effectively cleared the search.
+        // Restore original items if they exist, otherwise, state.items already has them.
+        if (state.originalItems) {
+            state.items = [...state.originalItems];
+            // delete state.originalItems; // Keep originalItems to allow re-filtering without re-fetch
+        }
+    }
+
+    setTimeout(() => {
+        if (loadingContainer) loadingContainer.style.display = 'none';
+        if (tableContainer) tableContainer.style.opacity = '1';
+    }, 300);
 
     window.app.lastUserInteraction = Date.now();
-}
-
-// Helper to fetch all pages then filter (INEFFICIENT - use server-side search if possible)
-async function fetchAllPagesAndFilter(resourceType, namespace, searchTerm) {
-    const loadingText = document.getElementById('resourcesLoadingText');
-    const progressBar = document.getElementById('resourcesProgressBar');
-    let allItems = [];
-    let currentPage = 1;
-    let totalPages = 1;
-
-    try {
-        // Fetch first page to get total count
-        if (loadingText) loadingText.textContent = `Fetching initial data for ${resourceType}...`;
-        const initialData = await fetchResourcePage(resourceType, namespace, false, 1);
-        if (!initialData || !initialData.data) throw new Error('Failed to fetch initial page data.');
-        
-        allItems = initialData.data.items || [];
-        const totalCount = initialData.data.totalCount || allItems.length;
-        const pageSize = initialData.data.pageSize || 50;
-        totalPages = Math.ceil(totalCount / pageSize);
-        if (progressBar) progressBar.style.width = `${(1/totalPages) * 80 + 10}%`; // Update progress
-
-        // Fetch remaining pages
-        const pagePromises = [];
-        for (let page = 2; page <= totalPages; page++) {
-            pagePromises.push(
-                fetchResourcePage(resourceType, namespace, false, page).then(data => {
-                    if (data && data.data && data.data.items) {
-                        return data.data.items;
-                    }
-                    return [];
-                })
-            );
-        }
-        
-        if (loadingText) loadingText.textContent = `Fetching all ${totalCount} ${resourceType} items...`;
-        const remainingItemsArrays = await Promise.all(pagePromises);
-        remainingItemsArrays.forEach((items) => allItems = allItems.concat(items));
-        if (progressBar) progressBar.style.width = '90%';
-
-        // Now filter all items
-        if (loadingText) loadingText.textContent = `Filtering ${allItems.length} items...`;
-        const filteredItems = searchTerm
-            ? allItems.filter(item => {
-                const name = item.metadata?.name?.toLowerCase() || '';
-                const ns = item.metadata?.namespace?.toLowerCase() || '';
-                // Add more complex filtering logic here if needed
-                return name.includes(searchTerm) || ns.includes(searchTerm);
-            })
-            : allItems;
-
-        // Update state with filtered items
-        const state = window.app.state.resources[resourceType] || {};
-        state.items = filteredItems;
-        state.totalCount = filteredItems.length;
-        state.pageSize = pageSize;
-        state.currentPage = 1;
-        state.totalPages = Math.ceil(filteredItems.length / pageSize);
-        state.loadedPages = Array.from({length: state.totalPages}, (_, i) => i + 1); // All pages are loaded
-        state.originalItems = allItems; // Store the full list for clearing filter
-        window.app.state.resources[resourceType] = state;
-        
-        if (progressBar) progressBar.style.width = '100%';
-        if (loadingText) loadingText.textContent = 'Rendering results...';
-
-        renderCurrentPage(resourceType); // Renders page 1 of filtered results
-        addResourceSearchIndicator(resourceType, searchTerm, filteredItems.length); // Add indicator
-
-    } catch (error) {
-        console.error('Error fetching all pages or filtering:', error);
-        if (loadingText) loadingText.textContent = `Error: ${error.message}`;
-        if (progressBar) progressBar.style.width = '100%'; 
-        // Show error in table
-        const tableContainer = document.getElementById('resourcesTableContainer');
-        if (tableContainer) {
-            tableContainer.innerHTML = `<div class="alert alert-danger">Search failed: ${error.message}</div>`;
-            tableContainer.style.opacity = '1';
-        }
-    } finally {
-         // Hide loading indicator after a short delay
-         const loadingContainer = document.getElementById('resourcesLoading');
-         const tableContainer = document.getElementById('resourcesTableContainer');
-         setTimeout(() => {
-             if (loadingContainer) loadingContainer.style.display = 'none';
-             if (tableContainer) tableContainer.style.opacity = '1';
-         }, 500);
-    }
 }
 
 // Clears the search input and results in the explorer
@@ -320,20 +276,25 @@ function clearResourceSearch() {
     if (searchInput) searchInput.value = '';
     clearResourceSearchIndicator();
     
-    // Restore original items if available, otherwise reload type
     const resourceType = window.app.currentResourceType;
     const state = window.app.state.resources[resourceType];
+
     if (state && state.originalItems) {
-        state.items = [...state.originalItems];
-        state.totalCount = state.items.length;
-        state.currentPage = 1;
-        state.totalPages = Math.ceil(state.totalCount / (state.pageSize || 50));
-        state.loadedPages = Array.from({length: state.totalPages}, (_, i) => i + 1);
-        delete state.originalItems; // Clear the backup
-        renderCurrentPage(resourceType);
-    } else {
-        loadResourceType(resourceType); // Reload the resource type entirely
+        state.items = [...state.originalItems]; // Restore from backup
+        // Update counts/pagination if we were strictly managing that (not relevant for full list)
+        // state.totalCount = state.items.length; 
+        // state.currentPage = 1;
+        // state.totalPages = 1;
+        // delete state.originalItems; // Optionally clear originalItems if memory is a concern
+    } else if (state) {
+        // If no originalItems, implies either not searched yet or original state is already current
+        // For safety, could reload, but ideally originalItems should exist after first load
+        console.warn('clearResourceSearch: originalItems not found, full list might not be restored if previously filtered by other means.');
+        // If originalItems are gone, the safest is to re-trigger the full load
+        loadResourceType(resourceType);
+        return;
     }
+    renderCurrentPage(resourceType);
     window.app.lastUserInteraction = Date.now();
 }
 
