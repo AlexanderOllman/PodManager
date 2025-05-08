@@ -7,10 +7,25 @@ function initializeTerminal() {
         // console.log('Terminal container not found, skipping initialization.');
         return;
     }
+    
+     // Check if an xterm instance is already associated and in the container
+    let terminal = window.app.terminal;
+    let fitAddon = window.app.terminalFitAddon;
+
+    if (terminal && terminal.element && terminalContainer.contains(terminal.element)) {
+        console.log('Terminal already initialized.');
+        fitAddon.fit(); // Refit on re-initialization call
+        // Connection is requested by app_init.js
+        return;
+    } 
+    // Clear container if it has content but no recognized terminal instance
+    if (terminalContainer.childElementCount > 0) {
+        terminalContainer.innerHTML = ''; 
+    }
 
     try {
-        console.log('Initializing terminal...');
-        const terminal = new Terminal({
+        console.log('Initializing terminal display (xterm.js)...');
+        terminal = new Terminal({
             cursorBlink: true,
             fontFamily: 'monospace',
             fontSize: 14,
@@ -18,152 +33,61 @@ function initializeTerminal() {
             scrollback: 1000,
             theme: { background: '#000000', foreground: '#ffffff' }
         });
-        const fitAddon = new FitAddon.FitAddon();
+        fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);
 
-        window.app.terminal = terminal; // Store in global state
+        window.app.terminal = terminal; // Store general CLI terminal
+        window.app.terminalFitAddon = fitAddon; // Store addon
         terminal.open(terminalContainer);
         fitAddon.fit();
 
-        // Setup command input handling
-        let currentLine = '';
-        let commandHistory = [];
-        let historyIndex = -1;
-
+        // --- REMOVED OLD onKey HANDLER --- 
+        // Input is now handled by the PTY connection established by the backend
+        // via the pod_terminal_input event, which is handled by the setupPodTerminal logic.
+        // The generic terminal listeners in app_init handle displaying output.
+       
         terminal.writeln('-- HPE Private Cloud AI - Control Plane CLI --');
-        terminal.writeln('Type commands and press Enter to execute.');
+        terminal.writeln('Attempting to connect to pod-manager pod...');
         terminal.writeln('');
-        terminal.write('$ ');
+        // Prompt will come from the pod's shell
 
-        // Ensure socket is available and set up listeners
-        if (!window.app.socket) {
-            try {
-                window.app.socket = io(); // Initialize if not done by app_init.js
-                console.log('Socket connection created for terminal.');
-
-                window.app.socket.on('connect', () => {
-                    console.log('Terminal socket reconnected.');
-                    terminal.writeln('\r\nReconnected to server.');
-                    terminal.write('$ ');
-                });
-                window.app.socket.on('connect_error', (error) => {
-                    console.error('Terminal socket connection error:', error);
-                    terminal.writeln(`\r\nConnection error: ${error}`);
-                    terminal.write('$ ');
-                });
-            } catch (e) {
-                console.error("Failed to initialize Socket.io for terminal:", e);
-                terminal.writeln('\r\nError: Could not connect to server for terminal commands.');
-                terminal.write('$ ');
-                // Display error in terminal container if socket.io is missing
-                terminalContainer.innerHTML = '<div class="alert alert-danger">Terminal requires Socket.io. Connection failed.</div>';
-                return; // Stop further terminal setup
-            }
-        }
-        
-        // This listener should be in app_init.js or a shared socket handling module
-        // to avoid duplication if other parts of app use 'terminal_output' event.
-        // For now, ensuring it's here if terminal.js is standalone for this part.
-        // window.app.socket.on('terminal_output', function(data) { ... }); 
-        // Already handled by connectSocketListeners in app_init.js
-
-        terminal.onKey(({ key, domEvent }) => {
-            const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.metaKey; // Ctrl key handled separately
-
-            if (domEvent.ctrlKey) {
-                handleTerminalCtrlKeys(domEvent.keyCode, terminal);
-                currentLine = ''; // Reset current line on Ctrl+C, etc.
-                return;
-            }
-
-            if (domEvent.keyCode === 13) { // Enter
-                if (currentLine.trim()) {
-                    commandHistory.push(currentLine);
-                    historyIndex = commandHistory.length;
-                    window.app.socket.emit('terminal_command', { command: currentLine });
-                    terminal.write('\r\n'); // Move to next line, prompt will be added by server response or here
-                    currentLine = '';
-                } else {
-                    terminal.write('\r\n$ '); // New prompt for empty command
-                }
-            } else if (domEvent.keyCode === 8) { // Backspace
-                if (currentLine.length > 0) {
-                    currentLine = currentLine.slice(0, -1);
-                    terminal.write('\b \b');
-                }
-            } else if (domEvent.keyCode === 38) { // Up arrow
-                if (historyIndex > 0) {
-                    historyIndex--;
-                    terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                    currentLine = commandHistory[historyIndex];
-                    terminal.write(currentLine);
-                }
-            } else if (domEvent.keyCode === 40) { // Down arrow
-                if (historyIndex < commandHistory.length - 1) {
-                    historyIndex++;
-                    terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                    currentLine = commandHistory[historyIndex];
-                    terminal.write(currentLine);
-                } else if (historyIndex === commandHistory.length - 1) {
-                    historyIndex++;
-                    terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                    currentLine = '';
-                }
-            } else if (domEvent.keyCode === 9) { // Tab
-                domEvent.preventDefault(); // Prevent focus change, placeholder for auto-complete
-            } else if (printable && key) { // Regular printable characters
-                currentLine += key;
-                terminal.write(key);
-            }
-        });
-
+        // Resize listener
         window.addEventListener('resize', () => fitAddon.fit());
-        console.log('Terminal initialized successfully with WebSocket mode.');
 
-    } catch (error) {
-        console.error('Failed to initialize terminal:', error);
-        terminalContainer.innerHTML = `<div class="alert alert-danger">Failed to initialize terminal: ${error.message}</div>`;
+    } catch (e) {
+        console.error("Failed to initialize terminal:", e);
+        terminalContainer.innerHTML = `<div class="alert alert-danger">Failed to initialize terminal display: ${e.message}</div>`;
     }
 }
 
 // Handles Ctrl key combinations in the terminal
+// Keep this minimal for now. The pty should interpret raw ctrl chars correctly.
 function handleTerminalCtrlKeys(keyCode, terminalInstance) {
-    if (!window.app.socket) return;
-
-    let controlChar = null;
-    let signal = null;
-    let displayChar = '';
-
-    switch (keyCode) {
-        case 67: // Ctrl+C
-            signal = 'SIGINT';
-            controlChar = '\x03'; // ETX
-            displayChar = '^C';
-            break;
-        case 68: // Ctrl+D
-            signal = 'EOF';
-            controlChar = '\x04'; // EOT
-            // No display char for EOF, server handles it
-            break;
-        case 90: // Ctrl+Z
-            signal = 'SIGTSTP';
-            controlChar = '\x1A'; // SUB
-            displayChar = '^Z';
-            break;
-        case 76: // Ctrl+L
-            terminalInstance.clear();
-            terminalInstance.write('$ '); // Re-issue prompt
-            return; // Handled client-side
-        default:
-            return; // Not a recognized control key combination
+    // Basic client-side handling like Ctrl+L (clear)
+    if (keyCode === 76 && !domEvent.altKey && !domEvent.ctrlKey && !domEvent.metaKey) { // Ctrl+L
+        terminalInstance.clear();
+        return;
     }
+    // Other Ctrl keys (like C, D, Z) will be sent as raw characters 
+    // by the xterm instance's default behavior when connected to the PTY
+    // via the 'pod_terminal_input' mechanism setup by handle_pod_terminal_start.
+}
 
-    if (signal && controlChar) {
-        window.app.socket.emit('terminal_command', { control: signal, key: controlChar });
-        if (displayChar) terminalInstance.write(displayChar);
-        if (signal !== 'EOF') terminalInstance.write('\r\n$ '); // New prompt, except for EOF
+// Function to refresh terminal dimensions
+// Renamed to avoid potential conflicts if other addons use fit()
+function fitCliTerminal() { 
+    if (window.app.terminalFitAddon) {
+        try {
+            window.app.terminalFitAddon.fit();
+        } catch (e) {
+            console.warn("Error fitting CLI terminal:", e);
+        }
     }
 }
+
+// Ensure fit is called when resizing
+window.removeEventListener('resize', fitCliTerminal); // Remove previous listener if any
+window.addEventListener('resize', fitCliTerminal);
 
 // Deprecated: Kept for potential backward compatibility or reference
 // Modern implementation uses WebSocket directly via terminal input handling.

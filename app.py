@@ -143,50 +143,65 @@ def run_action():
     output = run_kubectl_command(command)
     return jsonify(format='text', output=output)
 
-def run_command(command, sid):
-    logger.info(f"[sid:{sid}] Received command: {command}")
+@socketio.on('cli_terminal_connect')
+def handle_cli_terminal_connect():
+    """Handles request from frontend CLI tab to connect to the pod-manager pod."""
+    sid = request.sid
+    logger.info(f"[sid:{sid}] Received CLI terminal connect request.")
+
+    if sid in active_pty_sessions:
+        logger.info(f"[sid:{sid}] Session already active, likely for pod-manager. Re-attaching frontend.")
+        # Frontend will re-attach based on existing terminal output/state
+        # Maybe send a welcome message?
+        # socketio.emit('terminal_output', {'data': 'Reconnected to existing session.\n$ '}, room=sid)
+        return
+
     try:
-        logger.info(f"[sid:{sid}] Starting Popen for: {command}")
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
-        logger.info(f"[sid:{sid}] Popen started, PID: {process.pid}")
+        # Find the pod-manager pod using grep
+        # Using -A 0 to avoid extra lines, and filtering specific lines
+        # NOTE: Using label selector is generally more reliable if applicable.
+        find_cmd = "kubectl get pods -A | grep pod-manager | grep Running | awk '{print $1 \",\" $2}'"
+        logger.info(f"[sid:{sid}] Running command to find pod-manager pod: {find_cmd}")
+        output = run_kubectl_command(find_cmd) # Use the existing helper
+        logger.info(f"[sid:{sid}] Find pod output:\n{output}")
+
+        # Parse output (expecting lines like "namespace,pod-name")
+        lines = [line.strip() for line in output.strip().split('\n') if line.strip()]
         
-        # Stream stdout
-        logger.info(f"[sid:{sid}] Reading stdout...")
-        stdout_emitted = False
-        for line in iter(process.stdout.readline, ''):
-            if line:
-                logger.debug(f"[sid:{sid}] Sending stdout line: {line.strip()}")
-                socketio.emit('terminal_output', {'data': line}, room=sid)
-                stdout_emitted = True
+        # Filter out potential header lines or errors if grep wasn't precise
+        found_pods = []
+        for line in lines:
+            parts = line.split(',')
+            if len(parts) == 2:
+                 found_pods.append({'namespace': parts[0], 'pod_name': parts[1]})
             else:
-                # Should not happen with iter(readline, '') unless process closes stream early?
-                logger.debug(f"[sid:{sid}] Empty stdout line received.")
-                break # Exit loop if readline returns empty string indicating stream closed
-        process.stdout.close() # Close stdout pipe
-        logger.info(f"[sid:{sid}] Finished reading stdout. Emitted data: {stdout_emitted}")
-        
-        # Wait for process to finish and read stderr
-        stderr_output = process.stderr.read()
-        process.stderr.close()
-        return_code = process.wait()
-        logger.info(f"[sid:{sid}] Process finished with return code: {return_code}")
+                logger.warning(f"[sid:{sid}] Skipping invalid line from pod find command: {line}")
 
-        if stderr_output:
-            logger.warning(f"[sid:{sid}] Sending stderr output: {stderr_output.strip()}")
-            socketio.emit('terminal_output', {'data': f"\nError: {stderr_output}", 'error': True}, room=sid)
-        
-        # Send completion signal
-        logger.info(f"[sid:{sid}] Sending completion signal.")
-        socketio.emit('terminal_output', {'complete': True}, room=sid)
+        if len(found_pods) == 1:
+            target_pod = found_pods[0]
+            namespace = target_pod['namespace']
+            pod_name = target_pod['pod_name']
+            logger.info(f"[sid:{sid}] Found unique pod-manager: {namespace}/{pod_name}. Starting PTY session...")
+            # Call the existing handler to start the PTY session for this specific pod
+            # We pass data as if it came from the frontend pod access tab
+            handle_pod_terminal_start({'namespace': namespace, 'pod_name': pod_name}) 
+            # The handle_pod_terminal_start will associate this sid with the new PTY session
+        elif len(found_pods) == 0:
+            logger.warning(f"[sid:{sid}] No running pod-manager pod found.")
+            socketio.emit('terminal_output', {'data': '\nError: No running pod-manager pod found.\n$ ', 'error': True}, room=sid)
+        else:
+            logger.warning(f"[sid:{sid}] Found multiple pod-manager pods:")
+            message = '\nError: Found multiple pod-manager pods. Cannot auto-connect. Please specify:\n'
+            for i, pod in enumerate(found_pods):
+                logger.warning(f"  {i+1}. {pod['namespace']}/{pod['pod_name']}")
+                message += f"  {i+1}. {pod['namespace']}/{pod['pod_name']}\n"
+            message += '$ '
+            socketio.emit('terminal_output', {'data': message, 'error': True}, room=sid)
+            # Note: Further logic would be needed here to handle user selection if implemented.
 
-    except FileNotFoundError:
-         logger.error(f"[sid:{sid}] Command not found: {command.split()[0]}")
-         socketio.emit('terminal_output', {'data': f'\nError: command not found: {command.split()[0]}\n', 'error': True}, room=sid)
-         socketio.emit('terminal_output', {'complete': True}, room=sid)
     except Exception as e:
-        logger.error(f"[sid:{sid}] Exception in run_command for '{command}': {e}")
-        socketio.emit('terminal_output', {'data': f'\nError executing command: {str(e)}\n', 'error': True}, room=sid)
-        socketio.emit('terminal_output', {'complete': True}, room=sid)
+        logger.error(f"[sid:{sid}] Exception in handle_cli_terminal_connect: {e}")
+        socketio.emit('terminal_output', {'data': f'\nError connecting to pod-manager: {str(e)}\n$ ', 'error': True}, room=sid)
 
 @app.route('/run_cli_command', methods=['POST'])
 def run_cli_command():
@@ -894,39 +909,6 @@ def handle_disconnect():
         del active_pty_sessions[sid]
     # Call original disconnect handler if needed
     # super().on_disconnect(sid) # If subclassing
-
-@socketio.on('terminal_command')
-def handle_terminal_command(data):
-    # Handle control signals
-    if 'control' in data:
-        control_type = data.get('control')
-        print(f"Received control signal: {control_type}")
-        
-        if control_type == 'SIGINT':
-            # In a real implementation, we would send SIGINT to the process
-            # For now, we'll just acknowledge it
-            return
-        
-        elif control_type == 'EOF':
-            # Handle EOF signal
-            return
-        
-        elif control_type == 'SIGTSTP':
-            # Handle SIGTSTP signal
-            return
-            
-        return
-    
-    # Handle regular commands
-    command = data.get('command', '')
-    if not command:
-        return
-    
-    print(f"Executing command: {command}")
-    sid = request.sid
-    thread = threading.Thread(target=run_command, args=(command, sid))
-    thread.daemon = True
-    thread.start()
 
 @app.route('/api/cli/exec', methods=['POST'])
 def api_cli_exec():
