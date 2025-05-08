@@ -117,6 +117,25 @@
             text-align: center;
         }
     </style>
+
+    <script src="{{ url_for('static', filename='js/xterm/xterm-addon-fit.js') }}"></script>
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- Core Application Scripts -->
+    <script src="{{ url_for('static', filename='js/app_init.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui_helpers.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/api_services.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/resource_controls.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/navigation_listeners.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/gpu_dashboard.js') }}"></script> <!-- If dashboard elements are present -->
+
+    <!-- Page-Specific Scripts for index_new.html -->
+    <script src="{{ url_for('static', filename='js/home_page.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/terminal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/yaml_deploy.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/events_tab.js') }}"></script>
+    <!-- Add other scripts like settings.js, namespaces_view.js if their corresponding HTML sections are used in index_new.html -->
 </head>
 <body>
     <div class="container-fluid">
@@ -392,245 +411,21 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
-<script>
-    const resourceTypes = ['pods', 'services', 'inferenceservices', 'deployments', 'configmaps', 'secrets'];
+    <script>
+        // MINIMAL INLINE SCRIPT NOW
+        // Most functionality moved to imported modules.
+        // The DOMContentLoaded listener in app_init.js should handle primary initialization.
 
-
-function getStatusIcon(status) {
-    switch (status.toLowerCase()) {
-        case 'running':
-            return '<i class="fas fa-check-circle status-icon status-running"></i>';
-        case 'pending':
-            return '<i class="fas fa-clock status-icon status-pending"></i>';
-        case 'failed':
-            return '<i class="fas fa-times-circle status-icon status-failed"></i>';
-        default:
-            return '<i class="fas fa-question-circle status-icon status-unknown"></i>';
-    }
-}
-
-function createActionButton(resourceType, namespace, name) {
-    return `
-        <div class="dropdown">
-            <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-ellipsis-h"></i>
-            </button>
-            <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                <li><a class="dropdown-item" href="#" onclick="runAction('logs', '${resourceType}', '${namespace}', '${name}')">View Logs</a></li>
-                <li><a class="dropdown-item" href="#" onclick="runAction('exec', '${resourceType}', '${namespace}', '${name}')">Access</a></li>
-                <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">Delete</a></li>
-            </ul>
-        </div>
-    `;
-}
-
-function showLoading(resourceType) {
-    document.getElementById(`${resourceType}Loading`).style.display = 'flex';
-    document.getElementById(`${resourceType}Table`).style.display = 'none';
-}
-
-function hideLoading(resourceType) {
-    document.getElementById(`${resourceType}Loading`).style.display = 'none';
-    document.getElementById(`${resourceType}Table`).style.display = 'block';
-}
-
-function fetchResourceData(resourceType) {
-    showLoading(resourceType);
-    fetch('/get_resources', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `resource_type=${resourceType}`
-    })
-    .then(response => response.json())
-    .then(data => {
-        const tableBody = document.querySelector(`#${resourceType}Table table tbody`);
-        tableBody.innerHTML = ''; // Clear existing rows
-
-        if (data.format === 'error') {
-            tableBody.innerHTML = `<tr><td colspan="7">Unable to fetch ${resourceType}</td></tr>`;
-        } else {
-            data.data.items.forEach(item => {
-                const row = document.createElement('tr');
-                switch (resourceType) {
-                    case 'pods':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.status.containerStatuses ? item.status.containerStatuses[0].ready : 'N/A'}</td>
-                            <td>${getStatusIcon(item.status.phase)}${item.status.phase}</td>
-                            <td>${item.status.containerStatuses ? item.status.containerStatuses[0].restartCount : 'N/A'}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    case 'services':
-                        row.innerHTML = `
-                            <td>${item.metadata.namespace}</td>
-                            <td>${item.metadata.name}</td>
-                            <td>${item.spec.type}</td>
-                            <td>${item.spec.clusterIP}</td>
-                            <td>${item.spec.externalIP || 'N/A'}</td>
-                            <td>${item.spec.ports.map(port => `${port.port}/${port.protocol}`).join(', ')}</td>
-                            <td>${new Date(item.metadata.creationTimestamp).toLocaleString()}</td>
-                            <td>${createActionButton(resourceType, item.metadata.namespace, item.metadata.name)}</td>
-                        `;
-                        break;
-                    // Add cases for other resource types as needed
-                }
-                tableBody.appendChild(row);
-            });
-        }
-        hideLoading(resourceType);
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        hideLoading(resourceType);
-    });
-}
-
-function runAction(action, resourceType, namespace, name) {
-    const actionModal = new bootstrap.Modal(document.getElementById('actionModal'));
-    actionModal.show();
-    
-    document.getElementById('actionLoading').style.display = 'flex';
-    document.getElementById('actionResult').style.display = 'none';
-
-    fetch('/run_action', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `action=${action}&resource_type=${resourceType}&namespace=${namespace}&resource_name=${name}`
-    })
-    .then(response => response.json())
-    .then(data => {
-        const actionResult = document.getElementById('actionResult');
-        actionResult.textContent = data.output;
-        document.getElementById('actionLoading').style.display = 'none';
-        actionResult.style.display = 'block';
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        document.getElementById('actionLoading').style.display = 'none';
-        document.getElementById('actionResult').style.display = 'block';
-        document.getElementById('actionResult').textContent = 'An error occurred while performing the action.';
-    });
-}
-
-function runCliCommand() {
-    const command = document.getElementById('cliCommand').value;
-    fetch('/run_cli_command', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `command=${encodeURIComponent(command)}`
-    })
-    .then(response => response.json())
-    .then(data => {
-        document.getElementById('cliOutput').textContent = data.output;
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        document.getElementById('cliOutput').textContent = 'An error occurred while running the command.';
-    });
-}
-
-function deployYaml() {
-    const fileInput = document.querySelector('.drop-zone__input');
-    const file = fileInput.files[0];
-    if (file) {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        fetch('/upload_yaml', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('yamlOutput').textContent = data.output || data.error;
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            document.getElementById('yamlOutput').textContent = 'An error occurred while deploying the YAML file.';
+        // If there are any functions that MUST remain inline and are specific ONLY to index_new.html 
+        // and cannot be modularized, they would go here. Otherwise, this block might be empty or removed.
+        
+        // Example: If index_new.html has a unique initialization sequence not covered by app_init.js
+        /*
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('index_new.html specific DOMContentLoaded');
+            // Call any index_new.html specific initializers if needed
         });
-    }
-}
-
-document.querySelectorAll(".drop-zone__input").forEach((inputElement) => {
-    const dropZoneElement = inputElement.closest(".drop-zone");
-
-    dropZoneElement.addEventListener("click", (e) => {
-        inputElement.click();
-    });
-
-    inputElement.addEventListener("change", (e) => {
-        if (inputElement.files.length) {
-            updateThumbnail(dropZoneElement, inputElement.files[0]);
-            document.getElementById('deployButton').style.display = 'inline-block';
-        }
-    });
-
-    dropZoneElement.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropZoneElement.classList.add("drop-zone--over");
-    });
-
-    ["dragleave", "dragend"].forEach((type) => {
-        dropZoneElement.addEventListener(type, (e) => {
-            dropZoneElement.classList.remove("drop-zone--over");
-        });
-    });
-
-    dropZoneElement.addEventListener("drop", (e) => {
-        e.preventDefault();
-
-        if (e.dataTransfer.files.length) {
-            inputElement.files = e.dataTransfer.files;
-            updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
-            document.getElementById('deployButton').style.display = 'inline-block';
-        }
-
-        dropZoneElement.classList.remove("drop-zone--over");
-    });
-});
-
-function updateThumbnail(dropZoneElement, file) {
-    let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
-
-    if (dropZoneElement.querySelector(".drop-zone__prompt")) {
-        dropZoneElement.querySelector(".drop-zone__prompt").remove();
-    }
-
-    if (!thumbnailElement) {
-        thumbnailElement = document.createElement("div");
-        thumbnailElement.classList.add("drop-zone__thumb");
-        dropZoneElement.appendChild(thumbnailElement);
-    }
-
-    thumbnailElement.dataset.label = file.name;
-
-    if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-            thumbnailElement.style.backgroundImage = `url('${reader.result}')`;
-        };
-    } else {
-        thumbnailElement.style.backgroundImage = null;
-    }
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    resourceTypes.forEach(resourceType => {
-        fetchResourceData(resourceType);
-        document.querySelector(`#${resourceType}-tab`).addEventListener('click', () => fetchResourceData(resourceType));
-    });
-});
-</script>
+        */
+    </script>
 </body>
 </html>

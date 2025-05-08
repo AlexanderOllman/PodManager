@@ -377,13 +377,14 @@
             <h1 class="h2">Resource Explorer</h1>
             <div class="btn-toolbar">
                 <div class="btn-group me-2">
-                    <button class="btn btn-sm btn-outline-secondary" id="refreshResourcesBtnMain" onclick="refreshResourcesPage()">
+                    <button class="btn btn-sm btn-outline-secondary" id="refreshResourcesBtn" onclick="refreshResourcesPage()">
                         <i class="fas fa-sync-alt me-1"></i> Refresh
                     </button>
                 </div>
                 <select id="resourceTypeSelector" class="form-select form-select-sm" aria-label="Select resource type" onchange="changeResourceType(this.value)">
                     <option value="pods">Pods</option>
                     <option value="services">Services</option>
+                    <option value="inferenceservices">Inference Services</option>
                     <option value="deployments">Deployments</option>
                     <option value="configmaps">Config Maps</option>
                     <option value="secrets">Secrets</option>
@@ -393,14 +394,32 @@
         
         <!-- Resource filters/controls -->
         <div class="row mb-3">
-            <div class="col-md-8">
+            <div class="col-md-6">
                 <div class="input-group">
                     <span class="input-group-text bg-light border-0">
                         <i class="fas fa-search text-muted"></i>
                     </span>
-                    <input type="text" class="form-control border-0 bg-light" id="resourceSearchInput" placeholder="Search resources by name or namespace...">
+                    <input type="text" class="form-control border-0 bg-light" id="resourceSearchInput" placeholder="Search resources...">
                     <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" onclick="clearResourceSearch()">
                         <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <div class="btn-toolbar justify-content-end">
+                    <div class="pagination-container me-2">
+                        <div class="btn-group">
+                            <button class="btn btn-outline-secondary" id="prevPageBtn" onclick="navigateResourcePage('prev')" disabled>
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <span class="btn btn-outline-secondary disabled" id="paginationInfo">Page 1</span>
+                            <button class="btn btn-outline-secondary" id="nextPageBtn" onclick="navigateResourcePage('next')" disabled>
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-primary" id="refreshResourcesBtn" onclick="refreshResourcesPage()">
+                        <i class="fas fa-sync-alt me-1"></i> Refresh
                     </button>
                 </div>
             </div>
@@ -732,193 +751,12 @@
 {% endblock %}
 
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/index.js') }}"></script>
-
-<script>
-// Chart Management Functions
-function refreshCharts(retryCount = 0) {
-    const MAX_RETRIES = 2;
-    const loadingContainer = document.getElementById('chartsLoading');
-    const progressBar = document.getElementById('chartsProgressBar');
-    const warning = document.getElementById('chartsWarning');
-    const table = document.getElementById('chartsTable').getElementsByTagName('tbody')[0];
-    
-    loadingContainer.style.display = 'block';
-    warning.style.display = 'none';
-    progressBar.style.width = '0%';
-    
-    fetch('/api/charts/list')
-        .then(response => response.json())
-        .then(data => {
-            if (!data.success) {
-                if (data.error.includes('Port forwarding was attempted') && retryCount < MAX_RETRIES) {
-                    // Show port forwarding attempt message
-                    Swal.fire({
-                        title: 'Setting up connection...',
-                        html: `Attempting to connect to ChartMuseum (Attempt ${retryCount + 1} of ${MAX_RETRIES + 1})`,
-                        timer: 3000,
-                        timerProgressBar: true,
-                        didOpen: () => {
-                            Swal.showLoading();
-                        }
-                    }).then(() => {
-                        console.log(`Retrying after port forwarding attempt ${retryCount + 1}...`);
-                        refreshCharts(retryCount + 1);
-                    });
-                } else if (retryCount >= MAX_RETRIES) {
-                    // Show final error message
-                    Swal.fire({
-                        title: 'Connection Failed',
-                        html: 'Failed to establish connection to ChartMuseum after multiple attempts.<br>Please check if ChartMuseum is running in the ez-chartmuseum-ns namespace.',
-                        icon: 'error'
-                    });
-                }
-                warning.textContent = data.error;
-                warning.style.display = 'block';
-                return;
-            }
-            
-            table.innerHTML = '';
-            
-            // Process each chart
-            Object.entries(data.charts).forEach(([chartName, versions]) => {
-                versions.forEach(version => {
-                    const row = table.insertRow();
-                    
-                    // Chart Name
-                    const nameCell = row.insertCell();
-                    nameCell.textContent = chartName;
-                    
-                    // Version
-                    const versionCell = row.insertCell();
-                    versionCell.textContent = version.version;
-                    
-                    // Description
-                    const descCell = row.insertCell();
-                    descCell.textContent = version.description || 'N/A';
-                    
-                    // Created
-                    const createdCell = row.insertCell();
-                    createdCell.textContent = new Date(version.created).toLocaleString();
-                    
-                    // App Version
-                    const appVersionCell = row.insertCell();
-                    appVersionCell.textContent = version.appVersion || 'N/A';
-                    
-                    // Actions
-                    const actionsCell = row.insertCell();
-                    actionsCell.className = 'text-center';
-                    
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'btn btn-sm btn-danger';
-                    deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
-                    deleteBtn.onclick = () => deleteChart(chartName, version.version);
-                    
-                    actionsCell.appendChild(deleteBtn);
-                });
-            });
-            
-            progressBar.style.width = '100%';
-        })
-        .catch(error => {
-            console.error('Error fetching charts:', error);
-            Swal.fire({
-                title: 'Error',
-                html: 'Failed to fetch charts. Please try again.',
-                icon: 'error'
-            });
-            warning.textContent = 'Failed to fetch charts. Please try again.';
-            warning.style.display = 'block';
-        })
-        .finally(() => {
-            setTimeout(() => {
-                loadingContainer.style.display = 'none';
-            }, 500);
-        });
-}
-
-function deleteChart(chartName, version) {
-    // Show confirmation dialog
-    Swal.fire({
-        title: 'Delete Chart?',
-        html: version ? 
-            `Are you sure you want to delete version <strong>${version}</strong> of chart <strong>${chartName}</strong>?` :
-            `Are you sure you want to delete all versions of chart <strong>${chartName}</strong>?`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Yes, delete it!',
-        cancelButtonText: 'Cancel',
-        reverseButtons: true
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // Show loading state
-            Swal.fire({
-                title: 'Deleting...',
-                html: 'Please wait while the chart is being deleted.',
-                allowOutsideClick: false,
-                allowEscapeKey: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                }
-            });
-
-            // Prepare form data
-            const formData = new FormData();
-            formData.append('chart_name', chartName);
-            if (version) {
-                formData.append('version', version);
-            }
-
-            // Send delete request
-            fetch('/api/charts/delete', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Show success message
-                    Swal.fire({
-                        title: 'Deleted!',
-                        html: data.message,
-                        icon: 'success',
-                        timer: 2000,
-                        showConfirmButton: false
-                    }).then(() => {
-                        // Refresh the charts list
-                        refreshCharts();
-                    });
-                } else {
-                    // Show error message
-                    Swal.fire({
-                        title: 'Error!',
-                        html: data.error || 'Failed to delete chart',
-                        icon: 'error'
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Error deleting chart:', error);
-                Swal.fire({
-                    title: 'Error!',
-                    html: 'Failed to delete chart. Please try again.',
-                    icon: 'error'
-                });
-            });
-        }
-    });
-}
-
-// Initialize charts when the tab is shown
-document.addEventListener('DOMContentLoaded', function() {
-    const chartsTab = document.querySelector('a[data-bs-target="#charts"]');
-    if (chartsTab) {
-        chartsTab.addEventListener('shown.bs.tab', function (e) {
-            refreshCharts();
-        });
-    }
-});
-</script>
+    <script src="{{ url_for('static', filename='js/home_page.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/terminal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/yaml_deploy.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/events_tab.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/namespaces_view.js') }}"></script>
+    <!-- resource_explorer.js is for explore.html, not index.html -->
+    <script src="{{ url_for('static', filename='js/charts_page.js') }}"></script>
 {% endblock %}

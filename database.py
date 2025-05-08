@@ -87,35 +87,27 @@ class Database:
             logging.error(f"Error updating resources for {resource_type}: {str(e)}")
             return False
 
-    def get_resources(self, resource_type: str, namespace: Optional[str] = None, search_term: Optional[str] = None) -> List[Dict]:
-        """Retrieve resources from the database, optionally filtering by namespace and search term."""
+    def get_resources(self, resource_type: str, namespace: Optional[str] = None) -> List[Dict]:
+        """Retrieve resources from the database."""
         try:
             with sqlite3.connect(self.db_path) as conn:
-                # Use row factory for easier dictionary access if needed later, though json.loads handles it now
-                # conn.row_factory = sqlite3.Row 
                 cursor = conn.cursor()
                 
-                query = '''SELECT data FROM resources WHERE resource_type = ?'''
-                params = [resource_type]
-                
-                if namespace and namespace != 'all': # Ensure 'all' is not treated as a specific namespace
-                    query += ' AND namespace = ?'
-                    params.append(namespace)
-                    
-                if search_term:
-                    # Add filtering for name and namespace using LIKE
-                    # Using || for string concatenation which is standard SQL
-                    query += ' AND (name LIKE ? OR namespace LIKE ?)'
-                    search_pattern = f'%{search_term}%'
-                    params.extend([search_pattern, search_pattern])
-
-                cursor.execute(query, tuple(params)) # Pass params as a tuple
+                if namespace:
+                    cursor.execute('''
+                        SELECT data FROM resources 
+                        WHERE resource_type = ? AND namespace = ?
+                    ''', (resource_type, namespace))
+                else:
+                    cursor.execute('''
+                        SELECT data FROM resources 
+                        WHERE resource_type = ?
+                    ''', (resource_type,))
                 
                 results = cursor.fetchall()
-                # Parse the JSON data stored in the 'data' column
                 return [json.loads(row[0]) for row in results]
         except Exception as e:
-            logging.error(f"Error retrieving resources ({resource_type}, ns={namespace}, search='{search_term}'): {str(e)}")
+            logging.error(f"Error retrieving resources: {str(e)}")
             return []
 
     def update_metrics(self, metric_type: str, namespace: str, data: Dict) -> bool:
