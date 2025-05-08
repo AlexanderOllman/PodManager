@@ -377,7 +377,7 @@
             <h1 class="h2">Resource Explorer</h1>
             <div class="btn-toolbar">
                 <div class="btn-group me-2">
-                    <button class="btn btn-sm btn-outline-secondary" id="refreshResourcesBtn" onclick="refreshResourcesPage()">
+                    <button class="btn btn-sm btn-outline-secondary" id="refreshResourcesTopBtn" onclick="refreshResourcesPage()">
                         <i class="fas fa-sync-alt me-1"></i> Refresh
                     </button>
                 </div>
@@ -406,22 +406,9 @@
                 </div>
             </div>
             <div class="col-md-6 text-end">
-                <div class="btn-toolbar justify-content-end">
-                    <div class="pagination-container me-2">
-                        <div class="btn-group">
-                            <button class="btn btn-outline-secondary" id="prevPageBtn" onclick="navigateResourcePage('prev')" disabled>
-                                <i class="fas fa-chevron-left"></i>
-                            </button>
-                            <span class="btn btn-outline-secondary disabled" id="paginationInfo">Page 1</span>
-                            <button class="btn btn-outline-secondary" id="nextPageBtn" onclick="navigateResourcePage('next')" disabled>
-                                <i class="fas fa-chevron-right"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <button class="btn btn-outline-primary" id="refreshResourcesBtn" onclick="refreshResourcesPage()">
-                        <i class="fas fa-sync-alt me-1"></i> Refresh
-                    </button>
-                </div>
+                <button class="btn btn-outline-primary" id="refreshResourcesBtn" onclick="refreshResourcesPage()">
+                    <i class="fas fa-sync-alt me-1"></i> Refresh
+                </button>
             </div>
         </div>
         

@@ -94,14 +94,14 @@ function loadResourceType(resourceType) {
     if (progressBar) progressBar.style.width = '10%';
 
     setupTableHeaders(resourceType); // Setup headers for the new type
-    resetPaginationUI(); // Reset pagination display
 
-    // Fetch page 1, resetting any previous data for this type
-    fetchResourceData(resourceType, 'all', false, 1, true)
+    // Fetch ALL data, page 1, reset=true
+    fetchResourceData(resourceType, 'all', true, 1, true) // fetchAll=true
         .then(data => {
             if (progressBar) progressBar.style.width = '100%';
-            updatePaginationUI(resourceType);
-            // renderResourcePage(resourceType); // fetchResourceData calls process, which calls render
+            // No pagination UI update needed
+            // updatePaginationUI(resourceType);
+            // renderResourcePage should be called by processResourcePageData via renderCurrentPage
             setTimeout(() => {
                 if (loadingContainer) loadingContainer.style.display = 'none';
                 if (tableContainer) tableContainer.style.opacity = '1'; // Show table
@@ -110,11 +110,8 @@ function loadResourceType(resourceType) {
         .catch(error => {
             console.error(`Error loading ${resourceType} in explorer:`, error);
             if (tableContainer) {
-                tableContainer.innerHTML = `
-                    <div class="alert alert-danger mt-3">
-                        Error loading ${resourceType}: ${error.message}
-                        <button class="btn btn-sm btn-outline-danger ms-3" onclick="loadResourceType('${resourceType}')">Retry</button>
-                    </div>`;
+                // Simplified error display
+                tableContainer.innerHTML = `<div class="alert alert-danger mt-3">Error loading ${resourceType}: ${error.message} <button class="btn btn-sm btn-outline-danger ms-3" onclick="loadResourceType('${resourceType}')">Retry</button></div>`;
                 tableContainer.style.opacity = '1';
             }
             if (loadingContainer) loadingContainer.style.display = 'none';
@@ -363,123 +360,56 @@ function clearResourceSearchIndicator() {
     if (indicator) indicator.remove();
 }
 
-// Handles pagination navigation (Previous/Next)
-function navigateResourcePage(direction) {
-    const resourceType = window.app.currentResourceType;
-    const resourceData = window.app.state.resources[resourceType];
-    if (!resourceData) return;
-
-    let currentPage = resourceData.currentPage || 1;
-    const totalPages = resourceData.totalPages || 1;
-
-    if (direction === 'prev' && currentPage > 1) currentPage--;
-    else if (direction === 'next' && currentPage < totalPages) currentPage++;
-    else return; // No change
-
-    resourceData.currentPage = currentPage;
-
-    // Check if the required page's data is already in state.items (due to fetch-all search or previous load)
-    const pageSize = resourceData.pageSize || 50;
-    const requiredStartIndex = (currentPage - 1) * pageSize;
-    
-    // If the needed items are already in the main `items` array (common after a search/filter)
-    if (resourceData.items && resourceData.items.length >= requiredStartIndex + 1) {
-        console.log(`Rendering page ${currentPage} from existing items for ${resourceType}`);
-        updatePaginationUI(resourceType);
-        renderResourcePage(resourceType); // Render the specific slice
-    } else {
-        // If data for the page isn't available, fetch it (original load-more or paged scenario)
-        console.log(`Fetching page ${currentPage} for ${resourceType}`);
-        const loadingContainer = document.getElementById('resourcesLoading');
-        const tableContainer = document.getElementById('resourcesTableContainer');
-        if (loadingContainer) loadingContainer.style.display = 'flex';
-        if (tableContainer) tableContainer.style.opacity = '0.5';
-        
-        fetchResourcePage(resourceType, 'all', false, currentPage)
-            .then(() => {
-                // processResourcePageData updates state and calls renderCurrentPage
-            })
-            .catch(error => console.error(`Error fetching page ${currentPage}:`, error))
-            .finally(() => {
-                 if (loadingContainer) loadingContainer.style.display = 'none';
-                 if (tableContainer) tableContainer.style.opacity = '1';
-            });
-    }
-    window.app.lastUserInteraction = Date.now();
-}
-
-// Renders the specific page of items for the resources explorer table
+// Renders ALL items for the resources explorer table (no pagination)
 function renderResourcePage(resourceType) {
     const resourceData = window.app.state.resources[resourceType];
     if (!resourceData || !resourceData.items) {
-        console.error(`No data/items found for ${resourceType} in renderResourcePage`);
+        console.error(`No data available for ${resourceType} in renderResourcePage`);
+        const tableBody = document.getElementById('resourcesTableBody');
+        if (tableBody) tableBody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-4">No data available for ${resourceType}.</td></tr>`;
         return;
     }
     
-    const { items, totalCount, pageSize, currentPage } = resourceData;
+    const { items, totalCount } = resourceData; // No pageSize/currentPage needed here
     const tableBody = document.getElementById('resourcesTableBody');
     if (!tableBody) {
         console.error('Resources table body (#resourcesTableBody) not found.');
         return;
     }
 
-    tableBody.innerHTML = ''; // Clear previous page content
+    tableBody.innerHTML = ''; // Clear previous content
 
-    // Calculate the slice of items for the current page
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const pageItems = items.slice(startIndex, endIndex);
-
-    if (pageItems.length === 0) {
+    if (items.length === 0) {
         const colSpan = document.getElementById('resourcesTableHeader')?.children.length || 7;
-        tableBody.innerHTML = `<tr><td colspan="${colSpan}" class="text-center text-muted py-4"><i class="fas fa-info-circle me-2"></i>No ${resourceType} found on this page.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="${colSpan}" class="text-center text-muted py-4"><i class="fas fa-info-circle me-2"></i>No ${resourceType} found.</td></tr>`;
     } else {
-        pageItems.forEach(item => {
-            const row = createResourceRow(resourceType, item); // Use shared row creation logic
-            if (row) tableBody.appendChild(row);
+        // Optimize rendering potentially with document fragment for large lists
+        const fragment = document.createDocumentFragment();
+        items.forEach(item => { // Iterate through ALL items
+            const row = createResourceRow(resourceType, item); // Assumes createResourceRow exists (likely in resource_rendering.js)
+            if (row) fragment.appendChild(row);
         });
-        // Initialize dropdowns for the new rows
-        setTimeout(initializeAllDropdowns, 50); 
+        tableBody.appendChild(fragment);
+        setTimeout(initializeAllDropdowns, 50); // Initialize dropdowns after appending
     }
     
-     // Update count info specific to the resources page table container
+    // Update count info
     const tableContainer = document.getElementById('resourcesTableContainer');
     if (tableContainer) {
         let countInfo = tableContainer.querySelector('.count-info');
         if (!countInfo) {
-            countInfo = document.createElement('div');
-            countInfo.className = 'text-muted small mb-2 count-info';
-            tableContainer.insertBefore(countInfo, tableContainer.firstChild);
+             countInfo = document.createElement('div');
+             countInfo.className = 'text-muted small mb-2 count-info';
+             // Insert before the table responsive div if possible
+             const tableResponsiveDiv = tableContainer.querySelector('.table-responsive');
+             if (tableResponsiveDiv) tableContainer.insertBefore(countInfo, tableResponsiveDiv);
+             else tableContainer.prepend(countInfo);
         }
-        const startItemNum = Math.min(startIndex + 1, totalCount);
-        const endItemNum = Math.min(startIndex + pageItems.length, totalCount);
-        countInfo.innerHTML = totalCount > 0 ? `Showing ${startItemNum}-${endItemNum} of ${totalCount} ${resourceType}` : `Showing 0 of 0 ${resourceType}`;
+        // Show total count
+        countInfo.innerHTML = `Showing ${items.length} of ${totalCount || items.length} ${resourceType}`; // Use totalCount if available
     }
-}
-
-// Updates the pagination UI controls (buttons, page info)
-function updatePaginationUI(resourceType) {
-    const resourceData = window.app.state.resources[resourceType];
-    if (!resourceData) return;
-    
-    const currentPage = resourceData.currentPage || 1;
-    const totalPages = resourceData.totalPages || 1;
-
-    const paginationInfo = document.getElementById('paginationInfo');
-    if (paginationInfo) paginationInfo.textContent = `Page ${currentPage} of ${totalPages}`;
-
-    const prevPageBtn = document.getElementById('prevPageBtn');
-    const nextPageBtn = document.getElementById('nextPageBtn');
-    if (prevPageBtn) prevPageBtn.disabled = currentPage <= 1;
-    if (nextPageBtn) nextPageBtn.disabled = currentPage >= totalPages;
-}
-
-// Resets pagination UI to default state (Page 1, disabled buttons)
-function resetPaginationUI() {
-    const paginationInfo = document.getElementById('paginationInfo');
-    if (paginationInfo) paginationInfo.textContent = 'Page 1 of 1';
-    const prevPageBtn = document.getElementById('prevPageBtn');
-    const nextPageBtn = document.getElementById('nextPageBtn');
-    if (prevPageBtn) prevPageBtn.disabled = true;
-    if (nextPageBtn) nextPageBtn.disabled = true;
+     // Ensure table is visible after render
+     const loadingContainer = document.getElementById('resourcesLoading');
+     if (loadingContainer) loadingContainer.style.display = 'none';
+     if (tableContainer) tableContainer.style.opacity = '1';
 } 

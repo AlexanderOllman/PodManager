@@ -5,19 +5,21 @@ function renderCurrentPage(resourceType) {
     const resourceData = window.app.state.resources[resourceType];
     if (!resourceData || !resourceData.items) {
         console.error(`No data available for ${resourceType} to render.`);
-        // Optionally, display a message in the UI
         const tableBody = selectTableBody(resourceType);
         if (tableBody) {
-            tableBody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-4"><i class="fas fa-info-circle me-2"></i> No data to display for ${resourceType}.</td></tr>`;
+            const colSpan = tableBody.closest('table')?.querySelector('thead tr')?.children.length || 7;
+            tableBody.innerHTML = `<tr><td colspan="${colSpan}" class="text-center text-muted py-4"><i class="fas fa-info-circle me-2"></i> No data to display for ${resourceType}.</td></tr>`;
         }
         return;
     }
 
-    // If on the 'Resources' tab, use the paginated rendering logic
+    // If on the 'Resources' tab, call the full page renderer
     if (window.app.state.navigation?.activeTab === 'resources') {
-        if (typeof updatePaginationUI === 'function') updatePaginationUI(resourceType);
-        if (typeof renderResourcePage === 'function') renderResourcePage(resourceType);
-        else console.warn('renderResourcePage function not found for resources tab.');
+        if (typeof renderResourcePage === 'function') {
+             renderResourcePage(resourceType); // This now renders all items from resource_explorer.js
+        } else {
+             console.warn('renderResourcePage function not found for resources tab.');
+        }
         return;
     }
 
@@ -264,7 +266,14 @@ function getAge(creationTimestamp) {
     return `${seconds}s`;
 }
 
-// Initialize all dropdowns (typically called after rendering rows with dropdowns)
+// Helper function to get status icon based on phase or status text
+function getStatusIcon(status) {
+    // Implement your logic to return the appropriate status icon based on the status text
+    // This is a placeholder and should be replaced with the actual implementation
+    return '';
+}
+
+// Initialize all Bootstrap dropdowns on the page or in a container
 function initializeAllDropdowns() {
     try {
         const dropdownElementList = [].slice.call(document.querySelectorAll('.action-dropdown .dropdown-toggle'));
@@ -281,7 +290,7 @@ function initializeAllDropdowns() {
     }
 }
 
-// Standardize memory string to Mi and sum it up
+// Helper function to calculate resource usage (CPU, GPU, Memory)
 function getResourceUsage(item) {
     let cpu = 0;
     let gpu = 0;

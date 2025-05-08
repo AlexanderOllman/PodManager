@@ -77,17 +77,20 @@ function fetchResourceCount(resourceType, namespace = 'all') {
         });
 }
 
-// Fetch a specific page of resources
-function fetchResourcePage(resourceType, namespace = 'all', criticalOnly = false, page = 1) {
-    const pageSize = 50;
-    const cacheKey = `${resourceType}-${namespace}-${criticalOnly ? 'critical' : 'full'}-${page}`;
+// Fetch a specific page of resources (or potentially all if pageSize is large)
+function fetchResourcePage(resourceType, namespace = 'all', page = 1, pageSize = 50) {
+    console.log(`Fetching page ${page} size ${pageSize} for ${resourceType} in ${namespace}`);
+    const cacheKey = `${resourceType}-${namespace}-page${page}-size${pageSize}`; // Specific cache key
     const lastFetch = window.app.state.lastFetch[cacheKey];
 
-    if (lastFetch && (Date.now() - lastFetch) < window.app.CACHE_TIMEOUT) {
-        const cachedData = window.app.state.cache.resources[cacheKey]; // Corrected to use app.state.cache
+    // Skip cache if pageSize is very large (likely a fetchAll request)
+    const skipCache = pageSize > 500;
+
+    if (!skipCache && lastFetch && (Date.now() - lastFetch) < window.app.CACHE_TIMEOUT) {
+        const cachedData = window.app.state.cache.resources[cacheKey];
         if (cachedData) {
-            console.log(`Using cached data for ${resourceType} (${namespace}), page ${page}`);
-            if (typeof processResourcePageData === 'function') processResourcePageData(resourceType, cachedData, page);
+            console.log(`Using cached data for ${resourceType} (${namespace}), page ${page}, size ${pageSize}`);
+            if (typeof processResourcePageData === 'function') processResourcePageData(resourceType, cachedData, page, pageSize);
             if (page === 1 && typeof hideLoading === 'function') hideLoading(resourceType);
             return Promise.resolve(cachedData);
         }
@@ -97,7 +100,7 @@ function fetchResourcePage(resourceType, namespace = 'all', criticalOnly = false
     const formData = new FormData();
     formData.append('resource_type', resourceType);
     formData.append('namespace', namespace);
-    formData.append('critical_only', criticalOnly.toString());
+    // critical_only parameter removed for simplicity, can be added back if needed
     formData.append('page', page.toString());
     formData.append('page_size', pageSize.toString());
 
@@ -108,32 +111,38 @@ function fetchResourcePage(resourceType, namespace = 'all', criticalOnly = false
             return response.json();
         })
         .then(data => {
-            console.log(`Fetched ${resourceType} data for page ${page} in ${Math.round(performance.now() - startTime)}ms`);
-            window.app.state.lastFetch[cacheKey] = Date.now();
-            window.app.state.cache.resources[cacheKey] = data; // Corrected to use app.state.cache
+            console.log(`Fetched ${resourceType} page ${page}, size ${pageSize} in ${Math.round(performance.now() - startTime)}ms`);
+            // Only cache if it's not a fetchAll request
+            if (!skipCache) {
+                window.app.state.lastFetch[cacheKey] = Date.now();
+                window.app.state.cache.resources[cacheKey] = data;
+            }
             
-            if (typeof processResourcePageData === 'function') processResourcePageData(resourceType, data, page);
+            if (typeof processResourcePageData === 'function') processResourcePageData(resourceType, data, page, pageSize);
             if (page === 1 && typeof hideLoading === 'function') hideLoading(resourceType);
             return data;
         })
         .catch(error => {
-            console.error(`Error fetching ${resourceType} page ${page}:`, error);
+            console.error(`Error fetching ${resourceType} page ${page}, size ${pageSize}:`, error);
             if (page === 1) {
                 if (typeof hideLoading === 'function') hideLoading(resourceType);
-                const tableContainer = document.getElementById(`${resourceType}TableContainer`);
-                if (tableContainer) {
-                    tableContainer.innerHTML = `
-                        <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            Error loading ${resourceType}: ${error.message}
-                            <button class="btn btn-sm btn-outline-danger ms-3" onclick="fetchResourceData('${resourceType}', '${namespace}', ${criticalOnly}, 1, true)">
-                            <i class="fas fa-sync-alt me-1"></i> Retry
-                            </button>
-                        </div>
+                 const tableContainer = document.getElementById('resourcesTableContainer') || document.getElementById(`${resourceType}TableContainer`);
+                 if (tableContainer) {
+                    let errorMsgContainer = tableContainer.querySelector('.fetch-error-message');
+                    if (!errorMsgContainer) {
+                        errorMsgContainer = document.createElement('div');
+                        errorMsgContainer.className = 'alert alert-danger fetch-error-message';
+                        tableContainer.prepend(errorMsgContainer);
+                    }
+                    errorMsgContainer.innerHTML = `
+                         <i class="fas fa-exclamation-triangle me-2"></i> Error loading ${resourceType}: ${error.message}
+                         <button class="btn btn-sm btn-outline-danger ms-3" onclick="fetchResourceData('${resourceType}', '${namespace}', ${pageSize > 500}, 1, true)">
+                         <i class="fas fa-sync-alt me-1"></i> Retry
+                         </button>
                     `;
-                }
+                 }
             }
-            throw error; // Re-throw to allow further error handling
+            throw error;
         });
 }
 
@@ -210,42 +219,56 @@ function refreshDatabase() {
 
 // === Functions moved from resource_data_logic.js ===
 
-// Main function to fetch resource data, deciding whether to get count first or just a page
-function fetchResourceData(resourceType, namespace = 'all', criticalOnly = false, page = 1, resetData = false) {
-    console.log(`Fetching ${resourceType} data for namespace ${namespace}${criticalOnly ? ' (critical only)' : ''}, page ${page}, reset: ${resetData}`);
+// Main function to fetch resource data
+function fetchResourceData(resourceType, namespace = 'all', fetchAll = false, page = 1, resetData = true) {
+    console.log(`Fetching ${resourceType} data for ns ${namespace}, fetchAll: ${fetchAll}, page ${page}, reset: ${resetData}`);
 
     if (page === 1 && typeof showLoading === 'function') showLoading(resourceType);
 
-    // If resetData is true, or it's the first page and no items/totalCount is known, fetch count first.
+    // Determine page size and which page to fetch
+    const pageSize = fetchAll ? 10000 : 50; // Use large number for fetchAll
+    const targetPage = fetchAll ? 1 : page; // Always fetch page 1 if fetching all
+    
+    // Always reset data in state if fetching all
+    if (fetchAll) {
+         resetData = true;
+         if (window.app.state.resources[resourceType]) {
+            window.app.state.resources[resourceType].items = [];
+            window.app.state.resources[resourceType].loadedPages = [];
+         }
+    }
+
+    // Fetch count first only if specifically resetting page 1 and not fetching all
     const resourceState = window.app.state.resources[resourceType];
-    const shouldFetchCountFirst = resetData || (page === 1 && (!resourceState || resourceState.totalCount === undefined || resourceState.items.length === 0));
+    const shouldFetchCountFirst = resetData && !fetchAll && targetPage === 1 && (!resourceState || resourceState.totalCount === undefined || resourceState.items.length === 0);
 
     if (shouldFetchCountFirst) {
-        return fetchResourceCount(resourceType, namespace) // Uses fetchResourceCount defined above
+        return fetchResourceCount(resourceType, namespace)
             .then(count => {
                 const loadingText = document.getElementById(`${resourceType}LoadingText`);
                 if (loadingText) loadingText.textContent = `Loading ${count} ${resourceType}...`;
-                return fetchResourcePage(resourceType, namespace, criticalOnly, page); // Uses fetchResourcePage defined above
+                return fetchResourcePage(resourceType, namespace, targetPage, pageSize); 
             })
             .catch(error => {
                 console.error(`Error fetching ${resourceType} count:`, error);
-                return fetchResourcePage(resourceType, namespace, criticalOnly, page);
+                return fetchResourcePage(resourceType, namespace, targetPage, pageSize);
             });
     } else {
-        return fetchResourcePage(resourceType, namespace, criticalOnly, page);
+        return fetchResourcePage(resourceType, namespace, targetPage, pageSize);
     }
 }
 
 // Processes a fetched page of resource data and updates the application state
-function processResourcePageData(resourceType, data, page) {
+function processResourcePageData(resourceType, data, page, pageSize = 50) {
     const processingStartTime = performance.now();
 
     if (!window.app.state.resources[resourceType]) {
         window.app.state.resources[resourceType] = {
-            items: [], totalCount: 0, currentPage: 1, pageSize: 50, loadedPages: []
+            items: [], totalCount: 0, currentPage: 1, pageSize: pageSize, loadedPages: [] 
         };
     }
     const state = window.app.state.resources[resourceType];
+    state.pageSize = pageSize; 
 
     if (!data || !data.data) {
         console.error("Received invalid data object in processResourcePageData for", resourceType, data);
@@ -255,25 +278,26 @@ function processResourcePageData(resourceType, data, page) {
 
     const newItems = data.data.items || [];
     
-    if (page === 1 || !state.loadedPages.includes(page)) {
-        if (page === 1) { 
-            state.items = []; // Reset items only for page 1
-            state.loadedPages = []; // Reset loaded pages only for page 1
-        }
-        // Only add items if the page wasn't previously loaded to avoid duplicates
-        if (!state.loadedPages.includes(page)) {
-             state.items = [...state.items, ...newItems]; // Append new items
-             state.loadedPages.push(page);
-             state.loadedPages.sort((a, b) => a - b); 
-        }
+    // If page size is large, assume it's a fetchAll response and replace items
+    const isFetchAll = pageSize > 500;
+
+    if (page === 1 || isFetchAll) {
+        state.items = newItems; // Replace items on page 1 load or fetchAll
+        state.loadedPages = [1];
     } else {
-        console.warn(`Page ${page} for ${resourceType} was re-processed. Check fetching logic.`);
+        // Append logic for standard pagination (if needed in future)
+        if (!state.loadedPages.includes(page)) {
+            state.items = [...state.items, ...newItems];
+            state.loadedPages.push(page);
+            state.loadedPages.sort((a, b) => a - b);
+        } else {
+            console.warn(`Page ${page} for ${resourceType} was re-processed.`);
+        }
     }
 
     state.totalCount = data.data.totalCount !== undefined ? data.data.totalCount : state.items.length;
-    state.pageSize = data.data.pageSize || state.pageSize || 50;
-    state.totalPages = Math.ceil(state.totalCount / state.pageSize);
-    state.currentPage = page; 
+    state.totalPages = isFetchAll ? 1 : Math.ceil(state.totalCount / state.pageSize); // Only 1 page if fetchAll
+    state.currentPage = isFetchAll ? 1 : page;
 
     if (page === 1 && resourceType === 'pods' && typeof updateDashboardMetrics === 'function') {
         console.log('Updating dashboard metrics with data from', newItems.length, 'pods on page 1');
@@ -294,7 +318,7 @@ function processResourcePageData(resourceType, data, page) {
     if (page === 1 && typeof hideLoading === 'function') hideLoading(resourceType);
     
     const processTime = performance.now() - processingStartTime;
-    console.log(`${resourceType} page ${page} processed in ${processTime.toFixed(0)}ms. Total items now: ${state.items.length}`);
+    console.log(`${resourceType} page ${page} processed in ${processTime.toFixed(0)}ms. Total items: ${state.items.length} / ${state.totalCount}`);
 }
 
 // Filter resources displayed in a table based on a search term
