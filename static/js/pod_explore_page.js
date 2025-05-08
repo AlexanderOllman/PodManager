@@ -242,30 +242,34 @@ function loadPodDetails() {
 function loadPodDescription() {
     showLoadingState('describe');
     const outputElement = document.getElementById('describeOutput');
+    console.log('Describe Output Element:', outputElement); // Log the element
     if (!outputElement) {
         console.error("Element with ID 'describeOutput' not found.");
         hideLoadingState('describe');
         return;
     }
-    // Clear previous content
     outputElement.textContent = ''; 
 
     const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/describe`);
     fetch(url)
         .then(response => {
             if (!response.ok) {
+                // Simplify error thrown on non-ok response
+                throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                /* Previous more complex error handling:
                 return response.json().then(errData => {
                     throw new Error(errData.error || `HTTP error! status: ${response.status} - ${response.statusText}`);
                 }).catch(() => {
                     throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
                 });
+                */
             }
             return response.json();
         })
         .then(data => {
             if (data.error) {
                 outputElement.textContent = `Error: ${String(data.error)}`;
-                outputElement.classList.add('text-danger'); // Add some styling for error
+                outputElement.classList.add('text-danger');
             } else {
                 outputElement.textContent = data.describe_output;
                 outputElement.classList.remove('text-danger');
@@ -273,12 +277,18 @@ function loadPodDescription() {
             hideLoadingState('describe');
         })
         .catch(error => {
-            console.error('Error fetching or processing pod description:', error);
+            console.error('Error fetching or processing pod description:');
+            console.log('Caught Error Object (Describe):', error); // Log the raw error object
             let msg = 'Failed to load description: ';
             if (error && error.message) msg += String(error.message);
             else msg += String(error);
-            outputElement.textContent = msg;
-            outputElement.classList.add('text-danger');
+            try {
+                 outputElement.textContent = msg;
+                 outputElement.classList.add('text-danger');
+            } catch (e) {
+                 console.error("Error setting textContent for describe error:", e);
+                 // Fallback: Display error in console if setting textContent fails
+            }
             hideLoadingState('describe');
         });
 }
@@ -286,23 +296,27 @@ function loadPodDescription() {
 function loadPodLogs() {
     showLoadingState('logs');
     const outputElement = document.getElementById('logsOutput');
+    console.log('Logs Output Element:', outputElement); // Log the element
     if (!outputElement) {
         console.error("Element with ID 'logsOutput' not found.");
         hideLoadingState('logs');
         return;
     }
-    // Clear previous content
     outputElement.textContent = '';
 
-    const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/logs`); // Default tail_lines is handled by backend
+    const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/logs`);
     fetch(url)
         .then(response => {
             if (!response.ok) {
+                 // Simplify error thrown on non-ok response
+                throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                /* Previous more complex error handling:
                 return response.json().then(errData => {
                     throw new Error(errData.error || `HTTP error! status: ${response.status} - ${response.statusText}`);
                 }).catch(() => {
                     throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
                 });
+                */
             }
             return response.json();
         })
@@ -317,12 +331,18 @@ function loadPodLogs() {
             hideLoadingState('logs');
         })
         .catch(error => {
-            console.error('Error fetching or processing pod logs:', error);
+            console.error('Error fetching or processing pod logs:');
+            console.log('Caught Error Object (Logs):', error); // Log the raw error object
             let msg = 'Failed to load logs: ';
             if (error && error.message) msg += String(error.message);
             else msg += String(error);
-            outputElement.textContent = msg;
-            outputElement.classList.add('text-danger');
+             try {
+                 outputElement.textContent = msg;
+                 outputElement.classList.add('text-danger');
+            } catch (e) {
+                 console.error("Error setting textContent for logs error:", e);
+                 // Fallback: Display error in console if setting textContent fails
+            }
             hideLoadingState('logs');
         });
 }
