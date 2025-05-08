@@ -365,10 +365,18 @@ function setupPodTerminal() {
         console.error('Terminal element not found for pod access.');
         return;
     }
+    // Avoid re-initializing if already done for this container
+    if (terminalElement.dataset.initialized === 'true' && window.app.podTerminal) {
+        console.log('Pod terminal already initialized.');
+        // Maybe re-focus or ensure connection? For now, just return.
+        return;
+    }
+    
     terminalElement.innerHTML = ''; // Clear previous terminal instance if any
 
-    if (window.app.podTerminal) { // If a previous pod terminal instance exists
+    if (window.app.podTerminal) { 
         window.app.podTerminal.dispose();
+        window.app.podTerminal = null; // Clear reference
     }
 
     console.log(`Setting up terminal for pod: ${namespace}/${podName}`);
@@ -385,44 +393,62 @@ function setupPodTerminal() {
         term.open(terminalElement);
         fitAddon.fit();
         window.app.podTerminal = term; // Store specific to pod explore page
+        terminalElement.dataset.initialized = 'true'; // Mark as initialized
 
         term.writeln(`Connecting to pod ${podName} in namespace ${namespace}...`);
 
-        // Ensure socket is connected (it should be from app_init.js)
         if (!window.app.socket || !window.app.socket.connected) {
             term.writeln('\x1b[31mError: Socket not connected. Cannot establish terminal session.\x1b[0m');
             console.error('Socket not connected for pod terminal.');
-            // Optionally, try to reconnect or instruct user
-            // if (window.app.socket && typeof window.app.socket.connect === 'function') {
-            //     window.app.socket.connect();
-            // }
             return;
         }
         
         // Emit event to backend to start PTY session for this specific pod
-        window.app.socket.emit('pod_terminal_start', { namespace: namespace, pod_name: podName });
+        window.app.socket.emit('start_pod_terminal', { namespace: namespace, pod_name: podName }); // Use new event name
 
+        // Send input data using onData and new event name
         term.onData(data => {
-            window.app.socket.emit('pod_terminal_input', { namespace: namespace, pod_name: podName, input: data });
+            window.app.socket.emit('pty_input', { input: data }); // Use generic event name
         });
 
-        window.app.socket.off('pod_terminal_output'); // Remove previous listeners for this event
-        window.app.socket.on('pod_terminal_output', (data) => {
+        // Setup listeners for generic PTY events, checking context
+        const ptyOutputListener = (data) => {
+            // IMPORTANT: Check if the output is for THIS pod terminal
             if (data.namespace === namespace && data.pod_name === podName) {
                 if (data.output) term.write(data.output);
-                if (data.error) term.writeln(`\n\x1b[31mError: ${data.error}\x1b[0m`);
+                if (data.error) term.writeln(`\r\n\x1b[31mError: ${data.error}\x1b[0m`);
             }
-        });
-        
-        window.app.socket.off('pod_terminal_exit');
-        window.app.socket.on('pod_terminal_exit', (data) => {
+        };
+        const ptyExitListener = (data) => {
+             // IMPORTANT: Check if the exit is for THIS pod terminal
              if (data.namespace === namespace && data.pod_name === podName) {
-                term.writeln(`\n\x1b[33mTerminal session for ${podName} ended.\x1b[0m`);
-                // Optionally disable terminal or show a reconnect button
+                term.writeln(`\r\n\x1b[33mTerminal session for ${podName} ended.\x1b[0m`);
+                terminalElement.dataset.initialized = 'false'; // Allow re-init
              }
-        });
+        };
 
-        window.addEventListener('resize', () => fitAddon.fit());
+        // Remove previous listeners scoped to this specific pod terminal instance if they exist
+        // This assumes we store listeners uniquely, e.g., on the term instance or a unique key
+        // For simplicity, we might just rely on socket.off with the function reference
+        const socket = window.app.socket;
+        if (window.app._podPtyOutputListener) socket.off('pty_output', window.app._podPtyOutputListener);
+        if (window.app._podPtyExitListener) socket.off('pty_exit', window.app._podPtyExitListener);
+
+        // Add new listeners and store references uniquely (e.g., attach to term object or use map)
+        socket.on('pty_output', ptyOutputListener);
+        socket.on('pty_exit', ptyExitListener);
+        window.app._podPtyOutputListener = ptyOutputListener; // Store reference to remove later
+        window.app._podPtyExitListener = ptyExitListener;
+
+        // Handle resize (optional, but good practice)
+        const resizeListener = () => {
+             fitAddon.fit();
+             socket.emit('pty_resize', { rows: term.rows, cols: term.cols });
+         };
+        window.addEventListener('resize', resizeListener);
+        
+        // Store resize listener reference to remove it later if needed
+        term._resizeListener = resizeListener; 
 
     } catch (error) {
         console.error('Failed to initialize pod terminal:', error);

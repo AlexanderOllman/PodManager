@@ -5,11 +5,17 @@ function initializeTerminal() {
     const terminalContainer = document.getElementById('terminal');
     if (!terminalContainer) {
         // console.log('Terminal container not found, skipping initialization.');
+        return; // Only initialize if the element exists on the current page/tab
+    }
+    
+    // Avoid re-initializing if already done for this container
+    if (terminalContainer.dataset.initialized === 'true') {
+        console.log('Terminal already initialized for this container.');
         return;
     }
 
     try {
-        console.log('Initializing terminal...');
+        console.log('Initializing main CLI terminal...');
         const terminal = new Terminal({
             cursorBlink: true,
             fontFamily: 'monospace',
@@ -21,148 +27,130 @@ function initializeTerminal() {
         const fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);
 
-        window.app.terminal = terminal; // Store in global state
+        // window.app.terminal = terminal; // Store differently if multiple terminals exist
         terminal.open(terminalContainer);
         fitAddon.fit();
-
-        // Setup command input handling
-        let currentLine = '';
-        let commandHistory = [];
-        let historyIndex = -1;
+        terminalContainer.dataset.initialized = 'true'; // Mark as initialized
 
         terminal.writeln('-- HPE Private Cloud AI - Control Plane CLI --');
-        terminal.writeln('Type commands and press Enter to execute.');
-        terminal.writeln('');
-        terminal.write('$ ');
+        terminal.writeln('Initializing connection...');
 
         // Ensure socket is available and set up listeners
         if (!window.app.socket) {
+            // Attempt to initialize socket if not done globally (should be in app_init.js)
             try {
-                window.app.socket = io(); // Initialize if not done by app_init.js
+                window.app.socket = io();
                 console.log('Socket connection created for terminal.');
-
-                window.app.socket.on('connect', () => {
+                 window.app.socket.on('connect', () => {
                     console.log('Terminal socket reconnected.');
-                    terminal.writeln('\r\nReconnected to server.');
-                    terminal.write('$ ');
+                    terminal.writeln('\r\nReconnected to server. Initializing terminal...');
+                    // Request backend to start PTY session for CLI pod
+                    window.app.socket.emit('start_cli_terminal'); 
                 });
-                window.app.socket.on('connect_error', (error) => {
+                 window.app.socket.on('connect_error', (error) => {
                     console.error('Terminal socket connection error:', error);
                     terminal.writeln(`\r\nConnection error: ${error}`);
-                    terminal.write('$ ');
                 });
+
             } catch (e) {
                 console.error("Failed to initialize Socket.io for terminal:", e);
                 terminal.writeln('\r\nError: Could not connect to server for terminal commands.');
-                terminal.write('$ ');
                 // Display error in terminal container if socket.io is missing
                 terminalContainer.innerHTML = '<div class="alert alert-danger">Terminal requires Socket.io. Connection failed.</div>';
                 return; // Stop further terminal setup
             }
         }
         
-        // This listener should be in app_init.js or a shared socket handling module
-        // to avoid duplication if other parts of app use 'terminal_output' event.
-        // For now, ensuring it's here if terminal.js is standalone for this part.
-        // window.app.socket.on('terminal_output', function(data) { ... }); 
-        // Already handled by connectSocketListeners in app_init.js
+        // Check if socket is already connected
+        if (window.app.socket.connected) {
+             console.log('Socket already connected. Initializing CLI terminal session.');
+             window.app.socket.emit('start_cli_terminal'); // Request backend to start PTY session
+        } else {
+             console.log('Socket not connected yet, waiting for connect event...');
+             // The 'connect' handler above will emit 'start_cli_terminal'
+        }
 
-        terminal.onKey(({ key, domEvent }) => {
-            const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.metaKey; // Ctrl key handled separately
+        // Listen for output from backend PTY session
+        // Ensure we only listen once, even if initializeTerminal is called multiple times
+        const socket = window.app.socket;
+        const ptyOutputListener = (data) => {
+            // Since this is the *only* terminal this file manages, we assume
+            // all pty_output is for this terminal.
+            // If multiple terminals were managed here, we'd need context (e.g., session ID).
+            if (data.output) terminal.write(data.output);
+            if (data.error) terminal.writeln(`\r\n\x1b[31mError: ${data.error}\x1b[0m`);
+        };
+        const ptyExitListener = (data) => {
+            // Handle terminal exit signal from backend
+            terminal.writeln(`\r\n\x1b[33mTerminal session ended.\x1b[0m`);
+            // Optionally disable input or show reconnect message
+        };
 
-            if (domEvent.ctrlKey) {
-                handleTerminalCtrlKeys(domEvent.keyCode, terminal);
-                currentLine = ''; // Reset current line on Ctrl+C, etc.
-                return;
-            }
-
-            if (domEvent.keyCode === 13) { // Enter
-                if (currentLine.trim()) {
-                    commandHistory.push(currentLine);
-                    historyIndex = commandHistory.length;
-                    window.app.socket.emit('terminal_command', { command: currentLine });
-                    terminal.write('\r\n'); // Move to next line, prompt will be added by server response or here
-                    currentLine = '';
-                } else {
-                    terminal.write('\r\n$ '); // New prompt for empty command
-                }
-            } else if (domEvent.keyCode === 8) { // Backspace
-                if (currentLine.length > 0) {
-                    currentLine = currentLine.slice(0, -1);
-                    terminal.write('\b \b');
-                }
-            } else if (domEvent.keyCode === 38) { // Up arrow
-                if (historyIndex > 0) {
-                    historyIndex--;
-                    terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                    currentLine = commandHistory[historyIndex];
-                    terminal.write(currentLine);
-                }
-            } else if (domEvent.keyCode === 40) { // Down arrow
-                if (historyIndex < commandHistory.length - 1) {
-                    historyIndex++;
-                    terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                    currentLine = commandHistory[historyIndex];
-                    terminal.write(currentLine);
-                } else if (historyIndex === commandHistory.length - 1) {
-                    historyIndex++;
-                    terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                    currentLine = '';
-                }
-            } else if (domEvent.keyCode === 9) { // Tab
-                domEvent.preventDefault(); // Prevent focus change, placeholder for auto-complete
-            } else if (printable && key) { // Regular printable characters
-                currentLine += key;
-                terminal.write(key);
-            }
+        // Remove previous listeners if they exist to prevent duplicates
+        socket.off('pty_output', window.app._cliPtyOutputListener);
+        socket.off('pty_exit', window.app._cliPtyExitListener);
+        
+        // Add new listeners and store references
+        socket.on('pty_output', ptyOutputListener);
+        socket.on('pty_exit', ptyExitListener);
+        window.app._cliPtyOutputListener = ptyOutputListener; // Store listener reference
+        window.app._cliPtyExitListener = ptyExitListener;
+        
+        // Send input data using onData
+        terminal.onData(data => {
+            socket.emit('pty_input', { input: data });
         });
 
-        window.addEventListener('resize', () => fitAddon.fit());
-        console.log('Terminal initialized successfully with WebSocket mode.');
+        // Handle resize
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+            // Optionally inform backend of new size
+            // socket.emit('pty_resize', { rows: terminal.rows, cols: terminal.cols });
+        });
+
+        // Remove the old onKey handler for building command line
+        /* 
+        terminal.onKey(({ key, domEvent }) => {
+           // ... removed logic for building currentLine and sending 'terminal_command' ...
+        });
+        */
 
     } catch (error) {
-        console.error('Failed to initialize terminal:', error);
-        terminalContainer.innerHTML = `<div class="alert alert-danger">Failed to initialize terminal: ${error.message}</div>`;
+        console.error('Error initializing terminal:', error);
+        terminalContainer.innerHTML = '<div class="alert alert-danger">Failed to initialize terminal.</div>';
     }
 }
 
-// Handles Ctrl key combinations in the terminal
+// Remove handleTerminalCtrlKeys as it's handled by backend PTY now
+/*
 function handleTerminalCtrlKeys(keyCode, terminalInstance) {
-    if (!window.app.socket) return;
+    // ... removed ...
+}
+*/
 
-    let controlChar = null;
-    let signal = null;
-    let displayChar = '';
-
-    switch (keyCode) {
-        case 67: // Ctrl+C
-            signal = 'SIGINT';
-            controlChar = '\x03'; // ETX
-            displayChar = '^C';
-            break;
-        case 68: // Ctrl+D
-            signal = 'EOF';
-            controlChar = '\x04'; // EOT
-            // No display char for EOF, server handles it
-            break;
-        case 90: // Ctrl+Z
-            signal = 'SIGTSTP';
-            controlChar = '\x1A'; // SUB
-            displayChar = '^Z';
-            break;
-        case 76: // Ctrl+L
-            terminalInstance.clear();
-            terminalInstance.write('$ '); // Re-issue prompt
-            return; // Handled client-side
-        default:
-            return; // Not a recognized control key combination
+// Re-initialize terminal if needed when the CLI tab becomes visible
+// Assumes initializeTerminal checks if already initialized
+const cliTabObserver = new MutationObserver((mutationsList) => {
+    for(let mutation of mutationsList) {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            const cliTabPane = document.getElementById('cli');
+            if (cliTabPane && cliTabPane.classList.contains('active')) {
+                console.log('CLI tab became active, ensuring terminal is initialized.');
+                setTimeout(initializeTerminal, 50); // Slight delay to ensure DOM is ready
+                // Ensure terminal fits container when tab is shown
+                if (window.app.terminal && window.app.terminal.fitAddon) {
+                    setTimeout(() => window.app.terminal.fitAddon.fit(), 100);
+                }
+            }
+        }
     }
+});
 
-    if (signal && controlChar) {
-        window.app.socket.emit('terminal_command', { control: signal, key: controlChar });
-        if (displayChar) terminalInstance.write(displayChar);
-        if (signal !== 'EOF') terminalInstance.write('\r\n$ '); // New prompt, except for EOF
-    }
+const mainContent = document.getElementById('mainContent');
+if (mainContent) {
+    cliTabObserver.observe(mainContent, { attributes: true, subtree: true, attributeFilter: ['class'] });
+} else {
+    console.warn('Could not find mainContent to observe tab changes for terminal init.');
 }
 
 // Deprecated: Kept for potential backward compatibility or reference

@@ -230,18 +230,12 @@ function connectSocketListeners() {
         return;
     }
 
-    // Remove existing listener to avoid duplicates if this runs multiple times
-    socket.off('terminal_output'); 
-    
-    // Add the listener for Control Plane CLI output
+    // Ensure terminal output is handled if terminal exists
     socket.on('terminal_output', function(data) {
-        if (window.app.terminal) { // Check if the general terminal exists
-            if (data.data) {
-                window.app.terminal.write(data.data);
-            }
-            // Check for completion signal to write a new prompt
+        if (window.app.terminal && data.data) {
+            window.app.terminal.write(data.data);
             if (data.complete) {
-                window.app.terminal.write('\r\n$ '); // Write prompt on new line
+                window.app.terminal.write('\r\n$ ');
             }
         }
     });
