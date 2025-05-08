@@ -62,7 +62,7 @@ def cleanup():
     updater.stop()
 
 # Dictionary to store active PTY sessions
-# Structure: {sid: {'pid': child_pid, 'fd': master_fd, 'namespace': ns, 'pod_name': pn, 'type': 'pod'|'cli'}}
+# Structure: {sid: {'pid': child_pid, 'fd': master_fd, 'namespace': ns, 'pod_name': pn}} 
 active_pty_sessions = {}
 
 def run_kubectl_command(command):
@@ -143,256 +143,50 @@ def run_action():
     output = run_kubectl_command(command)
     return jsonify(format='text', output=output)
 
-def read_and_forward_pty_output(sid, fd, session_type, namespace=None, pod_name=None):
-    """Reads output from PTY and forwards it to the client via the correct event."""
-    max_read_bytes = 1024 * 20
-    event_name = 'pod_terminal_output' if session_type == 'pod' else 'terminal_output'
-    logger.info(f"[sid:{sid} type:{session_type}] Starting PTY read loop for fd:{fd}, emitting to {event_name}")
-    
-    while True:
-        try:
-            socketio.sleep(0.01)
-            if sid not in active_pty_sessions or active_pty_sessions[sid]['fd'] != fd:
-                logger.info(f"[sid:{sid} type:{session_type}] Session terminated or FD changed, stopping read loop.")
-                break
-
-            ready, _, _ = select.select([fd], [], [], 0)
-            if ready:
-                output = os.read(fd, max_read_bytes)
-                if output:
-                    decoded_output = output.decode('utf-8', errors='replace')
-                    payload = {'output': decoded_output}
-                    if session_type == 'pod': # Include context for pod terminal
-                        payload['namespace'] = namespace
-                        payload['pod_name'] = pod_name
-                    #logger.debug(f"[sid:{sid} type:{session_type}] Sending output: {decoded_output.strip()}")
-                    socketio.emit(event_name, payload, room=sid)
-                else:
-                    logger.info(f"[sid:{sid} type:{session_type}] EOF received for PTY session.")
-                    break
-        except OSError as e:
-            logger.warning(f"[sid:{sid} type:{session_type}] OSError reading from PTY: {e}")
-            break
-        except Exception as e:
-            logger.error(f"[sid:{sid} type:{session_type}] Exception in read_and_forward_pty_output: {e}", exc_info=True)
-            error_payload = {'error': f'Backend error: {str(e)}'}
-            if session_type == 'pod':
-                error_payload['namespace'] = namespace
-                error_payload['pod_name'] = pod_name
-            socketio.emit(event_name, error_payload, room=sid)
-            break
-
-    # Cleanup
-    logger.info(f"[sid:{sid} type:{session_type}] Cleaning up PTY session.")
-    exit_payload = {}
-    exit_event = 'pod_terminal_exit' if session_type == 'pod' else None # Only pod terminal has specific exit event for now
-    if session_type == 'pod':
-         exit_payload['namespace'] = namespace
-         exit_payload['pod_name'] = pod_name
-    if exit_event:
-         socketio.emit(exit_event, exit_payload, room=sid)
-         
-    if sid in active_pty_sessions: # Ensure session still exists before cleanup
-        cleanup_pty_session(sid)
-
-def cleanup_pty_session(sid):
-     if sid not in active_pty_sessions: return
-     logger.info(f"[sid:{sid}] Performing cleanup_pty_session.")
-     session = active_pty_sessions.pop(sid) # Remove from dict immediately
-     try:
-         logger.info(f"[sid:{sid}] Closing PTY fd: {session.get('fd')}")
-         os.close(session['fd'])
-     except OSError as e:
-         logger.warning(f"[sid:{sid}] OSError closing PTY fd {session.get('fd')}: {e}")
-     except KeyError:
-         logger.warning(f"[sid:{sid}] Session FD not found during cleanup.")
-         
-     try:
-         pid_to_kill = session.get('pid')
-         if pid_to_kill:
-             logger.info(f"[sid:{sid}] Killing PTY child process PID: {pid_to_kill}")
-             os.kill(pid_to_kill, signal.SIGTERM)
-             time.sleep(0.1) # Give SIGTERM a moment
-             os.kill(pid_to_kill, signal.SIGKILL) # Ensure it dies
-     except ProcessLookupError:
-         logger.info(f"[sid:{sid}] PTY child process {pid_to_kill} already gone.")
-     except KeyError:
-         logger.warning(f"[sid:{sid}] Session PID not found during cleanup.")
-     except Exception as e:
-         logger.error(f"[sid:{sid}] Exception killing process {pid_to_kill}: {e}")
-
-def start_pty_session(sid, namespace, pod_name, session_type):
-    """Starts a PTY session for kubectl exec and associates it with the SID."""
-    logger.info(f"[sid:{sid} type:{session_type}] Attempting to start PTY session for {namespace}/{pod_name}")
+def run_command(command, sid):
+    logger.info(f"[sid:{sid}] Received command: {command}")
     try:
-        (child_pid, fd) = pty.fork()
-        if child_pid == 0: # Child
-            env = os.environ.copy()
-            env['TERM'] = 'xterm'
-            cmd = ['kubectl', 'exec', '-it', pod_name, '-n', namespace, '--', '/bin/sh']
-            logger.info(f"[Child PID:{os.getpid()}] Executing: {' '.join(cmd)}")
-            # Replace python process with kubectl
-            os.execvpe(cmd[0], cmd, env)
-        else: # Parent
-            active_pty_sessions[sid] = {
-                'pid': child_pid,
-                'fd': fd,
-                'namespace': namespace,
-                'pod_name': pod_name,
-                'type': session_type
-            }
-            logger.info(f"[sid:{sid} type:{session_type}] PTY session created: PID={child_pid}, FD={fd}")
-            # Optional: Set initial size
-            # set_pty_size(fd, 24, 80)
-            
-            socketio.start_background_task(target=read_and_forward_pty_output, 
-                                         sid=sid, fd=fd, session_type=session_type, 
-                                         namespace=namespace, pod_name=pod_name)
-            logger.info(f"[sid:{sid} type:{session_type}] Started background task for PTY session.")
-            return True # Indicate success
-            
-    except Exception as e:
-        error_message = f"Failed to start PTY session: {str(e)}"
-        logger.error(f"[sid:{sid} type:{session_type}] {error_message}", exc_info=True)
-        # Emit error via the correct channel based on type
-        event_name = 'pod_terminal_output' if session_type == 'pod' else 'terminal_output'
-        payload = {'error': error_message}
-        if session_type == 'pod':
-            payload['namespace'] = namespace
-            payload['pod_name'] = pod_name
-        socketio.emit(event_name, payload, room=sid)
-        # Clean up if entry was partially added
-        if sid in active_pty_sessions: del active_pty_sessions[sid]
-        return False # Indicate failure
-
-@socketio.on('pod_terminal_start')
-def handle_pod_terminal_start(data):
-    sid = request.sid
-    namespace = data.get('namespace')
-    pod_name = data.get('pod_name')
-
-    if not namespace or not pod_name:
-        emit('pod_terminal_output', {'error': 'Namespace and pod name are required.', 'namespace': namespace, 'pod_name': pod_name}, room=sid)
-        return
-
-    if sid in active_pty_sessions:
-        # If session exists, check if it's for the same pod/type, maybe reconnect?
-        # For now, just error if any session exists for this SID.
-        emit('pod_terminal_output', {'error': 'A terminal session is already active for this browser tab.', 'namespace': namespace, 'pod_name': pod_name}, room=sid)
-        return
-    
-    # Start a PTY session specifically for pod access
-    start_pty_session(sid, namespace, pod_name, 'pod')
-
-@socketio.on('pod_terminal_input')
-def handle_pod_terminal_input(data):
-    sid = request.sid
-    input_data = data.get('input')
-    
-    if sid in active_pty_sessions:
-        session = active_pty_sessions[sid]
-        # Only process input if it's a pod-specific session
-        if session.get('type') == 'pod':
-             # Optional: Verify namespace/pod match data if included
-             # namespace = data.get('namespace')
-             # pod_name = data.get('pod_name')
-             # if session['namespace'] == namespace and session['pod_name'] == pod_name:
-             try:
-                os.write(session['fd'], input_data.encode('utf-8'))
-             except OSError as e:
-                logger.warning(f"[sid:{sid} type:pod] OSError writing to PTY: {e}")
-                # Maybe emit an error back to the specific pod terminal?
-             except Exception as e:
-                 logger.error(f"[sid:{sid} type:pod] Exception writing to PTY: {e}", exc_info=True)
-             # else: print("Pod terminal input mismatch!") 
-        # else: Ignore input if it's for a CLI session (handled by terminal_command)
-    # else: Session not found, ignore.
-
-@socketio.on('terminal_command') # Handler for the Control Plane CLI
-def handle_terminal_command(data):
-    sid = request.sid
-    command_input = data.get('command', '')
-    # Handle control chars if sent via this event (e.g., from terminal.js)
-    control_signal = data.get('control') 
-    
-    if sid in active_pty_sessions and active_pty_sessions[sid].get('type') == 'cli':
-        # CLI Session already exists, forward input/signal
-        session = active_pty_sessions[sid]
-        try:
-            if control_signal:
-                 # Handle control signals like Ctrl+C (SIGINT) if needed
-                 # This requires mapping signal names back to actions on the PTY/process
-                 # For now, we primarily handle text commands.
-                 logger.info(f"[sid:{sid} type:cli] Received control signal: {control_signal} (currently ignored)")
-                 # Example: If control_signal == 'SIGINT', os.kill(session['pid'], signal.SIGINT)
-            elif command_input:
-                 # Append newline as PTY expects lines
-                 full_input = command_input + '\n'
-                 logger.debug(f"[sid:{sid} type:cli] Writing command to PTY: {command_input}")
-                 os.write(session['fd'], full_input.encode('utf-8'))
-        except OSError as e:
-            logger.warning(f"[sid:{sid} type:cli] OSError writing to PTY: {e}")
-            socketio.emit('terminal_output', {'data': f'\nError writing to terminal: {e}\n', 'error': True}, room=sid)
-            cleanup_pty_session(sid) # Clean up broken session
-        except Exception as e:
-            logger.error(f"[sid:{sid} type:cli] Exception writing to PTY: {e}", exc_info=True)
-            socketio.emit('terminal_output', {'data': f'\nError: {e}\n', 'error': True}, room=sid)
-    else:
-        # No active CLI session, this is the first command. Find pod & start session.
-        logger.info(f"[sid:{sid} type:cli] First command received. Finding pod-manager pod...")
-        try:
-            # Use label selector app=pod-manager
-            get_pod_command = "kubectl get pods -A -l app=pod-manager -o json"
-            output = run_kubectl_command(get_pod_command)
-            if output.startswith("Error:"):
-                 raise Exception(f"kubectl command failed: {output}")
-                 
-            pod_data = json.loads(output)
-            items = pod_data.get('items', [])
-
-            if len(items) == 1:
-                pod = items[0]
-                namespace = pod['metadata']['namespace']
-                pod_name = pod['metadata']['name']
-                logger.info(f"[sid:{sid} type:cli] Found unique pod: {namespace}/{pod_name}. Starting session...")
-                if start_pty_session(sid, namespace, pod_name, 'cli'):
-                     # Session started successfully, now send the first command
-                     if command_input:
-                        time.sleep(0.2) # Short delay to allow PTY session to settle?
-                        try:
-                            full_input = command_input + '\n'
-                            logger.debug(f"[sid:{sid} type:cli] Writing first command to new PTY: {command_input}")
-                            os.write(active_pty_sessions[sid]['fd'], full_input.encode('utf-8'))
-                        except OSError as e:
-                            logger.warning(f"[sid:{sid} type:cli] OSError writing first command: {e}")
-                            socketio.emit('terminal_output', {'data': f'\nError writing initial command: {e}\n', 'error': True}, room=sid)
-                        except Exception as e:
-                             logger.error(f"[sid:{sid} type:cli] Exception writing first command: {e}", exc_info=True)
-            elif len(items) == 0:
-                 logger.warning(f"[sid:{sid} type:cli] No pod found with label app=pod-manager.")
-                 socketio.emit('terminal_output', {'data': '\nError: No pod-manager pod found with label app=pod-manager.\n', 'error': True}, room=sid)
-                 socketio.emit('terminal_output', {'complete': True}, room=sid) # Indicate command cycle complete
+        logger.info(f"[sid:{sid}] Starting Popen for: {command}")
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        logger.info(f"[sid:{sid}] Popen started, PID: {process.pid}")
+        
+        # Stream stdout
+        logger.info(f"[sid:{sid}] Reading stdout...")
+        stdout_emitted = False
+        for line in iter(process.stdout.readline, ''):
+            if line:
+                logger.debug(f"[sid:{sid}] Sending stdout line: {line.strip()}")
+                socketio.emit('terminal_output', {'data': line}, room=sid)
+                stdout_emitted = True
             else:
-                 logger.warning(f"[sid:{sid} type:cli] Multiple pods found with label app=pod-manager.")
-                 # Deferring selection logic for now
-                 pod_list = "\n".join([f"  - {p['metadata']['namespace']}/{p['metadata']['name']}" for p in items])
-                 socketio.emit('terminal_output', {'data': f'\nError: Multiple pod-manager pods found:\n{pod_list}\nPlease refine label or pod selection logic.\n', 'error': True}, room=sid)
-                 socketio.emit('terminal_output', {'complete': True}, room=sid) # Indicate command cycle complete
+                # Should not happen with iter(readline, '') unless process closes stream early?
+                logger.debug(f"[sid:{sid}] Empty stdout line received.")
+                break # Exit loop if readline returns empty string indicating stream closed
+        process.stdout.close() # Close stdout pipe
+        logger.info(f"[sid:{sid}] Finished reading stdout. Emitted data: {stdout_emitted}")
+        
+        # Wait for process to finish and read stderr
+        stderr_output = process.stderr.read()
+        process.stderr.close()
+        return_code = process.wait()
+        logger.info(f"[sid:{sid}] Process finished with return code: {return_code}")
 
-        except json.JSONDecodeError as e:
-            logger.error(f"[sid:{sid} type:cli] Failed to parse kubectl output: {e}. Output: {output}", exc_info=True)
-            socketio.emit('terminal_output', {'data': '\nError: Could not parse pod list from kubectl.\n', 'error': True}, room=sid)
-            socketio.emit('terminal_output', {'complete': True}, room=sid)
-        except Exception as e:
-            logger.error(f"[sid:{sid} type:cli] Error finding/starting session: {e}", exc_info=True)
-            socketio.emit('terminal_output', {'data': f'\nError setting up terminal session: {e}\n', 'error': True}, room=sid)
-            socketio.emit('terminal_output', {'complete': True}, room=sid)
+        if stderr_output:
+            logger.warning(f"[sid:{sid}] Sending stderr output: {stderr_output.strip()}")
+            socketio.emit('terminal_output', {'data': f"\nError: {stderr_output}", 'error': True}, room=sid)
+        
+        # Send completion signal
+        logger.info(f"[sid:{sid}] Sending completion signal.")
+        socketio.emit('terminal_output', {'complete': True}, room=sid)
 
-@socketio.on('disconnect')
-def handle_disconnect():
-    sid = request.sid
-    logger.info(f"Client disconnected: {sid}")
-    cleanup_pty_session(sid) # Cleanup any type of session
+    except FileNotFoundError:
+         logger.error(f"[sid:{sid}] Command not found: {command.split()[0]}")
+         socketio.emit('terminal_output', {'data': f'\nError: command not found: {command.split()[0]}\n', 'error': True}, room=sid)
+         socketio.emit('terminal_output', {'complete': True}, room=sid)
+    except Exception as e:
+        logger.error(f"[sid:{sid}] Exception in run_command for '{command}': {e}")
+        socketio.emit('terminal_output', {'data': f'\nError executing command: {str(e)}\n', 'error': True}, room=sid)
+        socketio.emit('terminal_output', {'complete': True}, room=sid)
 
 @app.route('/run_cli_command', methods=['POST'])
 def run_cli_command():
@@ -1081,7 +875,23 @@ def handle_connect():
 def handle_disconnect():
     sid = request.sid
     print(f'Client disconnected: {sid}')
-    cleanup_pty_session(sid) # Cleanup any type of session
+    if sid in active_pty_sessions:
+        print(f"Cleaning up PTY session for disconnected client {sid}")
+        session = active_pty_sessions[sid]
+        try:
+            os.close(session['fd'])
+        except OSError:
+             pass # May already be closed by read loop exit
+        try:
+            pid_to_kill = session.get('pid')
+            if pid_to_kill:
+                 os.kill(pid_to_kill, signal.SIGTERM)
+                 # os.kill(pid_to_kill, signal.SIGKILL) # Force kill if needed after timeout
+        except ProcessLookupError:
+             pass # Process already exited
+        except Exception as e:
+             print(f"Error killing process {pid_to_kill} on disconnect for {sid}: {e}")
+        del active_pty_sessions[sid]
     # Call original disconnect handler if needed
     # super().on_disconnect(sid) # If subclassing
 
@@ -1322,6 +1132,68 @@ def handle_pod_terminal_input(data):
             # This shouldn't normally happen if frontend sends correct data
             print(f"Input received for wrong pod/namespace for session {sid}. Expected {session['namespace']}/{session['pod_name']}, got {namespace}/{pod_name}")
     # else: Session not found, maybe disconnected. Input ignored.
+
+def read_and_forward_pty_output(sid, fd, namespace, pod_name):
+    """Reads output from PTY and forwards it to the client."""
+    max_read_bytes = 1024 * 20
+    while True:
+        try:
+            # Set timeout for select to avoid blocking indefinitely
+            socketio.sleep(0.01) 
+            # Check if the file descriptor is still valid and session exists
+            if sid not in active_pty_sessions or active_pty_sessions[sid]['fd'] != fd:
+                print(f"Session {sid} for {namespace}/{pod_name} terminated or FD changed, stopping read loop.")
+                break 
+                
+            # Check if fd is readable
+            ready, _, _ = select.select([fd], [], [], 0) # Non-blocking check
+            if ready:
+                output = os.read(fd, max_read_bytes)
+                if output:
+                    # Forward output to the specific client
+                    socketio.emit('pod_terminal_output', 
+                                  {'output': output.decode('utf-8', errors='replace'), 
+                                   'namespace': namespace, 
+                                   'pod_name': pod_name}, 
+                                  room=sid)
+                else: # EOF, process exited
+                    print(f"EOF received for PTY session {sid} ({namespace}/{pod_name}).")
+                    break 
+        except OSError as e:
+            # This can happen if the FD is closed unexpectedly
+            print(f"OSError reading from PTY for session {sid} ({namespace}/{pod_name}): {e}")
+            break
+        except Exception as e:
+            # Catch other potential errors
+            print(f"Exception in read_and_forward_pty_output for {sid} ({namespace}/{pod_name}): {e}")
+            socketio.emit('pod_terminal_output', 
+                          {'error': f'Backend error: {str(e)}', 
+                           'namespace': namespace, 
+                           'pod_name': pod_name}, 
+                          room=sid)
+            break
+            
+    # Cleanup after loop exits
+    print(f"Closing PTY session and cleaning up for {sid} ({namespace}/{pod_name}).")
+    socketio.emit('pod_terminal_exit', {'namespace': namespace, 'pod_name': pod_name}, room=sid)
+    if sid in active_pty_sessions:
+        try:
+            os.close(active_pty_sessions[sid]['fd'])
+        except OSError:
+            pass # FD might already be closed
+        try:
+             # Ensure the child process is terminated if it hasn't exited cleanly
+            pid_to_kill = active_pty_sessions[sid].get('pid')
+            if pid_to_kill:
+                 os.kill(pid_to_kill, signal.SIGTERM)
+                 # Optionally wait briefly
+                 # time.sleep(0.1)
+                 # os.kill(pid_to_kill, signal.SIGKILL) 
+        except ProcessLookupError:
+             pass # Process already gone
+        except Exception as kill_e:
+             print(f"Error trying to kill process {pid_to_kill} for session {sid}: {kill_e}")
+        del active_pty_sessions[sid]
 
 def set_pty_size(fd, rows, cols, width=0, height=0):
     """Sets the window size of the PTY."""
