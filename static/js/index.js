@@ -4897,7 +4897,7 @@ function fetchResourceData(resourceType, namespace = 'all', searchTerm = null, r
         if (searchTerm) {
             formData.append('search_term', searchTerm);
         }
-        // No page or page_size needed
+        // No page or page_size needed anymore
         
         const url = window.app.getRelativeUrl('/get_resources');
         
@@ -4912,31 +4912,29 @@ function fetchResourceData(resourceType, namespace = 'all', searchTerm = null, r
             return response.json();
         })
         .then(data => {
-            console.log(`Fetched ${data.data?.items?.length || 0} ${resourceType} (ns: ${namespace}, search: ${searchTerm || 'none'}) in ${Math.round(performance.now() - startTime)}ms`);
+            // Check if data.data exists and has items
+            const itemsLength = data.data?.items?.length || 0;
+            console.log(`Fetched ${itemsLength} ${resourceType} (ns: ${namespace}, search: ${searchTerm || 'none'}) in ${Math.round(performance.now() - startTime)}ms`);
             
-            // Cache the full response data
+            // Ensure data.data exists before caching and processing
+            const responseData = data.data || { items: [], totalCount: 0 }; 
+            
             window.app.cache.lastFetch[cacheKey] = Date.now();
-            window.app.cache.resources[cacheKey] = data.data; // Store the 'data' object which contains items and totalCount
+            window.app.cache.resources[cacheKey] = responseData; 
             
-            processResourceData(resourceType, data.data);
+            processResourceData(resourceType, responseData); // Pass the inner 'data' object
             if (resetData) hideLoading(resourceType);
-            resolve(data.data);
+            resolve(responseData);
         })
         .catch(error => {
             console.error(`Error fetching ${resourceType} (ns: ${namespace}, search: ${searchTerm}):`, error);
             if (resetData) {
                 hideLoading(resourceType);
-                const tableContainer = document.getElementById('resourcesTableContainer'); // Use specific ID for explorer
+                const tableContainerId = window.app.state.navigation?.activeTab === 'resources' ? 'resourcesTableContainer' : `${resourceType}TableContainer`;
+                const tableContainer = document.getElementById(tableContainerId);
                 if (tableContainer) {
-                    tableContainer.innerHTML = `
-                        <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            Error loading ${resourceType}: ${error.message}
-                            <button class="btn btn-sm btn-outline-danger ms-3" onclick="fetchResourceData('${resourceType}', '${namespace}', ${searchTerm ? '\'' + searchTerm + '\'' : null}, true)">
-                            <i class="fas fa-sync-alt me-1"></i> Retry
-                        </button>
-                        </div>
-                    `;
+                    // Simplified error display
+                    tableContainer.innerHTML = `<div class="alert alert-danger">Error loading ${resourceType}.</div>`;
                     tableContainer.style.opacity = '1';
                 }
             }
@@ -4945,11 +4943,11 @@ function fetchResourceData(resourceType, namespace = 'all', searchTerm = null, r
     });
 }
 
-// Renamed from processResourcePageData
-function processResourceData(resourceType, data) {
+// Renamed and Simplified from processResourcePageData
+function processResourceData(resourceType, data) { 
     const processingStartTime = performance.now();
     
-    // Update resource state with the full data received
+    // Directly use the received data object (which should have items and totalCount)
     window.app.state.resources[resourceType] = {
         items: data.items || [],
         totalCount: data.totalCount || (data.items ? data.items.length : 0)
@@ -5168,42 +5166,49 @@ function searchResources() {
     
     console.log(`Backend search for ${resourceType} with term: '${searchTerm}'`);
     
-    // Show loading indicator while searching
-    showLoading(resourceType); 
+    // Use the generic loading indicator for the Resource Explorer tab
+    showLoading('resources'); 
     
-    // Call fetchResourceData, passing the search term
-    // It will hit the backend which now filters via SQL
+    // Call fetchResourceData, passing the search term.
+    // The third argument is searchTerm, fourth (resetData) is true to clear previous results.
     fetchResourceData(resourceType, 'all', searchTerm, true) 
         .then(data => {
-             // Data is processed and rendered by processResourceData
+             // processResourceData and renderResourcesTable are called within fetchResourceData
              // Add filter indicator if search term is present
             const tableContainer = document.getElementById('resourcesTableContainer');
-            if (tableContainer && searchTerm) {
-                 // Remove existing indicator if any
+            if (tableContainer) {
+                 // Remove existing indicator first
                 const existingIndicator = tableContainer.querySelector('.filter-indicator');
-                if (existingIndicator) {
-                    existingIndicator.remove();
+                if (existingIndicator) existingIndicator.remove();
+
+                if (searchTerm) { // Only add indicator if there was a search term
+                    const indicator = document.createElement('div');
+                    indicator.className = 'filter-indicator alert alert-info d-flex align-items-center mb-3';
+                    indicator.innerHTML = `
+                        <i class="fas fa-filter me-2"></i>
+                        <div class="flex-grow-1">
+                            Filtered by: "${searchTerm}" (${data.items.length} results)
+                        </div>
+                        <button class="btn btn-sm btn-outline-info ms-3" onclick="clearResourceSearch()">
+                            <i class="fas fa-times me-1"></i> Clear Filter
+                        </button>
+                    `;
+                    // Insert indicator before the first child (usually the count info or table)
+                    if (tableContainer.firstChild) {
+                         tableContainer.insertBefore(indicator, tableContainer.firstChild);
+                    } else {
+                         tableContainer.appendChild(indicator);
+                    }
                 }
-                const indicator = document.createElement('div');
-                indicator.className = 'filter-indicator alert alert-info d-flex align-items-center mb-3';
-                indicator.innerHTML = `
-                    <i class="fas fa-filter me-2"></i>
-                    <div class="flex-grow-1">
-                        Filtered by: "${searchTerm}" (${data.items.length} results)
-                    </div>
-                    <button class="btn btn-sm btn-outline-info ms-3" onclick="clearResourceSearch()">
-                        <i class="fas fa-times me-1"></i> Clear Filter
-                    </button>
-                `;
-                tableContainer.insertBefore(indicator, tableContainer.firstChild);
             }
         })
         .catch(error => {
              console.error("Search failed:", error);
-            // Error handling is done within fetchResourceData
+             // Error is handled in fetchResourceData
         })
         .finally(() => {
-             hideLoading(resourceType); // Ensure loading is hidden
+             // Ensure loading is hidden regardless of success/failure
+             hideLoading('resources'); 
         });
 
     // Track last user interaction
@@ -5460,6 +5465,3 @@ if (!window.appInitializationDone) {
          console.log('App core initialization complete.');
     });
 }
-
-
-</rewritten_file>
