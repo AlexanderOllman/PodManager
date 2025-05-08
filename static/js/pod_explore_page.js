@@ -241,6 +241,15 @@ function loadPodDetails() {
 
 function loadPodDescription() {
     showLoadingState('describe');
+    const outputElement = document.getElementById('describeOutput');
+    if (!outputElement) {
+        console.error("Element with ID 'describeOutput' not found.");
+        hideLoadingState('describe');
+        return;
+    }
+    // Clear previous content
+    outputElement.textContent = ''; 
+
     const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/describe`);
     fetch(url)
         .then(response => {
@@ -254,49 +263,38 @@ function loadPodDescription() {
             return response.json();
         })
         .then(data => {
-            const outputElement = document.getElementById('describeOutput');
-            if (!outputElement) {
-                console.error("Element with ID 'describeOutput' not found.");
-                hideLoadingState('describe');
-                return;
-            }
-            // Clear previous content
-            outputElement.textContent = ''; 
-
             if (data.error) {
-                // Create a div for the error message for consistent styling if needed, or just set textContent
-                outputElement.className = 'alert alert-danger'; // Assuming pre can also take alert classes or use a wrapper
                 outputElement.textContent = `Error: ${String(data.error)}`;
+                outputElement.classList.add('text-danger'); // Add some styling for error
             } else {
-                outputElement.className = 'bg-light p-3 rounded'; // Restore original classes if any
                 outputElement.textContent = data.describe_output;
+                outputElement.classList.remove('text-danger');
             }
             hideLoadingState('describe');
         })
         .catch(error => {
             console.error('Error fetching or processing pod description:', error);
-            const outputElement = document.getElementById('describeOutput');
-            if (outputElement) {
-                 // Clear previous content
-                outputElement.textContent = ''; 
-                outputElement.className = 'alert alert-danger';
-                let msg = 'Failed to load description: ';
-                if (error && error.message) {
-                    msg += String(error.message);
-                } else {
-                    msg += String(error);
-                }
-                outputElement.textContent = msg;
-            } else {
-                console.error("Could not find 'describeOutput' element to display fetch error.");
-            }
+            let msg = 'Failed to load description: ';
+            if (error && error.message) msg += String(error.message);
+            else msg += String(error);
+            outputElement.textContent = msg;
+            outputElement.classList.add('text-danger');
             hideLoadingState('describe');
         });
 }
 
 function loadPodLogs() {
     showLoadingState('logs');
-    const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/logs`);
+    const outputElement = document.getElementById('logsOutput');
+    if (!outputElement) {
+        console.error("Element with ID 'logsOutput' not found.");
+        hideLoadingState('logs');
+        return;
+    }
+    // Clear previous content
+    outputElement.textContent = '';
+
+    const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/logs`); // Default tail_lines is handled by backend
     fetch(url)
         .then(response => {
             if (!response.ok) {
@@ -309,45 +307,29 @@ function loadPodLogs() {
             return response.json();
         })
         .then(data => {
-            const outputElement = document.getElementById('logsOutput');
-            if (!outputElement) {
-                console.error("Element with ID 'logsOutput' not found.");
-                hideLoadingState('logs');
-                return;
-            }
-            outputElement.textContent = ''; // Clear previous content
-
             if (data.error) {
-                outputElement.className = 'alert alert-danger';
                 outputElement.textContent = `Error: ${String(data.error)}`;
+                outputElement.classList.add('text-danger');
             } else {
-                outputElement.className = 'bg-light p-3 rounded'; // Restore original styling
                 outputElement.textContent = data.logs;
+                outputElement.classList.remove('text-danger');
             }
             hideLoadingState('logs');
         })
         .catch(error => {
             console.error('Error fetching or processing pod logs:', error);
-            const outputElement = document.getElementById('logsOutput');
-            if (outputElement) {
-                outputElement.textContent = ''; // Clear previous content
-                outputElement.className = 'alert alert-danger';
-                let msg = 'Failed to load logs: ';
-                if (error && error.message) {
-                    msg += String(error.message);
-                } else {
-                    msg += String(error);
-                }
-                outputElement.textContent = msg;
-            } else {
-                console.error("Could not find 'logsOutput' element to display fetch error.");
-            }
+            let msg = 'Failed to load logs: ';
+            if (error && error.message) msg += String(error.message);
+            else msg += String(error);
+            outputElement.textContent = msg;
+            outputElement.classList.add('text-danger');
             hideLoadingState('logs');
         });
 }
 
 function downloadPodLogs() {
     const url = window.app.getRelativeUrl(`/api/pod/${namespace}/${podName}/logs?download=true`);
+    // Create a temporary link to trigger download
     const link = document.createElement('a');
     link.href = url;
     link.setAttribute('download', `${podName}_${namespace}_logs.txt`);
