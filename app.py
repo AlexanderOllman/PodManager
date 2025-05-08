@@ -1308,5 +1308,12 @@ def refresh_database():
             'error': str(e)
         }), 500
 
+# Add this handler to log all incoming SocketIO events
+@socketio.on_any_event
+def handle_any_event(event, sid, *args):
+    # Avoid logging extremely frequent or internal events if necessary
+    if event not in ['message', 'json']: # Example: filter out default events if noisy
+        logger.info(f'[sid:{sid}] ### Received generic event: {event} | Data: {args} ###')
+
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
