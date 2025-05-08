@@ -472,19 +472,7 @@ function loadResourcesForTab(tabId) {
             break;
         case 'cli':
             if (typeof initializeTerminal === 'function') {
-                initializeTerminal(); // Initialize the xterm.js display
-                 // Check if socket is ready before emitting
-                if (window.app.socket && window.app.socket.connected) {
-                    console.log('Requesting CLI terminal connection to pod-manager pod...');
-                    window.app.socket.emit('cli_terminal_connect');
-                } else {
-                    console.warn('Socket not connected when CLI tab activated, connection request delayed.');
-                    // Optionally, set a flag or retry mechanism when socket connects
-                    // For now, we assume socket connects quickly during init.
-                     if (window.app.terminal) {
-                        window.app.terminal.writeln('\x1b[31mError: Not connected to server. Cannot start terminal session.\x1b[0m');
-                    }
-                }
+                initializeTerminal(); // From terminal.js
             } else {
                  console.warn('initializeTerminal function not found.');
             }
