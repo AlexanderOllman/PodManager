@@ -4865,3 +4865,601 @@ function refreshDatabase() {
         }, 5000);
     });
 }
+
+// Resource data fetching (now fetches ALL data for the type/namespace/search)
+function fetchResourceData(resourceType, namespace = 'all', searchTerm = null, resetData = true) {
+    const cacheKey = `${resourceType}-${namespace}-${searchTerm || 'no_search'}`;
+    console.log(`Fetching ALL ${resourceType} data (ns: ${namespace}, search: ${searchTerm || 'none'})`);
+    
+    // Use resetData flag to decide whether to show loading (usually true unless called internally)
+    if (resetData) {
+        showLoading(resourceType);
+        // Clear previous state for this resource type
+        if (window.app.state.resources[resourceType]) {
+            delete window.app.state.resources[resourceType];
+        }
+    }
+
+    // Check cache first
+    const lastFetch = window.app.cache.lastFetch[cacheKey];
+    if (lastFetch && (Date.now() - lastFetch) < window.app.CACHE_TIMEOUT && window.app.cache.resources[cacheKey]) {
+        console.log(`Using cached data for key: ${cacheKey}`);
+        processResourceData(resourceType, window.app.cache.resources[cacheKey]);
+        if (resetData) hideLoading(resourceType);
+        return Promise.resolve(window.app.cache.resources[cacheKey]);
+    }
+    
+    const startTime = performance.now();
+    return new Promise((resolve, reject) => {
+        const formData = new FormData();
+        formData.append('resource_type', resourceType);
+        formData.append('namespace', namespace);
+        if (searchTerm) {
+            formData.append('search_term', searchTerm);
+        }
+        // No page or page_size needed
+        
+        const url = window.app.getRelativeUrl('/get_resources');
+        
+        fetch(url, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Network response was not ok: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log(`Fetched ${data.data?.items?.length || 0} ${resourceType} (ns: ${namespace}, search: ${searchTerm || 'none'}) in ${Math.round(performance.now() - startTime)}ms`);
+            
+            // Cache the full response data
+            window.app.cache.lastFetch[cacheKey] = Date.now();
+            window.app.cache.resources[cacheKey] = data.data; // Store the 'data' object which contains items and totalCount
+            
+            processResourceData(resourceType, data.data);
+            if (resetData) hideLoading(resourceType);
+            resolve(data.data);
+        })
+        .catch(error => {
+            console.error(`Error fetching ${resourceType} (ns: ${namespace}, search: ${searchTerm}):`, error);
+            if (resetData) {
+                hideLoading(resourceType);
+                const tableContainer = document.getElementById('resourcesTableContainer'); // Use specific ID for explorer
+                if (tableContainer) {
+                    tableContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Error loading ${resourceType}: ${error.message}
+                            <button class="btn btn-sm btn-outline-danger ms-3" onclick="fetchResourceData('${resourceType}', '${namespace}', ${searchTerm ? '\'' + searchTerm + '\'' : null}, true)">
+                            <i class="fas fa-sync-alt me-1"></i> Retry
+                        </button>
+                        </div>
+                    `;
+                    tableContainer.style.opacity = '1';
+                }
+            }
+            reject(error);
+        });
+    });
+}
+
+// Renamed from processResourcePageData
+function processResourceData(resourceType, data) {
+    const processingStartTime = performance.now();
+    
+    // Update resource state with the full data received
+    window.app.state.resources[resourceType] = {
+        items: data.items || [],
+        totalCount: data.totalCount || (data.items ? data.items.length : 0)
+        // No pagination state needed anymore
+    };
+    
+    // If processing pods, update dashboard metrics
+    if (resourceType === 'pods') {
+        console.log('Updating dashboard metrics with data from –', data.items?.length || 0, '– "pods"');
+        updateDashboardMetrics(data.items || []);
+    }
+    
+    // Add sort functionality to the table if needed
+    // Ensure this targets the correct table, especially for Resource Explorer
+    const tableId = window.app.state.navigation?.activeTab === 'resources' ? 'resourcesTable' : `${resourceType}Table`;
+    addSortingToResourceTable(tableId, resourceType); 
+
+    // Render the table with all items
+    renderResourcesTable(resourceType);
+
+    const endTime = performance.now();
+    const processTime = endTime - processingStartTime;
+    console.log(`${resourceType} data processed in ${processTime.toFixed(0)}ms`);
+}
+
+
+// Renamed from renderResourcePage / renderCurrentPage for clarity
+// Now renders the full table based on the state for the given resourceType
+function renderResourcesTable(resourceType) {
+    const resourceData = window.app.state.resources[resourceType];
+    if (!resourceData || !resourceData.items) {
+        console.warn(`No data available in state for ${resourceType} to render.`);
+         // Optionally display an empty state here
+        return;
+    }
+    
+    const { items, totalCount } = resourceData;
+    
+    // Determine target table body and container based on current view
+    let tableBody, tableContainer, tableId;
+    if (window.app.state.navigation?.activeTab === 'resources') {
+        tableId = 'resourcesTable';
+        tableBody = document.getElementById('resourcesTableBody');
+        tableContainer = document.getElementById('resourcesTableContainer');
+    } else {
+        // Fallback for home dashboard tabs (though they might have specific render functions)
+        tableId = `${resourceType}Table`; 
+        tableBody = document.querySelector(`#${tableId} tbody`);
+        tableContainer = document.getElementById(`${resourceType}TableContainer`);
+    }
+    
+    if (!tableBody) {
+        console.error(`Table body not found for ID: ${tableId}Body or selector #${tableId} tbody`);
+        return;
+    }
+    if (!tableContainer) {
+        console.error(`Table container not found for ID: ${tableId}Container`);
+        return;
+    }
+    
+    // Remove existing count info message
+    const existingCountInfo = tableContainer.querySelector('.count-info');
+    if (existingCountInfo) {
+        existingCountInfo.remove();
+    }
+     // Remove existing filter indicator (it will be re-added if needed after search)
+    const existingFilterIndicator = tableContainer.querySelector('.filter-indicator');
+    if (existingFilterIndicator) {
+        existingFilterIndicator.remove();
+    }
+
+    // Clear the table body
+    tableBody.innerHTML = '';
+
+    // If no items, show empty state
+    if (items.length === 0) {
+        const colspan = document.querySelectorAll(`#${tableId} thead th`).length || 7; // Get colspan dynamically
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="${colspan}" class="text-center text-muted py-4">
+                    <i class="fas fa-info-circle me-2"></i> No ${resourceType} found.
+                </td>
+            </tr>
+        `;
+         tableContainer.style.opacity = '1'; // Make sure container is visible even if empty
+        return;
+    }
+    
+    // Add count message
+    const countInfo = document.createElement('div');
+    countInfo.className = 'text-muted small mb-2 count-info';
+    countInfo.innerHTML = `Displaying ${items.length} ${resourceType}`; 
+    // Add specific count message if totalCount differs (e.g., after search)
+    if (totalCount !== items.length && window.app.state.navigation?.activeTab === 'resources' && document.getElementById('resourceSearchInput')?.value) {
+         countInfo.innerHTML += ` (filtered from ${totalCount} total)`;
+    }
+    tableContainer.insertBefore(countInfo, tableContainer.firstChild);
+    
+    // Render items based on resource type
+    items.forEach(item => {
+        const row = document.createElement('tr');
+        let namespace = item.metadata?.namespace || 'N/A';
+        let name = item.metadata?.name || 'N/A';
+        let age = item.age || calculateAge(item.metadata?.creationTimestamp) || 'N/A'; // Use pre-calculated or calculate
+        
+        // Define specific columns for Resource Explorer
+        let cols = [];
+        const currentViewIsExplorer = window.app.state.navigation?.activeTab === 'resources';
+
+        switch (resourceType) {
+            case 'pods':
+                const podResources = getResourceUsage(item);
+                const status = item.status?.phase || 'Unknown';
+                cols = [
+                    `<td>${namespace}</td>`,
+                    `<td>${name}</td>`,
+                    `<td>${getStatusIcon(status)}${status}</td>`,
+                    `<td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${podResources.cpu || '0'}</td>`,
+                    `<td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${podResources.gpu || '0'}</td>`,
+                    `<td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${podResources.memory || '0Mi'}</td>`,
+                    `<td>${age}</td>`, // Add age column
+                    `<td>${createActionButton(resourceType, namespace, name)}</td>`
+                ];
+                break;
+            case 'services':
+                const serviceType = item.spec?.type || 'ClusterIP';
+                const clusterIP = item.spec?.clusterIP || '-';
+                const externalIP = item.status?.loadBalancer?.ingress?.[0]?.ip || item.spec?.externalIPs?.[0] || '-';
+                let ports = item.spec?.ports?.map(p => `${p.port}${p.nodePort ? ':'+p.nodePort : ''}/${p.protocol || 'TCP'}`).join(', ') || '-';
+                 cols = [
+                    `<td>${namespace}</td>`,
+                    `<td>${name}</td>`,
+                    `<td>${serviceType}</td>`,
+                    `<td>${clusterIP}</td>`,
+                    `<td>${externalIP}</td>`,
+                    `<td>${ports}</td>`,
+                    `<td>${age}</td>`,
+                    `<td>${createActionButton(resourceType, namespace, name)}</td>`
+                ];
+                break;
+            // Add cases for other resource types (deployments, configmaps, secrets) following the header structure
+             case 'deployments':
+                const readyReplicas = item.status?.readyReplicas || 0;
+                const totalReplicas = item.status?.replicas || 0;
+                const availableReplicas = item.status?.availableReplicas || 0;
+                const deploymentStatus = item.status?.conditions?.find(c => c.type === 'Available')?.status === 'True' ? 'Available' : 'Progressing';
+                 cols = [
+                    `<td>${namespace}</td>`,
+                    `<td>${name}</td>`,
+                    `<td>${readyReplicas}/${totalReplicas}</td>`,
+                    `<td>${getStatusIcon(deploymentStatus)}${deploymentStatus}</td>`,
+                    `<td>${availableReplicas}</td>`, // Available column added
+                    `<td>${age}</td>`,
+                    `<td>${createActionButton(resourceType, namespace, name)}</td>`
+                ];
+                break;
+            case 'configmaps':
+                const dataCount = item.data ? Object.keys(item.data).length : 0;
+                 cols = [
+                    `<td>${namespace}</td>`,
+                    `<td>${name}</td>`,
+                    `<td>${dataCount}</td>`,
+                    `<td>${age}</td>`,
+                    `<td>${createActionButton(resourceType, namespace, name)}</td>`
+                ];
+                break;
+            case 'secrets':
+                const secretType = item.type || 'Opaque';
+                const secretDataCount = item.data ? Object.keys(item.data).length : 0;
+                 cols = [
+                    `<td>${namespace}</td>`,
+                    `<td>${name}</td>`,
+                    `<td>${secretType}</td>`,
+                    `<td>${secretDataCount}</td>`,
+                    `<td>${age}</td>`,
+                    `<td>${createActionButton(resourceType, namespace, name)}</td>`
+                ];
+                break;
+            default:
+                 cols = [
+                    `<td>${namespace}</td>`,
+                    `<td>${name}</td>`,
+                     `<td>${age}</td>`,
+                    `<td>${createActionButton(resourceType, namespace, name)}</td>`
+                ];
+        }
+        row.innerHTML = cols.join('');
+        tableBody.appendChild(row);
+    });
+    
+    // Make table visible with transition
+    setTimeout(() => {
+        if (tableContainer) {
+            tableContainer.style.opacity = '1';
+        }
+    }, 50); // Shorter delay now
+    
+    // Initialize dropdowns for action buttons
+    setTimeout(() => {
+        const dropdownElementList = [].slice.call(document.querySelectorAll(`#${tableId} .action-dropdown .dropdown-toggle`));
+        dropdownElementList.map(function(dropdownToggleEl) {
+            // Ensure dropdown isn't already initialized
+             if (!bootstrap.Dropdown.getInstance(dropdownToggleEl)) {
+                return new bootstrap.Dropdown(dropdownToggleEl);
+            }
+             return bootstrap.Dropdown.getInstance(dropdownToggleEl);
+        });
+    }, 100);
+}
+
+// Updated search function to use backend filtering
+function searchResources() {
+    const resourceType = document.getElementById('resourceTypeSelector').value;
+    const searchInput = document.getElementById('resourceSearchInput');
+    const searchTerm = searchInput.value.trim(); // Trim whitespace
+    
+    console.log(`Backend search for ${resourceType} with term: '${searchTerm}'`);
+    
+    // Show loading indicator while searching
+    showLoading(resourceType); 
+    
+    // Call fetchResourceData, passing the search term
+    // It will hit the backend which now filters via SQL
+    fetchResourceData(resourceType, 'all', searchTerm, true) 
+        .then(data => {
+             // Data is processed and rendered by processResourceData
+             // Add filter indicator if search term is present
+            const tableContainer = document.getElementById('resourcesTableContainer');
+            if (tableContainer && searchTerm) {
+                 // Remove existing indicator if any
+                const existingIndicator = tableContainer.querySelector('.filter-indicator');
+                if (existingIndicator) {
+                    existingIndicator.remove();
+                }
+                const indicator = document.createElement('div');
+                indicator.className = 'filter-indicator alert alert-info d-flex align-items-center mb-3';
+                indicator.innerHTML = `
+                    <i class="fas fa-filter me-2"></i>
+                    <div class="flex-grow-1">
+                        Filtered by: "${searchTerm}" (${data.items.length} results)
+                    </div>
+                    <button class="btn btn-sm btn-outline-info ms-3" onclick="clearResourceSearch()">
+                        <i class="fas fa-times me-1"></i> Clear Filter
+                    </button>
+                `;
+                tableContainer.insertBefore(indicator, tableContainer.firstChild);
+            }
+        })
+        .catch(error => {
+             console.error("Search failed:", error);
+            // Error handling is done within fetchResourceData
+        })
+        .finally(() => {
+             hideLoading(resourceType); // Ensure loading is hidden
+        });
+
+    // Track last user interaction
+    window.app.lastUserInteraction = Date.now();
+}
+
+// Clear search function remains mostly the same, but ensures filter indicator is removed
+function clearResourceSearch() {
+    const searchInput = document.getElementById('resourceSearchInput');
+    if (searchInput) searchInput.value = '';
+    
+    const resourceType = document.getElementById('resourceTypeSelector').value;
+    console.log(`Clearing search for ${resourceType}`);
+
+     // Remove filter indicator
+    const tableContainer = document.getElementById('resourcesTableContainer');
+    if (tableContainer) {
+        const indicator = tableContainer.querySelector('.filter-indicator');
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+
+    // Refetch all data for the current resource type
+    fetchResourceData(resourceType, 'all', null, true);
+
+    // Track last user interaction
+    window.app.lastUserInteraction = Date.now();
+}
+
+// Refresh function for the Resource Explorer page
+function refreshResourcesPage() {
+    const resourceType = document.getElementById('resourceTypeSelector')?.value || 'pods';
+    const searchInput = document.getElementById('resourceSearchInput');
+    const searchTerm = searchInput ? searchInput.value.trim() : null;
+    
+    console.log(`Refreshing resources page for ${resourceType}` + (searchTerm ? ` with search '${searchTerm}'` : ''));
+    
+    // Fetch data, respecting the current search term
+    fetchResourceData(resourceType, 'all', searchTerm, true).catch(error => {
+        console.error(`Error refreshing resources:`, error);
+    });
+
+    // Track last user interaction
+    window.app.lastUserInteraction = Date.now();
+}
+
+// Function to calculate age if not provided by backend (fallback)
+function calculateAge(creationTimestampStr) {
+    if (!creationTimestampStr) return 'N/A';
+    try {
+        const createdTime = new Date(creationTimestampStr);
+        const now = new Date();
+        const deltaSeconds = Math.max(0, Math.floor((now - createdTime) / 1000));
+        
+        if (deltaSeconds < 60) return `${deltaSeconds}s`;
+        const deltaMinutes = Math.floor(deltaSeconds / 60);
+        if (deltaMinutes < 60) return `${deltaMinutes}m`;
+        const deltaHours = Math.floor(deltaMinutes / 60);
+        if (deltaHours < 24) return `${deltaHours}h`;
+        const deltaDays = Math.floor(deltaHours / 24);
+        return `${deltaDays}d`;
+    } catch (e) {
+        return 'Error';
+    }
+}
+
+// Update the addSortingToResourceTable to accept tableId
+function addSortingToResourceTable(tableId, resourceType) {
+    const tableElement = document.getElementById(tableId);
+    if (!tableElement) {
+        console.warn(`Table element not found for sorting: ${tableId}`);
+        return;
+    }
+    const tableHeaders = tableElement.querySelectorAll(`thead th[data-sort]`);
+    
+    if (!tableHeaders || tableHeaders.length === 0) {
+        console.warn(`No sortable headers found for table: ${tableId}`);
+        return;
+    }
+    
+    tableHeaders.forEach(header => {
+        // Ensure listener isn't added multiple times
+        if (header.getAttribute('data-sort-listener') === 'true') return;
+        header.setAttribute('data-sort-listener', 'true');
+
+        if (!header.querySelector('.sort-indicator')) {
+            const sortIndicator = document.createElement('span');
+            sortIndicator.className = 'sort-indicator ms-1';
+            sortIndicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
+            header.appendChild(sortIndicator);
+        }
+        
+        header.addEventListener('click', () => {
+            const sortField = header.getAttribute('data-sort');
+            let sortDirection = 'asc';
+            
+            if (window.app.state.resources[resourceType]?.sortField === sortField) {
+                sortDirection = window.app.state.resources[resourceType].sortDirection === 'asc' ? 'desc' : 'asc';
+            }
+            
+            // Reset all indicators in this table
+            tableElement.querySelectorAll('thead th[data-sort] .sort-indicator').forEach(ind => {
+                ind.innerHTML = '<i class="fas fa-sort text-muted"></i>';
+            });
+
+            // Update current indicator
+            const indicator = header.querySelector('.sort-indicator');
+            if (indicator) {
+                indicator.innerHTML = sortDirection === 'asc' 
+                    ? '<i class="fas fa-sort-up text-primary"></i>' 
+                    : '<i class="fas fa-sort-down text-primary"></i>';
+            }
+            
+            if (!window.app.state.resources[resourceType]) {
+                 window.app.state.resources[resourceType] = { items: [], totalCount: 0 };
+            }
+            window.app.state.resources[resourceType].sortField = sortField;
+            window.app.state.resources[resourceType].sortDirection = sortDirection;
+            
+            sortResourceData(resourceType, sortField, sortDirection);
+            renderResourcesTable(resourceType); // Re-render the sorted table
+        });
+    });
+}
+
+
+// **REMOVE** the following functions as they are related to pagination:
+// - navigateResourcePage
+// - updatePaginationUI
+
+// Modify initializeResourcesPage to remove setInterval refresh and pagination setup
+function initializeResourcesPage() {
+    console.log('Initializing resources page...');
+    if (!window.app) window.app = {};
+    if (!window.app.state) window.app.state = {};
+    if (!window.app.state.resources) window.app.state.resources = {};
+    if (!window.app.cache) window.app.cache = { resources: {}, lastFetch: {} }; // Initialize cache if needed
+    if (!window.app.CACHE_TIMEOUT) window.app.CACHE_TIMEOUT = 300000; // 5 minutes cache
+    
+    const searchInput = document.getElementById('resourceSearchInput');
+    if (searchInput && !searchInput.getAttribute('data-listener-added')) {
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                searchResources();
+            }
+        });
+        let searchTimeout;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(function() {
+                // Trigger search on input (debounced)
+                searchResources();
+            }, 500); 
+        });
+        searchInput.setAttribute('data-listener-added', 'true');
+    }
+    
+    const resourceTypeSelector = document.getElementById('resourceTypeSelector');
+    if (resourceTypeSelector && !resourceTypeSelector.getAttribute('data-listener-added')) {
+        resourceTypeSelector.addEventListener('change', function() {
+            changeResourceType(this.value);
+        });
+         resourceTypeSelector.setAttribute('data-listener-added', 'true');
+    }
+    
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    if (clearSearchBtn && !clearSearchBtn.getAttribute('data-listener-added')) {
+        clearSearchBtn.addEventListener('click', clearResourceSearch);
+         clearSearchBtn.setAttribute('data-listener-added', 'true');
+    }
+    
+    // Load initial resource type (or current if already set)
+    const initialResourceType = window.app.currentResourceType || (resourceTypeSelector ? resourceTypeSelector.value : 'pods');
+    // Ensure the selector reflects the current type
+    if (resourceTypeSelector) resourceTypeSelector.value = initialResourceType;
+    
+    loadResourceType(initialResourceType);
+    
+    window.app.resourcesInitialized = true; // Mark as initialized
+    console.log('Resources page initialized.');
+}
+
+
+// Modify loadResourceType to remove pagination logic
+function loadResourceType(resourceType) {
+    console.log(`Loading resources for type: ${resourceType}`);
+    window.app.currentResourceType = resourceType; // Update current type
+
+    // Show loading indicator
+    showLoading(resourceType); // Use the resource-specific loading
+    
+    // Set up the table headers based on resource type
+    setupTableHeaders(resourceType);
+    
+    // Fetch all data for the resource type 
+    fetchResourceData(resourceType, 'all', null, true)
+        .then(data => {
+             // Rendering happens in processResourceData
+             // Setup sorting for the newly rendered table
+            addSortingToResourceTable('resourcesTable', resourceType);
+        })
+        .catch(error => {
+            console.error(`Error loading ${resourceType}:`, error);
+             // Error is handled in fetchResourceData
+        })
+        .finally(() => {
+             hideLoading(resourceType); // Ensure loading is hidden
+        });
+}
+
+
+
+// Make sure DOMContentLoaded only initializes once
+if (!window.appInitializationDone) {
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM fully loaded, initializing app core...');
+        if (!window.app) window.app = {};
+        if (!window.app.state) window.app.state = {};
+        if (!window.app.cache) window.app.cache = { resources: {}, lastFetch: {} };
+        if (!window.app.CACHE_TIMEOUT) window.app.CACHE_TIMEOUT = 300000;
+        
+        initNavigation(); 
+        initializeApp(); // General app init (sockets, terminal, etc.)
+        initializeHomePage(); // Load initial view data
+
+        // Check if we should load the resources page based on initial state
+        if (window.app.state.navigation.activeTab === 'resources') {
+            // Delay slightly to ensure elements are ready
+            setTimeout(initializeResourcesPage, 100); 
+        }
+
+        // Global Tab Change Listener (ensure only one is active)
+        document.querySelectorAll('a[data-bs-toggle="tab"]').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', function (e) {
+                const tabId = e.target.getAttribute('data-bs-target').substring(1);
+                 if (window.app.state.navigation.activeTab !== tabId) {
+                     window.app.state.navigation.activeTab = tabId;
+                    console.log('Tab changed to:', tabId);
+                    
+                    // Initialize or load data for the specific tab
+                    if (tabId === 'resources') {
+                        // Delay slightly to ensure elements are ready
+                        setTimeout(initializeResourcesPage, 50); 
+                    } else if (tabId === 'home') {
+                        initializeHomePage();
+                    } else if (tabId === 'namespaces') {
+                        loadNamespaces(); // Assuming this function exists and works
+                    } // Add other tab initializations if needed
+                 }
+            });
+        });
+        window.appInitializationDone = true;
+         console.log('App core initialization complete.');
+    });
+}
+
+
+</rewritten_file>
