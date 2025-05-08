@@ -31,13 +31,30 @@ window.app.currentResourceType = 'pods'; // Current resource type for Resources 
 
 // Helper to construct URLs relative to the application's base path
 window.app.getRelativeUrl = function(path) {
+    // If path starts with '/', it's considered absolute from the app's root.
+    // The `fetch` API handles these correctly when given to it directly, 
+    // so no need to prepend window.location.origin here.
+    // Just ensure it is a valid path.
     if (path.startsWith('/')) {
-        path = path.substring(1);
+        return path; 
     }
-    const baseUrl = window.location.pathname.endsWith('/') 
-        ? window.location.pathname 
-        : window.location.pathname + '/';
-    return baseUrl === '/' ? '/' + path : baseUrl + path;
+
+    // If path does not start with '/', resolve it relative to the current page's path.
+    // This is useful for links like './sub-resource' or 'image.png' from a specific page.
+    // However, for API calls, it's generally better to use absolute paths from root (e.g., '/api/data').
+    let currentPath = window.location.pathname;
+    // If currentPath doesn't end with a '/', get its directory part.
+    if (!currentPath.endsWith('/')) {
+        currentPath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+    }
+    // Ensure the current path starts with a slash if it's not empty.
+    if (currentPath && !currentPath.startsWith('/')) {
+        currentPath = '/' + currentPath;
+    }
+    if (currentPath === '/') {
+         return '/' + path; // Avoid double slashes if currentPath is root
+    }
+    return currentPath + path; // e.g. /current/dir/ + relativePath
 };
 
 // Main initialization function that runs when the DOM is loaded

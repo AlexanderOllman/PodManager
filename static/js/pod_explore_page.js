@@ -54,18 +54,51 @@ function initializeExplorePage() {
 
 function showLoadingState(tabName) {
     console.log(`Showing loading for ${tabName}`);
-    const loadingDiv = document.getElementById(`${tabName}Loading`);
-    const contentDiv = document.getElementById(tabName === 'details' ? `${tabName}Content` : `${tabName}Output`);
-    if (loadingDiv) loadingDiv.style.display = 'flex';
-    if (contentDiv) contentDiv.style.display = 'none';
+    const validTabs = ['details', 'describe', 'logs'];
+    if (!validTabs.includes(tabName)) {
+        console.error(`Invalid tabName passed to showLoadingState: ${tabName}`);
+        return;
+    }
+
+    try {
+        const loadingDiv = document.getElementById(`${tabName}Loading`);
+        // For 'access' tab, content is managed by setupPodTerminal directly using 'terminal' ID.
+        const contentDivId = tabName === 'details' ? `${tabName}Content` : (tabName === 'access' ? 'terminal' : `${tabName}Output`);
+        const contentDiv = document.getElementById(contentDivId);
+
+        if (loadingDiv) loadingDiv.style.display = 'flex';
+        else console.warn(`showLoadingState: loadingDiv not found for ${tabName}Loading`);
+
+        if (contentDiv) contentDiv.style.display = 'none';
+        else console.warn(`showLoadingState: contentDiv not found for ${contentDivId}`);
+
+    } catch (e) {
+        console.error(`SyntaxError or other error in showLoadingState for ${tabName}:`, e);
+    }
 }
 
 function hideLoadingState(tabName) {
     console.log(`Hiding loading for ${tabName}`);
-    const loadingDiv = document.getElementById(`${tabName}Loading`);
-    const contentDiv = document.getElementById(tabName === 'details' ? `${tabName}Content` : `${tabName}Output`);
-    if (loadingDiv) loadingDiv.style.display = 'none';
-    if (contentDiv) contentDiv.style.display = 'block';
+    const validTabs = ['details', 'describe', 'logs'];
+     if (!validTabs.includes(tabName)) {
+        console.error(`Invalid tabName passed to hideLoadingState: ${tabName}`);
+        return;
+    }
+    
+    try {
+        const loadingDiv = document.getElementById(`${tabName}Loading`);
+        const contentDivId = tabName === 'details' ? `${tabName}Content` : (tabName === 'access' ? 'terminal' : `${tabName}Output`);
+        const contentDiv = document.getElementById(contentDivId);
+
+        if (loadingDiv) loadingDiv.style.display = 'none';
+        else console.warn(`hideLoadingState: loadingDiv not found for ${tabName}Loading`);
+        
+        if (contentDiv) contentDiv.style.display = 'block';
+        else console.warn(`hideLoadingState: contentDiv not found for ${contentDivId}`);
+
+    } catch (e) {
+        console.error(`SyntaxError or other error in hideLoadingState for ${tabName}:`, e);
+    }
 }
 
 function loadPodDetails() {
