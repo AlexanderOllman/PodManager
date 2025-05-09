@@ -239,37 +239,9 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
 
 def _start_pty_session(sid, exec_namespace, exec_pod_name, output_event_name, exit_event_name, session_type_val):
     logger.info(f"[{session_type_val} sid:{sid}] Attempting to start PTY session for {exec_namespace or 'N/A'}/{exec_pod_name or 'CONTROL_PLANE'}.")
-
-    # Force cleanup of any existing session for this sid before starting a new one
-    existing_session = active_pty_sessions.pop(sid, None)
-    if existing_session:
-        logger.warning(f"[{session_type_val} sid:{sid}] Found and removed pre-existing session for this SID. Details: {existing_session}")
-        fd_to_close = existing_session.get('fd')
-        pid_to_kill = existing_session.get('pid')
-        
-        if fd_to_close is not None:
-            try:
-                os.close(fd_to_close)
-                logger.info(f"[{session_type_val} sid:{sid}] Closed PTY FD {fd_to_close} from pre-existing session cleanup.")
-            except OSError as e_close:
-                logger.warning(f"[{session_type_val} sid:{sid}] OSError on closing PTY FD {fd_to_close} during pre-existing session cleanup: {e_close}")
-        
-        if pid_to_kill:
-            logger.info(f"[{session_type_val} sid:{sid}] Killing PID {pid_to_kill} from pre-existing session cleanup.")
-            try:
-                os.kill(pid_to_kill, signal.SIGTERM)
-                time.sleep(0.1) # Give it a moment to terminate gracefully
-                os.kill(pid_to_kill, signal.SIGKILL) # Ensure it's gone
-                logger.info(f"[{session_type_val} sid:{sid}] Sent SIGKILL to PID {pid_to_kill} from pre-existing session cleanup.")
-            except ProcessLookupError:
-                logger.info(f"[{session_type_val} sid:{sid}] Process {pid_to_kill} already gone (pre-existing session cleanup).")
-            except Exception as e_kill:
-                logger.error(f"[{session_type_val} sid:{sid}] Error killing process {pid_to_kill} from pre-existing session cleanup: {e_kill}")
-
-    # Original check - this should now ideally not happen if cleanup is effective
-    if sid in active_pty_sessions: # This theoretically should not be true anymore
-        logger.error(f"[{session_type_val} sid:{sid}] CRITICAL: Session still active even after explicit pop. This should not happen. Emitting error.")
-        socketio.emit(output_event_name, {'error': 'Session conflict on server. Please try again.', 'namespace': exec_namespace, 'pod_name': exec_pod_name}, room=sid)
+    if sid in active_pty_sessions:
+        logger.warning(f"[{session_type_val} sid:{sid}] Session already active. Emitting error.")
+        socketio.emit(output_event_name, {'error': 'Session already active for this client.', 'namespace': exec_namespace, 'pod_name': exec_pod_name}, room=sid)
         return
 
     try:
@@ -1106,6 +1078,42 @@ def handle_control_plane_cli_input(data):
         logger.warning(f"[ctrl_cli sid:{sid}] Input received but no active session found.")
     elif session['type'] != 'ctrl_cli':
         logger.warning(f"[ctrl_cli sid:{sid}] Input received for a session of type {session['type']}, expected 'ctrl_cli'.")
+
+@socketio.on('control_plane_cli_terminate_request')
+def handle_control_plane_cli_terminate_request():
+    sid = request.sid
+    logger.info(f"[ctrl_cli sid:{sid}] Received control_plane_cli_terminate_request.")
+    session_to_clean = active_pty_sessions.pop(sid, None)
+    
+    if session_to_clean and session_to_clean.get('type') == 'ctrl_cli':
+        logger.info(f"[ctrl_cli sid:{sid}] Terminating and cleaning up Control Plane CLI session due to client request.")
+        fd_to_close = session_to_clean.get('fd')
+        pid_to_kill = session_to_clean.get('pid')
+
+        if fd_to_close is not None:
+            try:
+                os.close(fd_to_close)
+                logger.info(f"[ctrl_cli sid:{sid}] Closed PTY FD {fd_to_close} on terminate request.")
+            except OSError as e:
+                 logger.warning(f"[ctrl_cli sid:{sid}] OSError on closing PTY FD {fd_to_close} on terminate request: {e}")
+        
+        if pid_to_kill:
+            logger.info(f"[ctrl_cli sid:{sid}] Killing PID {pid_to_kill} for Control Plane CLI on terminate request.")
+            try:
+                 os.kill(pid_to_kill, signal.SIGTERM)
+                 time.sleep(0.1) 
+                 os.kill(pid_to_kill, signal.SIGKILL) 
+                 logger.info(f"[ctrl_cli sid:{sid}] Sent SIGKILL to PID {pid_to_kill} on terminate request.")
+            except ProcessLookupError:
+                 logger.info(f"[ctrl_cli sid:{sid}] Process {pid_to_kill} already exited on terminate request.")
+            except Exception as e:
+                 logger.error(f"[ctrl_cli sid:{sid}] Error killing process {pid_to_kill} on terminate request: {e}")
+        socketio.emit('control_plane_cli_exit', {'message': 'Session terminated by client request.'}, room=sid)
+    elif session_to_clean: # SID was in active_sessions but not for ctrl_cli
+        active_pty_sessions[sid] = session_to_clean # Put it back
+        logger.warning(f"[ctrl_cli sid:{sid}] Terminate request received, but session type was {session_to_clean.get('type')}. No action taken for this type.")
+    else:
+        logger.info(f"[ctrl_cli sid:{sid}] Terminate request received, but no active Control Plane CLI session found for this client.")
 
 def set_pty_size(fd, rows, cols, width_px=0, height_px=0):
     logger.info(f"Setting PTY size: FD={fd}, Rows={rows}, Cols={cols}")

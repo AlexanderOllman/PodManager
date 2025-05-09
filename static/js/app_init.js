@@ -180,7 +180,6 @@ function initializeApp() {
     if (typeof checkGitAvailability === 'function') checkGitAvailability();
     if (typeof fetchNamespaces === 'function') fetchNamespaces(); // For events tab
     if (typeof setupDropZone === 'function') setupDropZone();
-    if (typeof initializeTerminal === 'function') initializeTerminal();
     if (typeof connectSocketListeners === 'function') connectSocketListeners();
     if (typeof setupTabClickHandlers === 'function') setupTabClickHandlers();
     
@@ -277,56 +276,56 @@ function connectSocketListeners() {
     }
 }
 
-// Navigation function (moved from base.html)
-// This function handles navigation between main sections, potentially reloading content.
+// Function to navigate to a specific tab
 function navigateToTab(tabId) {
-    console.log(`Navigating to tab: ${tabId} (global navigator)`);
-    const mainContent = document.getElementById('main-content');
-    if (!mainContent) {
-        console.error("Main content area not found for navigation.");
-        return;
-    }
+    console.log(`Navigating to tab: ${tabId}`);
+    window.app.state.navigation.isNavigating = true;
 
-    // Update navigation state
-    window.app.state.navigation.activeTab = tabId;
-    history.pushState({ tabId: tabId }, null, `#${tabId}`); // Update URL hash
-
-    // Deactivate all tabs and tab content
-    document.querySelectorAll('.sidebar .nav-link').forEach(link => link.classList.remove('active'));
+    // Deactivate all tabs and content
+    document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
     document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('show', 'active'));
 
-    // Activate the new tab link and content pane
-    const newTabLink = document.querySelector(`.sidebar .nav-link[data-bs-target="#${tabId}"]`);
-    const newTabPane = document.getElementById(tabId);
+    // Activate the selected tab and content
+    const tabLink = document.querySelector(`.nav-link[data-bs-target="#${tabId}"]`);
+    const tabPane = document.getElementById(tabId);
 
-    if (newTabLink) newTabLink.classList.add('active');
-    if (newTabPane) {
-        newTabPane.classList.add('show', 'active');
-        console.log(`Activated tab pane: ${tabId}`);
-    } else {
-        console.warn(`Tab pane with ID ${tabId} not found.`);
-        // If the tab pane is not directly in the DOM (e.g. for 'explore' page which is separate)
-        // this function might need to trigger a full page load or load content dynamically.
-        // For now, it assumes tab panes are part of the main index.html structure.
-        if (tabId === 'explore') { // Special handling for explore page
-             window.location.href = window.app.getRelativeUrl('explore.html'); // Or just /explore if routing handles it
-             return;
+    if (tabLink) tabLink.classList.add('active');
+    if (tabPane) tabPane.classList.add('show', 'active');
+
+    // Update URL hash
+    history.pushState({ tabId: tabId }, '', `#${tabId}`);
+    window.app.state.navigation.activeTab = tabId;
+
+    // Specific actions based on tab
+    if (tabId.startsWith('resource-')) {
+        const resourceType = tabId.split('-')[1];
+        if (typeof loadResourcesForTab === 'function') loadResourcesForTab(resourceType);
+    } else if (tabId === 'home') {
+        if (typeof initializeHomePage === 'function') initializeHomePage();
+    } else if (tabId === 'cli') { // Assuming 'cli' is the ID for Control Plane tab
+        if (typeof initializeTerminal === 'function') {
+            logger.info('[AppInit] Navigated to CLI tab, initializing terminal.');
+            initializeTerminal(); 
+        }
+    } 
+    // No specific else for other tabs like 'settings', 'namespaces_view', etc. yet
+    
+    // If navigating AWAY from CLI tab, dispose the terminal
+    if (tabId !== 'cli') {
+        if (typeof disposeControlPlaneTerminal === 'function') {
+            // Check if the terminal actually exists to avoid unnecessary logs/calls if it was never initialized
+            if (window.app.controlPlaneTerminal) { 
+                logger.info(`[AppInit] Navigated away from CLI tab (to ${tabId}), disposing terminal.`);
+                disposeControlPlaneTerminal();
+            }
         }
     }
-    
-    // Call the appropriate loader for the tab
-    // This simplifies the logic from the original base.html's navigateToTab
-    if (typeof loadResourcesForTab === 'function') {
-        loadResourcesForTab(tabId); // Centralized loading logic
-    } else {
-        console.warn('loadResourcesForTab function is not defined. Tab content might not load.');
-    }
 
-    // Scroll to top of main content
-    mainContent.scrollTop = 0;
+    window.app.state.navigation.isNavigating = false;
+    console.log(`Activated tab pane: ${tabId}`);
 }
 
-// Function to initialize navigation state
+// Initialize navigation logic
 function initNavigation() {
     if (!window.app.state.navigation) {
          window.app.state.navigation = {};
@@ -346,6 +345,27 @@ function initNavigation() {
             }
             // Potentially call other initializers if needed for other tabs
         });
+    });
+
+    // Ensure tab click handlers call navigateToTab
+    document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+        link.addEventListener('click', function(event) {
+            event.preventDefault();
+            const targetTabId = this.getAttribute('data-bs-target').substring(1);
+            navigateToTab(targetTabId);
+        });
+    });
+
+    // Handle initial tab from URL or default to 'home'
+    const initialTab = getActiveTabFromURL() || 'home';
+    navigateToTab(initialTab);
+     // Ensure active class is correctly set on the parent li for styling
+    document.querySelectorAll('.sidebar .nav-item').forEach(li => {
+        if (li.querySelector(`.nav-link[data-bs-target="#${initialTab}"]`)) {
+            li.classList.add('active');
+        } else {
+            li.classList.remove('active');
+        }
     });
 }
 
@@ -534,4 +554,11 @@ function loadResourcesForTab(tabId) {
         default:
             console.log(`No specific load action defined for tab: ${tabId}`);
     }
-} 
+}
+
+// Ensure logger is defined or use console directly if logger is specific to terminal.js
+const logger = window.app.logger || {
+    info: (...args) => console.info('[AppInit]', ...args),
+    warn: (...args) => console.warn('[AppInit]', ...args),
+    error: (...args) => console.error('[AppInit]', ...args),
+}; 

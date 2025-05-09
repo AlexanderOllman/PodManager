@@ -16,194 +16,202 @@ function initializeTerminal() {
         return;
     }
 
-    // If a terminal instance already exists, dispose of it first
+    let disposedOldInstance = false;
     if (window.app.controlPlaneTerminal) {
         logger.info('Disposing existing Control Plane CLI terminal instance.');
         try {
             window.app.controlPlaneTerminal.dispose();
+            // Optionally, tell backend to clean up immediately if a dedicated event exists
+            // if (window.app.socket && window.app.socket.connected) {
+            //     window.app.socket.emit('control_plane_cli_terminate_request'); 
+            // }
         } catch (e) {
             logger.warn('Error disposing existing terminal:', e);
         }
         window.app.controlPlaneTerminal = null;
-        // Also, if the socket is connected, it might be prudent to tell the backend
-        // that the old session (if any was established) should be terminated.
-        // This requires a specific backend event, e.g., 'control_plane_cli_terminate_request'
-        // For now, we rely on the backend's disconnect handler or the new session replacing the old one.
+        disposedOldInstance = true;
     }
-    // Clear the container explicitly in case dispose didn't remove everything or if no instance existed yet.
     terminalContainer.innerHTML = '';
 
-    try {
-        logger.info('Initializing new terminal instance...');
-        const term = new Terminal({
-            cursorBlink: true,
-            fontFamily: 'monospace',
-            fontSize: 14,
-            convertEol: true,
-            scrollback: 1000,
-            theme: { background: '#000000', foreground: '#ffffff' },
-            allowProposedApi: true // Retain this for now, might be useful for other options
-        });
-
-        const fitAddon = new FitAddon.FitAddon();
-        term.loadAddon(fitAddon);
-
-        window.app.controlPlaneTerminal = term;
-        terminalContainer.innerHTML = ''; // Clear any previous content
-        term.open(terminalContainer);
-        fitAddon.fit();
-
-        term.writeln('-- HPE Private Cloud AI - Control Plane CLI --');
-        term.writeln('Attempting to connect to application pod shell...');
-        term.writeln('');
-
-        const setupTerminalSession = () => {
-            logger.info('Socket connected. Setting up terminal session.');
-            term.writeln('Socket connected. Initializing PTY session...');
-            
-            logger.info('Emitting control_plane_cli_start');
-            window.app.socket.emit('control_plane_cli_start', {});
-
-            // Clear previous listeners to avoid duplication if re-initialized
-            window.app.socket.off('control_plane_cli_output');
-            window.app.socket.on('control_plane_cli_output', function(data) {
-                if (data.output) {
-                    logger.debug(`Output data: ${data.output}`);
-                    term.write(data.output);
-                }
-                if (data.error) {
-                    logger.error(`Error from backend: ${data.error}`);
-                    term.writeln(`\r\n\x1b[31mError: ${data.error}\x1b[0m`);
-                }
+    // Function to proceed with new terminal initialization
+    const proceedWithInitialization = () => {
+        try {
+            logger.info('Initializing new terminal instance...');
+            const term = new Terminal({
+                cursorBlink: true,
+                fontFamily: 'monospace',
+                fontSize: 14,
+                convertEol: true,
+                scrollback: 1000,
+                theme: { background: '#000000', foreground: '#ffffff' },
+                allowProposedApi: true 
             });
 
-            window.app.socket.off('control_plane_cli_exit');
-            window.app.socket.on('control_plane_cli_exit', function(data) {
-                logger.info('Session ended.');
-                term.writeln(`\r\n\x1b[33mControl Plane CLI session ended: ${data.message || ''}\x1b[0m`);
-            });
+            const fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
 
-            // Initial resize after session start is confirmed by first output or a small delay
-            // For now, resize is handled by onResize and initial explicit call later.
-        };
+            window.app.controlPlaneTerminal = term;
+            term.open(terminalContainer);
+            fitAddon.fit();
 
-        if (window.app.socket && window.app.socket.connected) {
-            setupTerminalSession();
-        } else {
-            term.writeln('Socket not immediately connected. Waiting for connection...');
-            if (!window.app.socket) {
-                logger.warn('Socket object not found, attempting to create and connect.');
-                // Assuming io() is available globally from Socket.IO client library
-                window.app.socket = io({transports: ['websocket', 'polling']}); 
-            }
-            
-            window.app.socket.once('connect', () => {
-                logger.info('Socket connected event received.');
-                setupTerminalSession();
-            });
-            window.app.socket.once('connect_error', (err) => {
-                logger.error('Socket connection error:', err);
-                term.writeln(`\r\n\x1b[31mError: Failed to establish socket connection: ${err.message}\x1b[0m`);
-            });
-            if (!window.app.socket.connected) {
-                 window.app.socket.connect(); // Ensure connection attempt is made if not already connecting
-            }
-        }
-        
-        let currentLine = '';
-        let commandHistory = [];
-        let historyIndex = -1;
+            term.writeln('-- HPE Private Cloud AI - Control Plane CLI --');
+            term.writeln('Attempting to connect to application pod shell...');
+            term.writeln('');
 
-        term.onKey(({ key, domEvent }) => {
-            const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.metaKey;
+            const setupTerminalSession = () => {
+                logger.info('Socket connected. Setting up terminal session.');
+                term.writeln('Socket connected. Initializing PTY session...');
+                
+                logger.info('Emitting control_plane_cli_start');
+                window.app.socket.emit('control_plane_cli_start', {});
 
-            if (!window.app.socket || !window.app.socket.connected) {
-                logger.warn('Key press, but socket not connected.');
-                term.writeln('\r\n\x1b[31mError: Not connected. Cannot send input.\x1b[0m');
-                return;
-            }
-
-            if (domEvent.ctrlKey) {
-                const charCode = domEvent.keyCode;
-                let PTYSignal = null;
-                if(charCode === 67){ PTYSignal = '\x03'; term.write('^C');} // Ctrl+C (ETX)
-                if(charCode === 68){ PTYSignal = '\x04';} // Ctrl+D (EOT)
-                if(charCode === 90){ PTYSignal = '\x1A'; term.write('^Z');} // Ctrl+Z (SUB)
-                if(charCode === 76){ term.clear(); return;} // Ctrl+L (Clear screen client side)
-
-                if(PTYSignal){
-                    logger.debug(`Sending control input: ${PTYSignal === '\x03' ? 'Ctrl+C' : PTYSignal === '\x04' ? 'Ctrl+D' : 'Ctrl+Z'}`);
-                    window.app.socket.emit('control_plane_cli_input', { input: PTYSignal });
-                }
-                currentLine = ''; 
-                return;
-            }
-
-            if (domEvent.keyCode === 13) { // Enter
-                if (currentLine.trim()) {
-                    logger.debug(`Sending command input: ${currentLine}`);
-                    window.app.socket.emit('control_plane_cli_input', { input: currentLine + '\r' }); 
-                    commandHistory.push(currentLine);
-                    historyIndex = commandHistory.length;
-                    currentLine = '';
-                } else {
-                    window.app.socket.emit('control_plane_cli_input', { input: '\r' }); 
-                    term.write('\r\n');
-                }
-            } else if (domEvent.keyCode === 8) { // Backspace
-                if (term.buffer.active.cursorX > 0) { 
-                    term.write('\b \b');
-                    if (currentLine.length > 0) {
-                        currentLine = currentLine.slice(0, -1);
+                // Clear previous listeners to avoid duplication if re-initialized
+                window.app.socket.off('control_plane_cli_output');
+                window.app.socket.on('control_plane_cli_output', function(data) {
+                    if (data.output) {
+                        logger.debug(`Output data: ${data.output}`);
+                        term.write(data.output);
                     }
+                    if (data.error) {
+                        logger.error(`Error from backend: ${data.error}`);
+                        term.writeln(`\r\n\x1b[31mError: ${data.error}\x1b[0m`);
+                    }
+                });
+
+                window.app.socket.off('control_plane_cli_exit');
+                window.app.socket.on('control_plane_cli_exit', function(data) {
+                    logger.info('Session ended.');
+                    term.writeln(`\r\n\x1b[33mControl Plane CLI session ended: ${data.message || ''}\x1b[0m`);
+                });
+
+                // Initial resize after session start is confirmed by first output or a small delay
+                // For now, resize is handled by onResize and initial explicit call later.
+            };
+
+            if (window.app.socket && window.app.socket.connected) {
+                setupTerminalSession();
+            } else {
+                term.writeln('Socket not immediately connected. Waiting for connection...');
+                if (!window.app.socket) {
+                    logger.warn('Socket object not found, attempting to create and connect.');
+                    window.app.socket = io({transports: ['websocket', 'polling']}); 
                 }
-            } else if (domEvent.keyCode === 38) { // Up arrow
-                if (commandHistory.length > 0) {
-                    historyIndex = Math.max(0, historyIndex - 1);
-                    term.write('\x1b[2K\r'); 
-                    const promptChar = '# ';
-                    term.write(promptChar + commandHistory[historyIndex]);
-                    currentLine = commandHistory[historyIndex];
-                    for(let i=0; i < (promptChar.length + currentLine.length); ++i) term.write('\x1b[C');
+                window.app.socket.once('connect', () => {
+                    logger.info('Socket connected event received.');
+                    setupTerminalSession();
+                });
+                window.app.socket.once('connect_error', (err) => {
+                    logger.error('Socket connection error:', err);
+                    term.writeln(`\r\n\x1b[31mError: Failed to establish socket connection: ${err.message}\x1b[0m`);
+                });
+                if (!window.app.socket.connected && !window.app.socket.connecting) {
+                    window.app.socket.connect(); 
                 }
-            } else if (domEvent.keyCode === 40) { // Down arrow
-                if (historyIndex < commandHistory.length) {
-                    historyIndex++;
-                    term.write('\x1b[2K\r'); 
-                    const promptChar = '# ';
-                    if (historyIndex < commandHistory.length) {
+            }
+            
+            let currentLine = '';
+            let commandHistory = [];
+            let historyIndex = -1;
+
+            term.onKey(({ key, domEvent }) => {
+                const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.metaKey;
+
+                if (!window.app.socket || !window.app.socket.connected) {
+                    logger.warn('Key press, but socket not connected.');
+                    term.writeln('\r\n\x1b[31mError: Not connected. Cannot send input.\x1b[0m');
+                    return;
+                }
+
+                if (domEvent.ctrlKey) {
+                    const charCode = domEvent.keyCode;
+                    let PTYSignal = null;
+                    if(charCode === 67){ PTYSignal = '\x03'; term.write('^C');} // Ctrl+C (ETX)
+                    if(charCode === 68){ PTYSignal = '\x04';} // Ctrl+D (EOT)
+                    if(charCode === 90){ PTYSignal = '\x1A'; term.write('^Z');} // Ctrl+Z (SUB)
+                    if(charCode === 76){ term.clear(); return;} // Ctrl+L (Clear screen client side)
+
+                    if(PTYSignal){
+                        logger.debug(`Sending control input: ${PTYSignal === '\x03' ? 'Ctrl+C' : PTYSignal === '\x04' ? 'Ctrl+D' : 'Ctrl+Z'}`);
+                        window.app.socket.emit('control_plane_cli_input', { input: PTYSignal });
+                    }
+                    currentLine = ''; 
+                    return;
+                }
+
+                if (domEvent.keyCode === 13) { // Enter
+                    if (currentLine.trim()) {
+                        logger.debug(`Sending command input: ${currentLine}`);
+                        window.app.socket.emit('control_plane_cli_input', { input: currentLine + '\r' }); 
+                        commandHistory.push(currentLine);
+                        historyIndex = commandHistory.length;
+                        currentLine = '';
+                    } else {
+                        window.app.socket.emit('control_plane_cli_input', { input: '\r' }); 
+                        term.write('\r\n');
+                    }
+                } else if (domEvent.keyCode === 8) { // Backspace
+                    if (term.buffer.active.cursorX > 0) { 
+                        term.write('\b \b');
+                        if (currentLine.length > 0) {
+                            currentLine = currentLine.slice(0, -1);
+                        }
+                    }
+                } else if (domEvent.keyCode === 38) { // Up arrow
+                    if (commandHistory.length > 0) {
+                        historyIndex = Math.max(0, historyIndex - 1);
+                        term.write('\x1b[2K\r'); 
+                        const promptChar = '# ';
                         term.write(promptChar + commandHistory[historyIndex]);
                         currentLine = commandHistory[historyIndex];
                         for(let i=0; i < (promptChar.length + currentLine.length); ++i) term.write('\x1b[C');
-                    } else {
-                        term.write(promptChar);
-                        currentLine = '';
-                        for(let i=0; i < promptChar.length; ++i) term.write('\x1b[C');
                     }
+                } else if (domEvent.keyCode === 40) { // Down arrow
+                    if (historyIndex < commandHistory.length) {
+                        historyIndex++;
+                        term.write('\x1b[2K\r'); 
+                        const promptChar = '# ';
+                        if (historyIndex < commandHistory.length) {
+                            term.write(promptChar + commandHistory[historyIndex]);
+                            currentLine = commandHistory[historyIndex];
+                            for(let i=0; i < (promptChar.length + currentLine.length); ++i) term.write('\x1b[C');
+                        } else {
+                            term.write(promptChar);
+                            currentLine = '';
+                            for(let i=0; i < promptChar.length; ++i) term.write('\x1b[C');
+                        }
+                    }
+                } else if (printable && key && key.length === 1) { 
+                    currentLine += key;
+                    term.write(key);
                 }
-            } else if (printable && key && key.length === 1) { 
-                currentLine += key;
-                term.write(key);
-            }
-        });
+            });
 
-        const sendResize = () => {
-            if (term.rows && term.cols && window.app.socket && window.app.socket.connected) {
-                 logger.debug(`Sending pty_resize: rows=${term.rows}, cols=${term.cols}`);
-                 window.app.socket.emit('pty_resize', { rows: term.rows, cols: term.cols });
-            }
-        };
-        
-        setTimeout(sendResize, 200);
-        term.onResize(sendResize);
-        // Consider window resize listener if fitAddon doesn't cover all cases.
-        // window.addEventListener('resize', () => { try { fitAddon.fit(); } catch(e){ logger.warn('Error on fitAddon resize', e); } });
+            const sendResize = () => {
+                if (term.rows && term.cols && window.app.socket && window.app.socket.connected) {
+                     logger.debug(`Sending pty_resize: rows=${term.rows}, cols=${term.cols}`);
+                     window.app.socket.emit('pty_resize', { rows: term.rows, cols: term.cols });
+                }
+            };
+            
+            setTimeout(sendResize, 200);
+            term.onResize(sendResize);
+            // Consider window resize listener if fitAddon doesn't cover all cases.
+            // window.addEventListener('resize', () => { try { fitAddon.fit(); } catch(e){ logger.warn('Error on fitAddon resize', e); } });
 
-        logger.info('Terminal initialized and event listeners (will be) set up upon connection.');
+            logger.info('Terminal initialized and event listeners (will be) set up upon connection.');
 
-    } catch (error) {
-        logger.error('Failed to initialize terminal:', error);
-        if(terminalContainer) terminalContainer.innerHTML = `<div class="alert alert-danger">Failed to initialize Control Plane CLI: ${error.message}</div>`;
+        } catch (error) {
+            logger.error('Failed to initialize terminal:', error);
+            if(terminalContainer) terminalContainer.innerHTML = `<div class="alert alert-danger">Failed to initialize Control Plane CLI: ${error.message}</div>`;
+        }
+    };
+
+    if (disposedOldInstance) {
+        // If we just disposed an old instance, wait a moment for backend cleanup to potentially occur
+        logger.info('Delaying new terminal initialization slightly after disposal.');
+        setTimeout(proceedWithInitialization, 250); // 250ms delay
+    } else {
+        proceedWithInitialization();
     }
 }
 
@@ -232,3 +240,24 @@ function executeCliCommand(command) {
      //     window.app.socket.emit('control_plane_cli_terminate'); // if backend supports this
      // }
 // } 
+
+function disposeControlPlaneTerminal() {
+    if (window.app.controlPlaneTerminal) {
+        logger.info('Disposing Control Plane CLI terminal explicitly.');
+        try {
+            window.app.controlPlaneTerminal.dispose();
+            // Tell backend to terminate the session for this client
+            if (window.app.socket && window.app.socket.connected) {
+                logger.info('Emitting control_plane_cli_terminate_request to backend.');
+                window.app.socket.emit('control_plane_cli_terminate_request'); 
+            }
+        } catch (e) {
+            logger.warn('Error disposing existing terminal during explicit dispose:', e);
+        }
+        window.app.controlPlaneTerminal = null;
+    }
+    const terminalContainer = document.getElementById('terminal');
+    if (terminalContainer) {
+        terminalContainer.innerHTML = '<div class="p-3 text-muted">Control Plane CLI session closed. Navigate to this tab again to start a new session.</div>';
+    }
+} 
