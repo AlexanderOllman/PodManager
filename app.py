@@ -144,21 +144,49 @@ def run_action():
     return jsonify(format='text', output=output)
 
 def run_command(command, sid):
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
-    while True:
-        output = process.stdout.readline()
-        if output == '' and process.poll() is not None:
-            break
-        if output:
-            socketio.emit('terminal_output', {'data': output}, room=sid)
-    
-    error_output = process.stderr.read()
-    if error_output:
-        socketio.emit('terminal_output', {'data': f"\nError: {error_output}", 'error': True}, room=sid)
-    
-    # Send completion signal without the message
-    print(f"Command completed: {command}")
-    socketio.emit('terminal_output', {'complete': True}, room=sid)
+    logger.info(f"[sid:{sid}] Received command: {command}")
+    try:
+        logger.info(f"[sid:{sid}] Starting Popen for: {command}")
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        logger.info(f"[sid:{sid}] Popen started, PID: {process.pid}")
+        
+        # Stream stdout
+        logger.info(f"[sid:{sid}] Reading stdout...")
+        stdout_emitted = False
+        for line in iter(process.stdout.readline, ''):
+            if line:
+                logger.debug(f"[sid:{sid}] Sending stdout line: {line.strip()}")
+                socketio.emit('terminal_output', {'data': line}, room=sid)
+                stdout_emitted = True
+            else:
+                # Should not happen with iter(readline, '') unless process closes stream early?
+                logger.debug(f"[sid:{sid}] Empty stdout line received.")
+                break # Exit loop if readline returns empty string indicating stream closed
+        process.stdout.close() # Close stdout pipe
+        logger.info(f"[sid:{sid}] Finished reading stdout. Emitted data: {stdout_emitted}")
+        
+        # Wait for process to finish and read stderr
+        stderr_output = process.stderr.read()
+        process.stderr.close()
+        return_code = process.wait()
+        logger.info(f"[sid:{sid}] Process finished with return code: {return_code}")
+
+        if stderr_output:
+            logger.warning(f"[sid:{sid}] Sending stderr output: {stderr_output.strip()}")
+            socketio.emit('terminal_output', {'data': f"\nError: {stderr_output}", 'error': True}, room=sid)
+        
+        # Send completion signal
+        logger.info(f"[sid:{sid}] Sending completion signal.")
+        socketio.emit('terminal_output', {'complete': True}, room=sid)
+
+    except FileNotFoundError:
+         logger.error(f"[sid:{sid}] Command not found: {command.split()[0]}")
+         socketio.emit('terminal_output', {'data': f'\nError: command not found: {command.split()[0]}\n', 'error': True}, room=sid)
+         socketio.emit('terminal_output', {'complete': True}, room=sid)
+    except Exception as e:
+        logger.error(f"[sid:{sid}] Exception in run_command for '{command}': {e}")
+        socketio.emit('terminal_output', {'data': f'\nError executing command: {str(e)}\n', 'error': True}, room=sid)
+        socketio.emit('terminal_output', {'complete': True}, room=sid)
 
 @app.route('/run_cli_command', methods=['POST'])
 def run_cli_command():
@@ -523,7 +551,7 @@ def api_pod_details():
         
         # This route definition will be changed below to match the JS fetch URL.
         # The code below assumes namespace and pod_name are correctly populated.
-            
+
         if not namespace or not pod_name:
              # Fallback or error if not extracted from path by updated route pattern
              # This part will be simplified once the route pattern is updated.
