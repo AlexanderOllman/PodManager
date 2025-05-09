@@ -241,7 +241,6 @@ def _start_pty_session(sid, exec_namespace, exec_pod_name, output_event_name, ex
     logger.info(f"[{session_type_val} sid:{sid}] Attempting to start PTY session for {exec_namespace or 'N/A'}/{exec_pod_name or 'CONTROL_PLANE'}.")
     if sid in active_pty_sessions:
         logger.warning(f"[{session_type_val} sid:{sid}] Session already active. Emitting error.")
-        # Emit to the specific output channel for this type of session
         socketio.emit(output_event_name, {'error': 'Session already active for this client.', 'namespace': exec_namespace, 'pod_name': exec_pod_name}, room=sid)
         return
 
@@ -249,22 +248,16 @@ def _start_pty_session(sid, exec_namespace, exec_pod_name, output_event_name, ex
         (child_pid, fd) = pty.fork()
         if child_pid == 0: # Child process
             env = os.environ.copy()
-            env['TERM'] = 'xterm' # Common terminal type
-            # For some minimal images, /bin/sh is preferred. For others, /bin/bash.
-            # The `-i` flag helps ensure the shell runs in interactive mode if it supports it.
-            shell_path = '/bin/sh' # Default shell
-            # Could add logic here to check for /bin/bash if /bin/sh is too basic
-            # cmd_list = ['kubectl', 'exec', '-i', '-t', exec_pod_name, '-n', exec_namespace, '--', shell_path, '-i']
-            cmd_list = ['kubectl', 'exec', '-it', exec_pod_name, '-n', exec_namespace, '--', shell_path]
+            env['TERM'] = 'xterm' 
+            shell_path = '/bin/sh' 
+            # Try adding -i to the shell itself
+            cmd_list = ['kubectl', 'exec', '-i', '-t', exec_pod_name, '-n', exec_namespace, '--', shell_path, '-i']
+            # Original: cmd_list = ['kubectl', 'exec', '-it', exec_pod_name, '-n', exec_namespace, '--', shell_path]
 
             logger.info(f"[{session_type_val} child_pid:{os.getpid()}] Executing in PTY: {' '.join(cmd_list)}")
-            # Replace the current process with kubectl exec
             os.execvpe(cmd_list[0], cmd_list, env)
-            # execvpe does not return if successful
-            # If it returns, an error occurred before exec, so exit child
             logger.error(f"[{session_type_val} child_pid:{os.getpid()}] execvpe failed for {' '.join(cmd_list)}")
-            os._exit(1) # Child exits if execvpe fails
-
+            os._exit(1) 
         else: # Parent process
             active_pty_sessions[sid] = {
                 'pid': child_pid, 
@@ -275,11 +268,14 @@ def _start_pty_session(sid, exec_namespace, exec_pod_name, output_event_name, ex
             }
             logger.info(f"[{session_type_val} sid:{sid}] PTY session created: PID={child_pid}, FD={fd}")
             
-            # Set initial PTY size (optional, but can help with shell prompt rendering)
-            # This should ideally get initial rows/cols from client if possible
-            # set_pty_size(fd, 24, 80) 
+            # Attempt to set initial PTY size
+            # This might need rows/cols from the client, passed in the _start event data
+            try:
+                set_pty_size(fd, 24, 80) # Default rows/cols
+                logger.info(f"[{session_type_val} sid:{sid}] Initial PTY size set to 24x80 for FD {fd}.")
+            except Exception as e_size:
+                logger.warning(f"[{session_type_val} sid:{sid}] Failed to set initial PTY size for FD {fd}: {e_size}")
 
-            # Start a background task to read output from the PTY and forward it
             socketio.start_background_task(target=read_and_forward_pty_output,
                                           sid=sid, fd=fd,
                                           namespace=exec_namespace, pod_name=exec_pod_name,
@@ -292,7 +288,7 @@ def _start_pty_session(sid, exec_namespace, exec_pod_name, output_event_name, ex
         error_msg = f"Failed to start PTY session for {exec_namespace or 'N/A'}/{exec_pod_name or 'CONTROL_PLANE'}: {str(e)}"
         logger.error(f"[{session_type_val} sid:{sid}] {error_msg}", exc_info=True)
         socketio.emit(output_event_name, {'error': error_msg, 'namespace': exec_namespace, 'pod_name': exec_pod_name}, room=sid)
-        if sid in active_pty_sessions: # Clean up if partially created
+        if sid in active_pty_sessions: 
             logger.warning(f"[{session_type_val} sid:{sid}] Cleaning up partially created session due to error.")
             session_to_clean = active_pty_sessions.pop(sid, None)
             if session_to_clean and 'fd' in session_to_clean:
