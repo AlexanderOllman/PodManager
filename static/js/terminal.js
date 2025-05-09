@@ -16,8 +16,25 @@ function initializeTerminal() {
         return;
     }
 
+    // If a terminal instance already exists, dispose of it first
+    if (window.app.controlPlaneTerminal) {
+        logger.info('Disposing existing Control Plane CLI terminal instance.');
+        try {
+            window.app.controlPlaneTerminal.dispose();
+        } catch (e) {
+            logger.warn('Error disposing existing terminal:', e);
+        }
+        window.app.controlPlaneTerminal = null;
+        // Also, if the socket is connected, it might be prudent to tell the backend
+        // that the old session (if any was established) should be terminated.
+        // This requires a specific backend event, e.g., 'control_plane_cli_terminate_request'
+        // For now, we rely on the backend's disconnect handler or the new session replacing the old one.
+    }
+    // Clear the container explicitly in case dispose didn't remove everything or if no instance existed yet.
+    terminalContainer.innerHTML = '';
+
     try {
-        logger.info('Initializing...');
+        logger.info('Initializing new terminal instance...');
         const term = new Terminal({
             cursorBlink: true,
             fontFamily: 'monospace',
@@ -111,7 +128,7 @@ function initializeTerminal() {
                 let PTYSignal = null;
                 if(charCode === 67){ PTYSignal = '\x03'; term.write('^C');} // Ctrl+C (ETX)
                 if(charCode === 68){ PTYSignal = '\x04';} // Ctrl+D (EOT)
-                if(charCode === 90){ PTYSignal = '\x1A'; terminal.write('^Z');} // Ctrl+Z (SUB)
+                if(charCode === 90){ PTYSignal = '\x1A'; term.write('^Z');} // Ctrl+Z (SUB)
                 if(charCode === 76){ term.clear(); return;} // Ctrl+L (Clear screen client side)
 
                 if(PTYSignal){
@@ -131,11 +148,11 @@ function initializeTerminal() {
                     currentLine = '';
                 } else {
                     window.app.socket.emit('control_plane_cli_input', { input: '\r' }); 
-                    terminal.write('\r\n'); 
+                    term.write('\r\n');
                 }
             } else if (domEvent.keyCode === 8) { // Backspace
                 if (term.buffer.active.cursorX > 0) { 
-                    terminal.write('\b \b');
+                    term.write('\b \b');
                     if (currentLine.length > 0) {
                         currentLine = currentLine.slice(0, -1);
                     }
@@ -143,32 +160,30 @@ function initializeTerminal() {
             } else if (domEvent.keyCode === 38) { // Up arrow
                 if (commandHistory.length > 0) {
                     historyIndex = Math.max(0, historyIndex - 1);
-                    terminal.write('\x1b[2K\r'); 
-                    // The prompt should come from the PTY, so just write the command.
-                    const promptChar = '# '; // Or detect dynamically if possible
-                    terminal.write(promptChar + commandHistory[historyIndex]);
+                    term.write('\x1b[2K\r'); 
+                    const promptChar = '# ';
+                    term.write(promptChar + commandHistory[historyIndex]);
                     currentLine = commandHistory[historyIndex];
-                     // Move cursor to end of line
-                    for(let i=0; i < (promptChar.length + currentLine.length); ++i) terminal.write('\x1b[C');
+                    for(let i=0; i < (promptChar.length + currentLine.length); ++i) term.write('\x1b[C');
                 }
             } else if (domEvent.keyCode === 40) { // Down arrow
                 if (historyIndex < commandHistory.length) {
                     historyIndex++;
-                    terminal.write('\x1b[2K\r'); 
-                    const promptChar = '# '; // Or detect dynamically
+                    term.write('\x1b[2K\r'); 
+                    const promptChar = '# ';
                     if (historyIndex < commandHistory.length) {
-                        terminal.write(promptChar + commandHistory[historyIndex]);
+                        term.write(promptChar + commandHistory[historyIndex]);
                         currentLine = commandHistory[historyIndex];
-                        for(let i=0; i < (promptChar.length + currentLine.length); ++i) terminal.write('\x1b[C');
+                        for(let i=0; i < (promptChar.length + currentLine.length); ++i) term.write('\x1b[C');
                     } else {
-                        terminal.write(promptChar);
+                        term.write(promptChar);
                         currentLine = '';
-                        for(let i=0; i < promptChar.length; ++i) terminal.write('\x1b[C');
+                        for(let i=0; i < promptChar.length; ++i) term.write('\x1b[C');
                     }
                 }
             } else if (printable && key && key.length === 1) { 
                 currentLine += key;
-                terminal.write(key);
+                term.write(key);
             }
         });
 
