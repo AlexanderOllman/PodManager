@@ -248,16 +248,26 @@ def _start_pty_session(sid, exec_namespace, exec_pod_name, output_event_name, ex
         (child_pid, fd) = pty.fork()
         if child_pid == 0: # Child process
             env = os.environ.copy()
-            env['TERM'] = 'xterm' 
-            shell_path = '/bin/sh' 
-            # Try adding -i to the shell itself
+            env['TERM'] = 'xterm'
+            # Try /bin/bash first, as it's generally more robust for interactive sessions
+            shell_path = '/bin/bash' 
             cmd_list = ['kubectl', 'exec', '-i', '-t', exec_pod_name, '-n', exec_namespace, '--', shell_path, '-i']
-            # Original: cmd_list = ['kubectl', 'exec', '-it', exec_pod_name, '-n', exec_namespace, '--', shell_path]
-
-            logger.info(f"[{session_type_val} child_pid:{os.getpid()}] Executing in PTY: {' '.join(cmd_list)}")
-            os.execvpe(cmd_list[0], cmd_list, env)
-            logger.error(f"[{session_type_val} child_pid:{os.getpid()}] execvpe failed for {' '.join(cmd_list)}")
+            
+            logger.info(f"[{session_type_val} child_pid:{os.getpid()}] Attempting to execute in PTY: {' '.join(cmd_list)}")
+            try:
+                os.execvpe(cmd_list[0], cmd_list, env)
+            except FileNotFoundError: # Specific exception for command not found
+                logger.warning(f"[{session_type_val} child_pid:{os.getpid()}] {shell_path} not found, trying /bin/sh.")
+                shell_path = '/bin/sh'
+                cmd_list = ['kubectl', 'exec', '-i', '-t', exec_pod_name, '-n', exec_namespace, '--', shell_path, '-i']
+                logger.info(f"[{session_type_val} child_pid:{os.getpid()}] Attempting to execute in PTY (fallback): {' '.join(cmd_list)}")
+                os.execvpe(cmd_list[0], cmd_list, env) # If this also fails, it will raise an exception captured below
+            
+            # If execvpe returns, it means an error occurred (e.g. command not found, permissions)
+            # This part should ideally not be reached if execvpe is successful.
+            logger.error(f"[{session_type_val} child_pid:{os.getpid()}] execvpe failed for {' '.join(cmd_list)} even after potential fallback. Exiting child.")
             os._exit(1) 
+
         else: # Parent process
             active_pty_sessions[sid] = {
                 'pid': child_pid, 
@@ -268,8 +278,6 @@ def _start_pty_session(sid, exec_namespace, exec_pod_name, output_event_name, ex
             }
             logger.info(f"[{session_type_val} sid:{sid}] PTY session created: PID={child_pid}, FD={fd}")
             
-            # Attempt to set initial PTY size
-            # This might need rows/cols from the client, passed in the _start event data
             try:
                 set_pty_size(fd, 24, 80) # Default rows/cols
                 logger.info(f"[{session_type_val} sid:{sid}] Initial PTY size set to 24x80 for FD {fd}.")

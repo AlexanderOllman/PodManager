@@ -1,5 +1,13 @@
 // static/js/pod_explore_page.js
 
+// Define a simple logger
+const logger = {
+    debug: (...args) => console.debug('[PodExplore]', ...args),
+    info: (...args) => console.info('[PodExplore]', ...args),
+    warn: (...args) => console.warn('[PodExplore]', ...args),
+    error: (...args) => console.error('[PodExplore]', ...args),
+};
+
 // Assumes global 'namespace' and 'podName' variables are defined in the HTML template.
 
 function initializeExplorePage() {
