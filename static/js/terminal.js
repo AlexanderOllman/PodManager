@@ -148,42 +148,24 @@ function initializeTerminal() {
                     currentLine = '';
                 } else {
                     window.app.socket.emit('control_plane_cli_input', { input: '\r' }); 
-                    term.write('\r\n');
+                    // No client-side term.write for enter, PTY handles newline
                 }
             } else if (domEvent.keyCode === 8) { // Backspace
-                if (term.buffer.active.cursorX > 0) { 
-                    term.write('\b \b');
-                    if (currentLine.length > 0) {
-                        currentLine = currentLine.slice(0, -1);
-                    }
+                // Let PTY handle backspace for now to simplify
+                if (currentLine.length > 0) { // Still manage currentLine for consistency
+                    currentLine = currentLine.slice(0, -1);
                 }
+                 window.app.socket.emit('control_plane_cli_input', { input: '\x08' }); // Send BEL/BS control char
             } else if (domEvent.keyCode === 38) { // Up arrow
-                if (commandHistory.length > 0) {
-                    historyIndex = Math.max(0, historyIndex - 1);
-                    term.write('\x1b[2K\r'); 
-                    const promptChar = '# ';
-                    term.write(promptChar + commandHistory[historyIndex]);
-                    currentLine = commandHistory[historyIndex];
-                    for(let i=0; i < (promptChar.length + currentLine.length); ++i) term.write('\x1b[C');
-                }
+                // History navigation can be complex without client-side echo, disable for this test
+                logger.debug('Up arrow pressed - history temporarily disabled for test.');
             } else if (domEvent.keyCode === 40) { // Down arrow
-                if (historyIndex < commandHistory.length) {
-                    historyIndex++;
-                    term.write('\x1b[2K\r'); 
-                    const promptChar = '# ';
-                    if (historyIndex < commandHistory.length) {
-                        term.write(promptChar + commandHistory[historyIndex]);
-                        currentLine = commandHistory[historyIndex];
-                        for(let i=0; i < (promptChar.length + currentLine.length); ++i) term.write('\x1b[C');
-                    } else {
-                        term.write(promptChar);
-                        currentLine = '';
-                        for(let i=0; i < promptChar.length; ++i) term.write('\x1b[C');
-                    }
-                }
+                logger.debug('Down arrow pressed - history temporarily disabled for test.');
             } else if (printable && key && key.length === 1) { 
                 currentLine += key;
-                term.write(key);
+                // REMOVED: term.write(key); // NO client-side echo for this test
+                // Send the character to the backend, rely on PTY echo
+                window.app.socket.emit('control_plane_cli_input', { input: key }); 
             }
         });
 
