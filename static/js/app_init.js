@@ -276,79 +276,90 @@ function connectSocketListeners() {
     }
 }
 
-// Function to navigate to a specific tab
+// Function to handle tab navigation and content loading
 function navigateToTab(tabId) {
-    console.log(`Navigating to tab: ${tabId}`);
+    if (window.app.state.navigation.isNavigating) {
+        console.warn('Navigation already in progress, ignoring new request for', tabId);
+        return;
+    }
     window.app.state.navigation.isNavigating = true;
+    console.log(`Navigating to tab: ${tabId}`);
 
-    // Deactivate all tabs and content
+    // Deactivate all tabs and content panes first
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
     document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('show', 'active'));
 
-    // Activate the selected tab and content
+    // Activate the selected tab and its content pane
     const tabLink = document.querySelector(`.nav-link[data-bs-target="#${tabId}"]`);
     const tabPane = document.getElementById(tabId);
 
-    if (tabLink) tabLink.classList.add('active');
-    if (tabPane) tabPane.classList.add('show', 'active');
+    if (tabLink) {
+        tabLink.classList.add('active');
+    }
+    if (tabPane) {
+        tabPane.classList.add('show', 'active');
+    }
 
-    // Update URL hash
-    history.pushState({ tabId: tabId }, '', `#${tabId}`);
     window.app.state.navigation.activeTab = tabId;
-
-    // Specific actions based on tab
-    if (tabId.startsWith('resource-')) {
-        const resourceType = tabId.split('-')[1];
-        if (typeof loadResourcesForTab === 'function') loadResourcesForTab(resourceType);
-    } else if (tabId === 'home') {
-        if (typeof initializeHomePage === 'function') initializeHomePage();
-    } else if (tabId === 'cli') { // Assuming 'cli' is the ID for Control Plane tab
-        if (typeof initializeTerminal === 'function') {
-            logger.info('[AppInit] Navigated to CLI tab, initializing terminal.');
-            initializeTerminal(); 
-        }
-    } 
-    // No specific else for other tabs like 'settings', 'namespaces_view', etc. yet
     
-    // If navigating AWAY from CLI tab, dispose the terminal
-    if (tabId !== 'cli') {
-        if (typeof disposeControlPlaneTerminal === 'function') {
-            // Check if the terminal actually exists to avoid unnecessary logs/calls if it was never initialized
-            if (window.app.controlPlaneTerminal) { 
-                logger.info(`[AppInit] Navigated away from CLI tab (to ${tabId}), disposing terminal.`);
-                disposeControlPlaneTerminal();
+    // Specific logic for Control Plane CLI terminal lifecycle
+    if (tabId === 'cli') { // Assuming 'cli' is the ID of your Control Plane tab content
+        if (typeof initializeTerminal === 'function') {
+            console.log('[AppInit] Initializing Control Plane CLI terminal.');
+            initializeTerminal(); // From terminal.js
+        } else {
+            console.warn('[AppInit] initializeTerminal function not found for CLI tab.');
+        }
+    } else {
+        // If navigating away from any tab that is NOT the CLI tab,
+        // and if the control plane terminal was active, dispose of it.
+        if (window.app.controlPlaneTerminal) {
+            console.log('[AppInit] Disposing Control Plane CLI terminal due to tab navigation.');
+            try {
+                window.app.controlPlaneTerminal.dispose();
+            } catch (e) {
+                console.warn('[AppInit] Error disposing controlPlaneTerminal:', e);
+            }
+            window.app.controlPlaneTerminal = null;
+            if (window.app.socket && window.app.socket.connected) {
+                console.log('[AppInit] Emitting control_plane_cli_terminate_request to backend.');
+                window.app.socket.emit('control_plane_cli_terminate_request');
             }
         }
     }
 
+    // General content loading or specific function calls based on tabId
+    if (tabId === 'home' && typeof initializeHomePage === 'function') {
+        initializeHomePage();
+    } else if (tabId === 'resources' && typeof loadResourcesPage === 'function') {
+        loadResourcesPage();
+    } else if (tabId === 'namespaces' && typeof initializeNamespacePage === 'function') {
+        initializeNamespacePage();
+    } else if (tabId === 'settings' && typeof initializeSettingsPage === 'function') {
+        initializeSettingsPage();
+    } else if (tabId === 'apply-manifests' && typeof initializeApplyManifestsPage === 'function') {
+        initializeApplyManifestsPage();
+    } else if (tabId === 'chart-library' && typeof initializeChartLibraryPage === 'function') {
+        initializeChartLibraryPage();
+    }
+    // Add other tab-specific loading functions here if needed
+
+    // Update URL hash for deep linking, unless it's the default 'home' tab
+    if (tabId !== 'home') {
+        history.pushState({ tabId: tabId }, '', `#${tabId}`);
+    } else {
+        history.pushState({ tabId: tabId }, '', window.location.pathname); // Clear hash for home
+    }
+    
     window.app.state.navigation.isNavigating = false;
-    console.log(`Activated tab pane: ${tabId}`);
+    console.log('Navigation complete for tab:', tabId);
 }
 
-// Initialize navigation logic
+// Function to initialize navigation state
 function initNavigation() {
-    if (!window.app.state.navigation) {
-         window.app.state.navigation = {};
-    }
-    window.app.state.navigation.activeTab = getActiveTabFromURL();
-    console.log('Navigation initialized, active tab:', window.app.state.navigation.activeTab);
-
-    // Set up event listener for tab changes to update activeTab state
-    document.querySelectorAll('a[data-bs-toggle="tab"]').forEach(tab => {
-        tab.addEventListener('shown.bs.tab', function (e) {
-            const tabId = e.target.getAttribute('data-bs-target').substring(1);
-            window.app.state.navigation.activeTab = tabId;
-            console.log('Tab changed to:', tabId);
-            
-            if (tabId === 'resources' && typeof initializeResourcesPage === 'function') {
-                initializeResourcesPage();
-            }
-            // Potentially call other initializers if needed for other tabs
-        });
-    });
-
-    // Ensure tab click handlers call navigateToTab
-    document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+    console.log('Initializing navigation...');
+    const navLinks = document.querySelectorAll('.sidebar .nav-link, .navbar-nav .nav-link');
+    navLinks.forEach(link => {
         link.addEventListener('click', function(event) {
             event.preventDefault();
             const targetTabId = this.getAttribute('data-bs-target').substring(1);
@@ -356,38 +367,15 @@ function initNavigation() {
         });
     });
 
-    // Handle initial tab from URL or default to 'home'
-    const initialTab = getActiveTabFromURL() || 'home';
-    navigateToTab(initialTab);
-     // Ensure active class is correctly set on the parent li for styling
-    document.querySelectorAll('.sidebar .nav-item').forEach(li => {
-        if (li.querySelector(`.nav-link[data-bs-target="#${initialTab}"]`)) {
-            li.classList.add('active');
-        } else {
-            li.classList.remove('active');
-        }
-    });
+    // Handle initial page load based on URL hash or default to 'home'
+    const initialTabId = getActiveTabFromURL() || 'home';
+    navigateToTab(initialTabId);
+    console.log(`Initial tab set to: ${initialTabId}`);
+    window.app.state.navigation.activeTab = initialTabId; 
 }
 
-// Helper function to get the active tab from URL hash or path
 function getActiveTabFromURL() {
-    const hash = window.location.hash;
-    if (hash) {
-        const tabId = hash.substring(1); // Remove the # character
-        // Validate against known tab IDs if necessary
-        const knownTabs = ['home', 'resources', 'cli', 'yaml', 'namespaces', 'charts', 'settings', 'events', 
-                           'pods', 'services', 'deployments', 'inferenceservices', 'configmaps', 'secrets']; // Add all valid tab IDs
-        if (knownTabs.includes(tabId)) {
-            return tabId;
-        }
-    }
-    const pathParts = window.location.pathname.split('/');
-    const lastPart = pathParts[pathParts.length - 1];
-    const validTabs = ['resources', 'cli', 'yaml', 'namespaces', 'charts', 'settings', 'home'];
-    if (validTabs.includes(lastPart)) {
-        return lastPart;
-    }
-    return 'home'; // Default tab
+    return window.location.hash.substring(1);
 }
 
 // Add a function to check data freshness periodically
@@ -554,11 +542,4 @@ function loadResourcesForTab(tabId) {
         default:
             console.log(`No specific load action defined for tab: ${tabId}`);
     }
-}
-
-// Ensure logger is defined or use console directly if logger is specific to terminal.js
-const logger = window.app.logger || {
-    info: (...args) => console.info('[AppInit]', ...args),
-    warn: (...args) => console.warn('[AppInit]', ...args),
-    error: (...args) => console.error('[AppInit]', ...args),
-}; 
+} 
