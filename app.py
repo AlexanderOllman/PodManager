@@ -239,35 +239,40 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
 
 def _start_pty_session(sid, exec_namespace, exec_pod_name, output_event_name, exit_event_name, session_type_val):
     logger.info(f"[{session_type_val} sid:{sid}] Attempting to start PTY session for {exec_namespace or 'N/A'}/{exec_pod_name or 'CONTROL_PLANE'}.")
+    
     if sid in active_pty_sessions:
-        logger.warning(f"[{session_type_val} sid:{sid}] Session already active. Emitting error.")
-        socketio.emit(output_event_name, {'error': 'Session already active for this client.', 'namespace': exec_namespace, 'pod_name': exec_pod_name}, room=sid)
-        return
+        logger.warning(f"[{session_type_val} sid:{sid}] Session already exists for this client. Terminating old session and starting anew.")
+        old_session = active_pty_sessions.pop(sid, None)
+        if old_session:
+            try:
+                if old_session.get('fd') is not None:
+                    os.close(old_session['fd'])
+                    logger.info(f"[{session_type_val} sid:{sid}] Closed old PTY FD {old_session['fd']} for re-init.")
+                if old_session.get('pid') is not None:
+                    os.kill(old_session['pid'], signal.SIGKILL)
+                    logger.info(f"[{session_type_val} sid:{sid}] Killed old PID {old_session['pid']} for re-init.")
+            except Exception as e_cleanup:
+                logger.error(f"[{session_type_val} sid:{sid}] Error cleaning up old session during re-init: {e_cleanup}")
+        # Do not emit "Session already active" error to client here, just proceed to create a new one.
 
     try:
         (child_pid, fd) = pty.fork()
         if child_pid == 0: # Child process
             env = os.environ.copy()
             env['TERM'] = 'xterm'
-            # Try /bin/bash first, as it's generally more robust for interactive sessions
             shell_path = '/bin/bash' 
             cmd_list = ['kubectl', 'exec', '-i', '-t', exec_pod_name, '-n', exec_namespace, '--', shell_path, '-i']
-            
             logger.info(f"[{session_type_val} child_pid:{os.getpid()}] Attempting to execute in PTY: {' '.join(cmd_list)}")
             try:
                 os.execvpe(cmd_list[0], cmd_list, env)
-            except FileNotFoundError: # Specific exception for command not found
+            except FileNotFoundError: 
                 logger.warning(f"[{session_type_val} child_pid:{os.getpid()}] {shell_path} not found, trying /bin/sh.")
                 shell_path = '/bin/sh'
                 cmd_list = ['kubectl', 'exec', '-i', '-t', exec_pod_name, '-n', exec_namespace, '--', shell_path, '-i']
                 logger.info(f"[{session_type_val} child_pid:{os.getpid()}] Attempting to execute in PTY (fallback): {' '.join(cmd_list)}")
-                os.execvpe(cmd_list[0], cmd_list, env) # If this also fails, it will raise an exception captured below
-            
-            # If execvpe returns, it means an error occurred (e.g. command not found, permissions)
-            # This part should ideally not be reached if execvpe is successful.
+                os.execvpe(cmd_list[0], cmd_list, env) 
             logger.error(f"[{session_type_val} child_pid:{os.getpid()}] execvpe failed for {' '.join(cmd_list)} even after potential fallback. Exiting child.")
             os._exit(1) 
-
         else: # Parent process
             active_pty_sessions[sid] = {
                 'pid': child_pid, 
@@ -277,13 +282,11 @@ def _start_pty_session(sid, exec_namespace, exec_pod_name, output_event_name, ex
                 'type': session_type_val
             }
             logger.info(f"[{session_type_val} sid:{sid}] PTY session created: PID={child_pid}, FD={fd}")
-            
             try:
-                set_pty_size(fd, 24, 80) # Default rows/cols
+                set_pty_size(fd, 24, 80)
                 logger.info(f"[{session_type_val} sid:{sid}] Initial PTY size set to 24x80 for FD {fd}.")
             except Exception as e_size:
                 logger.warning(f"[{session_type_val} sid:{sid}] Failed to set initial PTY size for FD {fd}: {e_size}")
-
             socketio.start_background_task(target=read_and_forward_pty_output,
                                           sid=sid, fd=fd,
                                           namespace=exec_namespace, pod_name=exec_pod_name,
@@ -291,19 +294,24 @@ def _start_pty_session(sid, exec_namespace, exec_pod_name, output_event_name, ex
                                           exit_event_name=exit_event_name,
                                           session_type=session_type_val)
             logger.info(f"[{session_type_val} sid:{sid}] Started PTY read background task for FD {fd}.")
-            
     except Exception as e:
         error_msg = f"Failed to start PTY session for {exec_namespace or 'N/A'}/{exec_pod_name or 'CONTROL_PLANE'}: {str(e)}"
         logger.error(f"[{session_type_val} sid:{sid}] {error_msg}", exc_info=True)
+        # Only emit error if it's not the initial "session already active" scenario we now handle by replacing
         socketio.emit(output_event_name, {'error': error_msg, 'namespace': exec_namespace, 'pod_name': exec_pod_name}, room=sid)
+        # Clean up if partially created, even after a forceful replacement attempt
         if sid in active_pty_sessions: 
-            logger.warning(f"[{session_type_val} sid:{sid}] Cleaning up partially created session due to error.")
+            logger.warning(f"[{session_type_val} sid:{sid}] Cleaning up partially created session due to error AFTER trying to start.")
             session_to_clean = active_pty_sessions.pop(sid, None)
-            if session_to_clean and 'fd' in session_to_clean:
+            if session_to_clean and 'fd' in session_to_clean and session_to_clean['fd'] is not None:
                 try: 
                     os.close(session_to_clean['fd'])
-                except OSError: 
-                    pass
+                except OSError: pass
+            if session_to_clean and 'pid' in session_to_clean and session_to_clean['pid'] is not None:
+                try:
+                    os.kill(session_to_clean['pid'], signal.SIGKILL)
+                except ProcessLookupError: pass
+                except OSError: pass
 
 @app.route('/run_cli_command', methods=['POST'])
 def run_cli_command():

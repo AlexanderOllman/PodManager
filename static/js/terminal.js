@@ -8,8 +8,16 @@ const logger = {
     error: (...args) => console.error('[CtrlCLI]', ...args),
 };
 
+let isInitializingCliTerminal = false; // Flag to prevent concurrent runs
+
 // Initialize the terminal using xterm.js and Socket.IO
 function initializeTerminal() {
+    if (isInitializingCliTerminal) {
+        logger.warn('CLI terminal initialization already in progress. Skipping.');
+        return;
+    }
+    isInitializingCliTerminal = true;
+
     const terminalContainer = document.getElementById('terminal');
     if (!terminalContainer) {
         logger.info('Terminal container not found, skipping initialization.');
@@ -204,6 +212,8 @@ function initializeTerminal() {
     } catch (error) {
         logger.error('Failed to initialize terminal:', error);
         if(terminalContainer) terminalContainer.innerHTML = `<div class="alert alert-danger">Failed to initialize Control Plane CLI: ${error.message}</div>`;
+    } finally {
+        isInitializingCliTerminal = false;
     }
 }
 
