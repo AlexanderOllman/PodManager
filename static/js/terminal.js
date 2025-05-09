@@ -90,15 +90,8 @@ function initializeTerminal() {
 
             window.app.socket.off('control_plane_cli_exit');
             window.app.socket.on('control_plane_cli_exit', function(data) {
-                logger.info('[CtrlCLI] Received control_plane_cli_exit event.');
-                // Only show "Session ended" if the terminal is still meant to be active.
-                // If window.app.controlPlaneTerminal is null, it means we likely disposed it 
-                // intentionally (e.g., navigating away), and this is a stale exit event.
-                if (window.app.controlPlaneTerminal) { 
-                    term.writeln(`\r\n\x1b[33mControl Plane CLI session ended: ${data.message || ''}\x1b[0m`);
-                } else {
-                    logger.info('[CtrlCLI] control_plane_cli_exit event ignored as terminal is already disposed.');
-                }
+                logger.info('Session ended.');
+                term.writeln(`\r\n\x1b[33mControl Plane CLI session ended: ${data.message || ''}\x1b[0m`);
             });
 
             // Initial resize after session start is confirmed by first output or a small delay
@@ -141,20 +134,54 @@ function initializeTerminal() {
                 return;
             }
 
-            if (domEvent.ctrlKey) {
+            // Handle Paste (Ctrl+V or Cmd+V)
+            if ((domEvent.ctrlKey || domEvent.metaKey) && domEvent.key === 'v') {
+                // Let xterm.js handle paste via its onData event by not interfering here.
+                // No explicit term.paste() is needed if onData is correctly configured to send to backend.
+                // We will rely on onData to catch the pasted input.
+                // Ensure currentLine is not polluted by the 'v' character itself from this event.
+                return; 
+            }
+
+            if (domEvent.ctrlKey || domEvent.metaKey) { // Modified to include metaKey for Cmd
                 const charCode = domEvent.keyCode;
                 let PTYSignal = null;
-                if(charCode === 67){ PTYSignal = '\x03'; term.write('^C');} // Ctrl+C (ETX)
-                if(charCode === 68){ PTYSignal = '\x04';} // Ctrl+D (EOT)
-                if(charCode === 90){ PTYSignal = '\x1A'; term.write('^Z');} // Ctrl+Z (SUB)
-                if(charCode === 76){ term.clear(); return;} // Ctrl+L (Clear screen client side)
+
+                // SIGINT (Ctrl+C or Cmd+C on Mac)
+                if (charCode === 67 && (domEvent.ctrlKey || domEvent.metaKey)) { 
+                    PTYSignal = '\x03'; 
+                    term.write('^C');
+                } 
+                // SIGQUIT (Ctrl+\) - Optional, less common
+                // else if (charCode === 220 && domEvent.ctrlKey) { PTYSignal = '\x1c'; term.write('^\\'); }
+                // EOF (Ctrl+D)
+                else if (charCode === 68 && domEvent.ctrlKey) { // Typically only Ctrl+D for EOF
+                    PTYSignal = '\x04';
+                    // No visual ^D usually, shell handles it
+                } 
+                // SUSP (Ctrl+Z)
+                else if (charCode === 90 && domEvent.ctrlKey) { 
+                    PTYSignal = '\x1A'; 
+                    term.write('^Z');
+                }
+
+                // Clear Screen (Ctrl+L or Cmd+L - client side only for now)
+                if (charCode === 76 && (domEvent.ctrlKey || domEvent.metaKey)) { 
+                    term.clear(); 
+                    currentLine = ''; // Clear current line buffer as well
+                    // Re-draw prompt if necessary, or wait for backend to send it.
+                    // For simplicity, let's assume prompt will re-appear or user types a command.
+                    return; 
+                }
 
                 if(PTYSignal){
-                    logger.debug(`Sending control input: ${PTYSignal === '\x03' ? 'Ctrl+C' : PTYSignal === '\x04' ? 'Ctrl+D' : 'Ctrl+Z'}`);
+                    logger.debug(`Sending control input signal: ${PTYSignal}`);
                     window.app.socket.emit('control_plane_cli_input', { input: PTYSignal });
+                    currentLine = ''; // Clear line after sending a signal
+                    return; // Important: return after handling a control sequence
                 }
-                currentLine = ''; 
-                return;
+                // If it was a Cmd key that wasn't a recognized shortcut, don't process as printable
+                if (domEvent.metaKey && !PTYSignal) return;
             }
 
             if (domEvent.keyCode === 13) { // Enter
@@ -164,6 +191,7 @@ function initializeTerminal() {
                     commandHistory.push(currentLine);
                     historyIndex = commandHistory.length;
                     currentLine = '';
+                    term.write('\r\n');
                 } else {
                     window.app.socket.emit('control_plane_cli_input', { input: '\r' }); 
                     term.write('\r\n');
@@ -199,7 +227,7 @@ function initializeTerminal() {
                         for(let i=0; i < promptChar.length; ++i) term.write('\x1b[C');
                     }
                 }
-            } else if (printable && key && key.length === 1) { 
+            } else if (printable && key && key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey) { // Added !ctrlKey and !metaKey here
                 currentLine += key;
                 term.write(key);
             }
