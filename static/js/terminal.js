@@ -18,6 +18,16 @@ function initializeTerminal() {
 
     let terminateAndDelayStart = false;
 
+    // Clear any existing listeners on the global socket for these events 
+    // before setting up a new terminal instance that will re-register them.
+    // This helps prevent stale listeners from a previous terminal instance (if any) from firing.
+    if (window.app.socket) {
+        logger.info('[CtrlCLI] Preemptively clearing old socket listeners for control plane events.');
+        window.app.socket.off('control_plane_cli_output');
+        window.app.socket.off('control_plane_cli_exit');
+        // Do NOT turn off 'connect' or 'connect_error' here as they manage the socket state itself.
+    }
+
     if (window.app.controlPlaneTerminal) {
         logger.info('Disposing existing Control Plane CLI terminal instance.');
         try {
@@ -75,8 +85,10 @@ function initializeTerminal() {
             logger.info('Emitting control_plane_cli_start');
             window.app.socket.emit('control_plane_cli_start', {});
 
-            // Clear previous listeners to avoid duplication if re-initialized
-            window.app.socket.off('control_plane_cli_output');
+            // Re-register listeners for the new terminal instance
+            // The .off() calls here are redundant if the preemptive .off() at the start of initializeTerminal worked,
+            // but they don't hurt and ensure listeners are specific to this setup call if it were somehow invoked again.
+            window.app.socket.off('control_plane_cli_output'); // Defensive .off()
             window.app.socket.on('control_plane_cli_output', function(data) {
                 if (data.output) {
                     logger.debug(`Output data: ${data.output}`);
@@ -87,8 +99,7 @@ function initializeTerminal() {
                     term.writeln(`\r\n\x1b[31mError: ${data.error}\x1b[0m`);
                 }
             });
-
-            window.app.socket.off('control_plane_cli_exit');
+            window.app.socket.off('control_plane_cli_exit'); // Defensive .off()
             window.app.socket.on('control_plane_cli_exit', function(data) {
                 logger.info('Session ended.');
                 term.writeln(`\r\n\x1b[33mControl Plane CLI session ended: ${data.message || ''}\x1b[0m`);
