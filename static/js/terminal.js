@@ -157,6 +157,7 @@ function initializeTerminal() {
                     commandHistory.push(currentLine);
                     historyIndex = commandHistory.length;
                     currentLine = '';
+                    term.write('\r\n');
                 } else {
                     window.app.socket.emit('control_plane_cli_input', { input: '\r' }); 
                     term.write('\r\n');
