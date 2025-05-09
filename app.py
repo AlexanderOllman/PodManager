@@ -65,10 +65,6 @@ def cleanup():
 # Structure: {sid: {'pid': child_pid, 'fd': master_fd, 'namespace': ns, 'pod_name': pn}} 
 active_pty_sessions = {}
 
-# Store potential pod-manager choices if multiple are found
-# {sid: [{namespace: ns, name: pod_name}, ...]}
-potential_pod_manager_sessions = {}
-
 def run_kubectl_command(command):
     try:
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -901,104 +897,159 @@ def handle_disconnect():
 
 @socketio.on('terminal_command')
 def handle_terminal_command(data):
-    sid = request.sid
-    command_input = data.get('command', '').strip()
-    logger.info(f"[ControlPlaneCLI SID:{sid}] Received command: {command_input}")
-
-    # Check if this is a command to connect to a listed pod-manager
-    if command_input.startswith('connect ') and sid in potential_pod_manager_sessions:
-        try:
-            parts = command_input.split()
-            if len(parts) == 2:
-                choice_index = int(parts[1]) - 1 # User inputs 1-based index
-                choices = potential_pod_manager_sessions.get(sid, [])
-                if 0 <= choice_index < len(choices):
-                    chosen_pod = choices[choice_index]
-                    logger.info(f"[ControlPlaneCLI SID:{sid}] User chose to connect to: {chosen_pod['namespace']}/{chosen_pod['name']}")
-                    socketio.emit('terminal_output', {'data': f"\nConnecting to {chosen_pod['namespace']}/{chosen_pod['name']}...\r\n"}, room=sid)
-                    # Reuse the pod_terminal_start logic
-                    handle_pod_terminal_start({'namespace': chosen_pod['namespace'], 'pod_name': chosen_pod['name']})
-                    del potential_pod_manager_sessions[sid] # Clear choices after attempting connection
-                    return
-                else:
-                    socketio.emit('terminal_output', {'data': f"\nInvalid choice index. Please try again.\r\n$ " , 'error': True}, room=sid)
-                    return
-            else:
-                socketio.emit('terminal_output', {'data': f"\nInvalid connect command format. Use 'connect <index>'.\r\n$ " , 'error': True}, room=sid)
-                return
-        except ValueError:
-            socketio.emit('terminal_output', {'data': f"\nInvalid index. Please enter a number.\r\n$ " , 'error': True}, room=sid)
-            return
-        except Exception as e:
-            logger.error(f"[ControlPlaneCLI SID:{sid}] Error processing connect command: {e}")
-            socketio.emit('terminal_output', {'data': f"\nError processing connect command: {str(e)}\r\n$ " , 'error': True}, room=sid)
-            return
-
-    # If already in an active PTY session for Control Plane CLI (unlikely with current flow but good check)
-    if sid in active_pty_sessions and active_pty_sessions[sid].get('is_control_plane_cli'):
-        logger.info(f"[ControlPlaneCLI SID:{sid}] Forwarding to existing PTY: {command_input}")
-        handle_pod_terminal_input({'namespace': active_pty_sessions[sid]['namespace'], 
-                                   'pod_name': active_pty_sessions[sid]['pod_name'], 
-                                   'input': command_input + '\r'}) # Add carriage return for exec
-        return
-
-    # Initial command - try to find pod-manager and connect or list options
-    logger.info(f"[ControlPlaneCLI SID:{sid}] Finding pod-manager pods.")
-    socketio.emit('terminal_output', {'data': 'Attempting to find pod-manager pod(s)...\r\n'}, room=sid)
-    
-    try:
-        kubectl_cmd = "kubectl get pods -A -o json"
-        output = run_kubectl_command(kubectl_cmd)
-        pod_data = json.loads(output)
+    # Handle control signals
+    if 'control' in data:
+        control_type = data.get('control')
+        print(f"Received control signal: {control_type}")
         
-        found_pods = []
-        if pod_data and 'items' in pod_data:
-            for pod in pod_data['items']:
-                pod_name = pod.get('metadata', {}).get('name', '')
-                namespace = pod.get('metadata', {}).get('namespace', '')
-                if 'pod-manager' in pod_name:
-                    found_pods.append({'name': pod_name, 'namespace': namespace})
-        
-        logger.info(f"[ControlPlaneCLI SID:{sid}] Found pod-manager pods: {found_pods}")
-
-        if not found_pods:
-            socketio.emit('terminal_output', {'data': 'No pod-manager pods found.\r\n$ ', 'error': True}, room=sid)
+        if control_type == 'SIGINT':
+            # In a real implementation, we would send SIGINT to the process
+            # For now, we'll just acknowledge it
             return
-
-        if len(found_pods) == 1:
-            pod_to_connect = found_pods[0]
-            logger.info(f"[ControlPlaneCLI SID:{sid}] Single pod-manager found: {pod_to_connect['namespace']}/{pod_to_connect['name']}. Connecting.")
-            socketio.emit('terminal_output', {'data': f"Found pod-manager: {pod_to_connect['namespace']}/{pod_to_connect['name']}. Connecting...\r\n"}, room=sid)
-            # Mark this session as a control plane CLI target before starting
-            # This helps differentiate from direct pod access if needed later.
-            # handle_pod_terminal_start will use the SID from request.sid
-            handle_pod_terminal_start({'namespace': pod_to_connect['namespace'], 'pod_name': pod_to_connect['name']})
-            # We might need to add a flag to active_pty_sessions[sid] here if we want to treat its input differently than direct pod execs.
-            # For now, assuming subsequent commands go through the PTY once connected.
-            if sid in active_pty_sessions: # check if connection was successful
-                 active_pty_sessions[sid]['is_control_plane_cli'] = True 
-                 # If the command was not just to initiate connection, send it now.
-                 # This is tricky because the PTY might not be ready. 
-                 # For now, let's assume the first typed command is always to find/connect.
-                 # Subsequent commands will be handled by the PTY input if connected.
-                 # If command_input was something like 'ls' and we auto-connected, it won't be run here.
-                 # This might need refinement. Typically user types command after prompt.
-
-        else: # Multiple pods found
-            potential_pod_manager_sessions[sid] = found_pods
-            message = "Multiple pod-manager pods found:\r\n"
-            for i, pod_info in enumerate(found_pods):
-                message += f"{i+1}. {pod_info['namespace']}/{pod_info['name']}\r\n"
-            message += "Type 'connect <index>' to connect to one, or any other command to retry search.\r\n$ "
-            logger.info(f"[ControlPlaneCLI SID:{sid}] Multiple pod-managers found. Prompting user.")
-            socketio.emit('terminal_output', {'data': message}, room=sid)
+        
+        elif control_type == 'EOF':
+            # Handle EOF signal
+            return
+        
+        elif control_type == 'SIGTSTP':
+            # Handle SIGTSTP signal
+            return
             
-    except json.JSONDecodeError as e:
-        logger.error(f"[ControlPlaneCLI SID:{sid}] JSONDecodeError finding pod-manager: {e}. Output was: {output}")
-        socketio.emit('terminal_output', {'data': f'Error parsing pod list: {str(e)}\r\n$ ', 'error': True}, room=sid)
+        return
+    
+    # Handle regular commands
+    command = data.get('command', '')
+    if not command:
+        return
+    
+    print(f"Executing command: {command}")
+    sid = request.sid
+    thread = threading.Thread(target=run_command, args=(command, sid))
+    thread.daemon = True
+    thread.start()
+
+@app.route('/api/cli/exec', methods=['POST'])
+def api_cli_exec():
+    try:
+        # Get command from request
+        data = request.get_json() if request.is_json else request.form
+        command = data.get('command', '')
+        
+        if not command:
+            return jsonify({"error": "Missing command parameter"}), 400
+            
+        # Run the command directly in the current environment
+        result = run_kubectl_command(command)
+        return jsonify({"output": result})
     except Exception as e:
-        logger.error(f"[ControlPlaneCLI SID:{sid}] Exception finding pod-manager: {e}")
-        socketio.emit('terminal_output', {'data': f'Error finding pod-manager: {str(e)}\r\n$ ', 'error': True}, room=sid)
+        app.logger.error(f"Error in api_cli_exec: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/charts/list', methods=['GET'])
+def list_charts():
+    """Get list of all charts from ChartMuseum"""
+    try:
+        # First check if ChartMuseum is accessible
+        check_command = "curl -s http://127.0.0.1:8855/api/charts"
+        result = subprocess.run(check_command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode != 0 or not result.stdout:
+            # Get the pod name first - using a more specific command to get the pod name
+            pod_cmd = "kubectl get pods -n ez-chartmuseum-ns -o jsonpath='{.items[0].metadata.name}'"
+            pod_result = subprocess.run(pod_cmd, shell=True, capture_output=True, text=True)
+            
+            if pod_result.returncode != 0:
+                return jsonify({
+                    'success': False,
+                    'error': 'ChartMuseum pod not found in ez-chartmuseum-ns namespace'
+                })
+            
+            pod_name = pod_result.stdout.strip()
+            
+            # Try to set up port forwarding in a new thread
+            def setup_port_forward():
+                port_forward_cmd = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
+                subprocess.run(port_forward_cmd, shell=True)
+            
+            # Kill any existing port forwards on 8855
+            subprocess.run("pkill -f 'port-forward.*8855'", shell=True)
+            
+            # Start port forwarding in background
+            import threading
+            port_forward_thread = threading.Thread(target=setup_port_forward, daemon=True)
+            port_forward_thread.start()
+            
+            # Wait a moment for port forwarding to establish
+            import time
+            time.sleep(2)
+            
+            # Try the check again
+            result = subprocess.run(check_command, shell=True, capture_output=True, text=True)
+            if result.returncode != 0 or not result.stdout:
+                return jsonify({
+                    'success': False,
+                    'error': 'ChartMuseum is not accessible. Port forwarding was attempted but failed.'
+                })
+            
+        charts_data = json.loads(result.stdout)
+        return jsonify({
+            'success': True,
+            'charts': charts_data
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/charts/delete', methods=['POST'])
+def delete_chart():
+    """Delete a chart or specific version from ChartMuseum"""
+    try:
+        chart_name = request.form.get('chart_name')
+        version = request.form.get('version')
+        
+        if not chart_name:
+            return jsonify({
+                'success': False,
+                'error': 'Chart name is required'
+            })
+            
+        if version:
+            # Delete specific version
+            command = f"curl -X DELETE http://127.0.0.1:8855/api/charts/{chart_name}/{version}"
+        else:
+            # Delete entire chart
+            command = f"curl -X DELETE http://127.0.0.1:8855/api/charts/{chart_name}"
+            
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            return jsonify({
+                'success': False,
+                'error': f'Failed to delete chart: {result.stderr}'
+            })
+            
+        return jsonify({
+            'success': True,
+            'message': f'Successfully deleted chart {chart_name}'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+# Add error handlers for Socket.IO
+@socketio.on_error_default
+def default_error_handler(e):
+    print('Socket.IO error:', str(e))
+    return None
+
+@socketio.on('connect_error')
+def handle_connect_error(error):
+    print('Connection error:', str(error))
+    return None
 
 @socketio.on('pod_terminal_start')
 def handle_pod_terminal_start(data):
