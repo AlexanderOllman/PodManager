@@ -25,10 +25,8 @@ function initializeTerminal() {
             convertEol: true,
             scrollback: 1000,
             theme: { background: '#000000', foreground: '#ffffff' },
-            allowProposedApi: true // Required for some newer options if used
+            allowProposedApi: true // Retain this for now, might be useful for other options
         });
-        // Explicitly disable bracketed paste mode
-        term.setOption('bracketedPasteMode', false);
 
         const fitAddon = new FitAddon.FitAddon();
         term.loadAddon(fitAddon);
