@@ -371,7 +371,7 @@ function setupPodTerminal() {
         window.app.podTerminal.dispose();
     }
 
-    console.log(`Setting up terminal for pod: ${namespace}/${podName}`);
+    logger.info(`Setting up pod exec terminal for pod: ${namespace}/${podName}`);
     try {
         const term = new Terminal({
             cursorBlink: true,
@@ -384,48 +384,61 @@ function setupPodTerminal() {
         term.loadAddon(fitAddon);
         term.open(terminalElement);
         fitAddon.fit();
-        window.app.podTerminal = term; // Store specific to pod explore page
+        window.app.podTerminal = term; 
 
         term.writeln(`Connecting to pod ${podName} in namespace ${namespace}...`);
+        logger.info(`[PodExec] Emitting pod_exec_start for ${namespace}/${podName}`);
 
-        // Ensure socket is connected (it should be from app_init.js)
         if (!window.app.socket || !window.app.socket.connected) {
             term.writeln('\x1b[31mError: Socket not connected. Cannot establish terminal session.\x1b[0m');
-            console.error('Socket not connected for pod terminal.');
-            // Optionally, try to reconnect or instruct user
-            // if (window.app.socket && typeof window.app.socket.connect === 'function') {
-            //     window.app.socket.connect();
-            // }
+            logger.error('[PodExec] Socket not connected for pod terminal.');
             return;
         }
         
-        // Emit event to backend to start PTY session for this specific pod
-        window.app.socket.emit('pod_terminal_start', { namespace: namespace, pod_name: podName });
+        window.app.socket.emit('pod_exec_start', { namespace: namespace, pod_name: podName });
 
         term.onData(data => {
-            window.app.socket.emit('pod_terminal_input', { namespace: namespace, pod_name: podName, input: data });
+            logger.debug(`[PodExec] Input data: ${data}`);
+            window.app.socket.emit('pod_exec_input', { namespace: namespace, pod_name: podName, input: data });
         });
 
-        window.app.socket.off('pod_terminal_output'); // Remove previous listeners for this event
-        window.app.socket.on('pod_terminal_output', (data) => {
+        window.app.socket.off('pod_exec_output'); // Ensure any old listeners for this specific event are off
+        window.app.socket.on('pod_exec_output', (data) => {
+            // Ensure message is for this specific pod terminal instance if multiple could exist (though current design is one per page)
             if (data.namespace === namespace && data.pod_name === podName) {
-                if (data.output) term.write(data.output);
-                if (data.error) term.writeln(`\n\x1b[31mError: ${data.error}\x1b[0m`);
+                if (data.output) {
+                    logger.debug(`[PodExec] Output data: ${data.output}`);
+                    term.write(data.output);
+                }
+                if (data.error) {
+                    logger.error(`[PodExec] Error from backend: ${data.error}`);
+                    term.writeln(`\n\x1b[31mError: ${data.error}\x1b[0m`);
+                }
             }
         });
         
-        window.app.socket.off('pod_terminal_exit');
-        window.app.socket.on('pod_terminal_exit', (data) => {
+        window.app.socket.off('pod_exec_exit');
+        window.app.socket.on('pod_exec_exit', (data) => {
              if (data.namespace === namespace && data.pod_name === podName) {
+                logger.info(`[PodExec] Session ended for ${namespace}/${podName}`);
                 term.writeln(`\n\x1b[33mTerminal session for ${podName} ended.\x1b[0m`);
-                // Optionally disable terminal or show a reconnect button
              }
         });
 
-        window.addEventListener('resize', () => fitAddon.fit());
+        // Generic PTY resize event
+        const sendResize = () => {
+            if (term.rows && term.cols) {
+                 logger.debug(`[PodExec] Sending pty_resize: rows=${term.rows}, cols=${term.cols}`);
+                 window.app.socket.emit('pty_resize', { rows: term.rows, cols: term.cols });
+            }
+        };
+        // Send initial size
+        setTimeout(sendResize, 100); // Allow term to initialize
+        term.onResize(sendResize); // Send on xterm.js resize event
+        // window.addEventListener('resize', () => fitAddon.fit()); // fitAddon.fit() will trigger term.onResize
 
     } catch (error) {
-        console.error('Failed to initialize pod terminal:', error);
+        logger.error('[PodExec] Failed to initialize pod terminal:', error);
         terminalElement.innerHTML = `<div class="alert alert-danger">Failed to initialize terminal: ${error.message}</div>`;
     }
 }

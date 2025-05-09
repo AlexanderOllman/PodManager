@@ -1,15 +1,23 @@
 // terminal.js
 
+// Define logger for this module, assuming a global logger might not be set up yet
+const logger = {
+    info: console.log.bind(console),
+    debug: console.debug.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+};
+
 // Initialize the terminal using xterm.js and Socket.IO
 function initializeTerminal() {
     const terminalContainer = document.getElementById('terminal');
     if (!terminalContainer) {
-        // console.log('Terminal container not found, skipping initialization.');
+        logger.info('Control Plane CLI: Terminal container not found, skipping initialization.');
         return;
     }
 
     try {
-        console.log('Initializing terminal...');
+        logger.info('Control Plane CLI: Initializing...');
         const terminal = new Terminal({
             cursorBlink: true,
             fontFamily: 'monospace',
@@ -21,147 +29,156 @@ function initializeTerminal() {
         const fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);
 
-        window.app.terminal = terminal; // Store in global state
+        window.app.controlPlaneTerminal = terminal; // Use a distinct name
         terminal.open(terminalContainer);
         fitAddon.fit();
 
-        // Setup command input handling
+        terminal.writeln('-- HPE Private Cloud AI - Control Plane CLI --');
+        terminal.writeln('Attempting to connect to application pod shell...');
+        terminal.writeln('');
+
+        if (!window.app.socket || !window.app.socket.connected) {
+            try {
+                if (!window.app.socket) window.app.socket = io(); 
+                logger.info('Control Plane CLI: Socket not connected, attempting to connect...');
+                window.app.socket.connect(); // Explicitly connect if not already
+                // It might take a moment to connect, so subsequent emit might need a small delay or check
+            } catch (e) {
+                logger.error("Control Plane CLI: Failed to initialize Socket.io:", e);
+                terminal.writeln('\r\nError: Could not connect to server for terminal commands.');
+                return;
+            }
+        }
+
+        // Wait a brief moment for socket to establish if it was just connected
+        setTimeout(() => {
+            if (window.app.socket && window.app.socket.connected) {
+                logger.info('[CtrlCLI] Emitting control_plane_cli_start');
+                window.app.socket.emit('control_plane_cli_start', {}); // No specific data needed to start
+            } else {
+                logger.error('[CtrlCLI] Socket still not connected after attempt. Cannot start terminal.');
+                terminal.writeln('\r\nError: Failed to establish socket connection for terminal.');
+            }
+        }, 500); // 500ms delay
+        
         let currentLine = '';
         let commandHistory = [];
         let historyIndex = -1;
 
-        terminal.writeln('-- HPE Private Cloud AI - Control Plane CLI --');
-        terminal.writeln('Type commands and press Enter to execute.');
-        terminal.writeln('');
-        terminal.write('$ ');
-
-        // Ensure socket is available and set up listeners
-        if (!window.app.socket) {
-            try {
-                window.app.socket = io(); // Initialize if not done by app_init.js
-                console.log('Socket connection created for terminal.');
-
-                window.app.socket.on('connect', () => {
-                    console.log('Terminal socket reconnected.');
-                    terminal.writeln('\r\nReconnected to server.');
-                    terminal.write('$ ');
-                });
-                window.app.socket.on('connect_error', (error) => {
-                    console.error('Terminal socket connection error:', error);
-                    terminal.writeln(`\r\nConnection error: ${error}`);
-                    terminal.write('$ ');
-                });
-            } catch (e) {
-                console.error("Failed to initialize Socket.io for terminal:", e);
-                terminal.writeln('\r\nError: Could not connect to server for terminal commands.');
-                terminal.write('$ ');
-                // Display error in terminal container if socket.io is missing
-                terminalContainer.innerHTML = '<div class="alert alert-danger">Terminal requires Socket.io. Connection failed.</div>';
-                return; // Stop further terminal setup
+        // Ensure listeners are specific and not duplicated
+        window.app.socket.off('control_plane_cli_output');
+        window.app.socket.on('control_plane_cli_output', function(data) {
+            if (data.output) {
+                logger.debug(`[CtrlCLI] Output data: ${data.output}`);
+                terminal.write(data.output);
             }
-        }
-        
-        // This listener should be in app_init.js or a shared socket handling module
-        // to avoid duplication if other parts of app use 'terminal_output' event.
-        // For now, ensuring it's here if terminal.js is standalone for this part.
-        // window.app.socket.on('terminal_output', function(data) { ... }); 
-        // Already handled by connectSocketListeners in app_init.js
+            if (data.error) {
+                logger.error(`[CtrlCLI] Error from backend: ${data.error}`);
+                terminal.writeln(`\r\n\x1b[31mError: ${data.error}\x1b[0m`);
+            }
+            // The PTY session will provide its own prompt typically
+            // if (data.complete && !data.error) {
+            //     terminal.write('\r\n$ '); // Or whatever prompt is desired
+            // }
+        });
+
+        window.app.socket.off('control_plane_cli_exit');
+        window.app.socket.on('control_plane_cli_exit', function(data) {
+            logger.info('[CtrlCLI] Session ended.');
+            terminal.writeln('\r\n\x1b[33mControl Plane CLI session ended.\x1b[0m');
+            // Optionally, disable input or show a reconnect button
+        });
 
         terminal.onKey(({ key, domEvent }) => {
-            const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.metaKey; // Ctrl key handled separately
+            const printable = !domEvent.altKey && !domEvent.altGraphKey && !domEvent.metaKey;
 
             if (domEvent.ctrlKey) {
-                handleTerminalCtrlKeys(domEvent.keyCode, terminal);
-                currentLine = ''; // Reset current line on Ctrl+C, etc.
+                // Reuse existing Ctrl key handler if it can be made generic
+                // For now, let's assume it sends generic input
+                const charCode = domEvent.keyCode;
+                let PTYSignal = null;
+                if(charCode === 67){ PTYSignal = '\x03'; terminal.write('^C');} // Ctrl+C (ETX)
+                if(charCode === 68){ PTYSignal = '\x04';} // Ctrl+D (EOT)
+                if(charCode === 90){ PTYSignal = '\x1A'; terminal.write('^Z');} // Ctrl+Z (SUB)
+                if(charCode === 76){ terminal.clear(); return;} // Ctrl+L (Clear screen client side)
+
+                if(PTYSignal && window.app.socket && window.app.socket.connected){
+                    logger.debug(`[CtrlCLI] Sending control input: ${PTYSignal === '\x03' ? 'Ctrl+C' : PTYSignal === '\x04' ? 'Ctrl+D' : 'Ctrl+Z'}`);
+                    window.app.socket.emit('control_plane_cli_input', { input: PTYSignal });
+                }
+                currentLine = ''; 
                 return;
             }
 
             if (domEvent.keyCode === 13) { // Enter
                 if (currentLine.trim()) {
+                    logger.debug(`[CtrlCLI] Sending command input: ${currentLine}`);
+                    if (window.app.socket && window.app.socket.connected) {
+                        window.app.socket.emit('control_plane_cli_input', { input: currentLine + '\r' }); // Send with CR
+                    } else {
+                        logger.warn('[CtrlCLI] Socket not connected, cannot send command.');
+                        terminal.writeln('\r\n\x1b[31mError: Not connected to server.\x1b[0m');
+                    }
                     commandHistory.push(currentLine);
                     historyIndex = commandHistory.length;
-                    window.app.socket.emit('terminal_command', { command: currentLine });
-                    terminal.write('\r\n'); // Move to next line, prompt will be added by server response or here
                     currentLine = '';
                 } else {
-                    terminal.write('\r\n$ '); // New prompt for empty command
+                    if (window.app.socket && window.app.socket.connected) {
+                         window.app.socket.emit('control_plane_cli_input', { input: '\r' }); // Send CR for empty line
+                    }
+                    terminal.write('\r\n'); // client-side newline, prompt should come from PTY
                 }
             } else if (domEvent.keyCode === 8) { // Backspace
-                if (currentLine.length > 0) {
-                    currentLine = currentLine.slice(0, -1);
+                if (terminal.buffer.active.cursorX > 0) { // Basic backspace, prompt might be > 0
                     terminal.write('\b \b');
+                    if (currentLine.length > 0) {
+                        currentLine = currentLine.slice(0, -1);
+                    }
                 }
             } else if (domEvent.keyCode === 38) { // Up arrow
-                if (historyIndex > 0) {
-                    historyIndex--;
-                    terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
+                if (commandHistory.length > 0) {
+                    historyIndex = Math.max(0, historyIndex - 1);
+                    terminal.write('\x1b[2K\r'); // Clear current line
+                     // terminal.write('$ '); // Re-issue prompt if needed
+                    terminal.write(commandHistory[historyIndex]);
                     currentLine = commandHistory[historyIndex];
-                    terminal.write(currentLine);
                 }
             } else if (domEvent.keyCode === 40) { // Down arrow
-                if (historyIndex < commandHistory.length - 1) {
+                if (historyIndex < commandHistory.length) {
                     historyIndex++;
-                    terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                    currentLine = commandHistory[historyIndex];
-                    terminal.write(currentLine);
-                } else if (historyIndex === commandHistory.length - 1) {
-                    historyIndex++;
-                    terminal.write('\r$ ' + ' '.repeat(currentLine.length) + '\r$ ');
-                    currentLine = '';
+                    terminal.write('\x1b[2K\r'); // Clear current line
+                    // terminal.write('$ '); // Re-issue prompt if needed
+                    if (historyIndex < commandHistory.length) {
+                        terminal.write(commandHistory[historyIndex]);
+                        currentLine = commandHistory[historyIndex];
+                    } else {
+                        currentLine = '';
+                    }
                 }
-            } else if (domEvent.keyCode === 9) { // Tab
-                domEvent.preventDefault(); // Prevent focus change, placeholder for auto-complete
-            } else if (printable && key) { // Regular printable characters
+            } else if (printable && key && key.length === 1) { // Regular printable character
                 currentLine += key;
                 terminal.write(key);
             }
         });
 
-        window.addEventListener('resize', () => fitAddon.fit());
-        console.log('Terminal initialized successfully with WebSocket mode.');
+        // Generic PTY resize event
+        const sendResize = () => {
+            if (terminal.rows && terminal.cols) {
+                 logger.debug(`[CtrlCLI] Sending pty_resize: rows=${terminal.rows}, cols=${terminal.cols}`);
+                 if (window.app.socket && window.app.socket.connected) {
+                     window.app.socket.emit('pty_resize', { rows: terminal.rows, cols: terminal.cols });
+                 }
+            }
+        };
+        // Send initial size & on resize
+        setTimeout(sendResize, 100);
+        terminal.onResize(sendResize);
+        // window.addEventListener('resize', () => fitAddon.fit()); // fitAddon.fit() will trigger terminal.onResize
 
+        logger.info('Control Plane CLI: Terminal initialized and event listeners set up.');
     } catch (error) {
-        console.error('Failed to initialize terminal:', error);
-        terminalContainer.innerHTML = `<div class="alert alert-danger">Failed to initialize terminal: ${error.message}</div>`;
-    }
-}
-
-// Handles Ctrl key combinations in the terminal
-function handleTerminalCtrlKeys(keyCode, terminalInstance) {
-    if (!window.app.socket) return;
-
-    let controlChar = null;
-    let signal = null;
-    let displayChar = '';
-
-    switch (keyCode) {
-        case 67: // Ctrl+C
-            signal = 'SIGINT';
-            controlChar = '\x03'; // ETX
-            displayChar = '^C';
-            break;
-        case 68: // Ctrl+D
-            signal = 'EOF';
-            controlChar = '\x04'; // EOT
-            // No display char for EOF, server handles it
-            break;
-        case 90: // Ctrl+Z
-            signal = 'SIGTSTP';
-            controlChar = '\x1A'; // SUB
-            displayChar = '^Z';
-            break;
-        case 76: // Ctrl+L
-            terminalInstance.clear();
-            terminalInstance.write('$ '); // Re-issue prompt
-            return; // Handled client-side
-        default:
-            return; // Not a recognized control key combination
-    }
-
-    if (signal && controlChar) {
-        window.app.socket.emit('terminal_command', { control: signal, key: controlChar });
-        if (displayChar) terminalInstance.write(displayChar);
-        if (signal !== 'EOF') terminalInstance.write('\r\n$ '); // New prompt, except for EOF
+        logger.error('Control Plane CLI: Failed to initialize terminal:', error);
+        if(terminalContainer) terminalContainer.innerHTML = `<div class="alert alert-danger">Failed to initialize Control Plane CLI: ${error.message}</div>`;
     }
 }
 
