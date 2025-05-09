@@ -173,14 +173,14 @@ function initializeTerminal() {
         });
 
         const sendResize = () => {
-            if (terminal.rows && terminal.cols && window.app.socket && window.app.socket.connected) {
-                 logger.debug(`Sending pty_resize: rows=${terminal.rows}, cols=${terminal.cols}`);
-                 window.app.socket.emit('pty_resize', { rows: terminal.rows, cols: terminal.cols });
+            if (term.rows && term.cols && window.app.socket && window.app.socket.connected) {
+                 logger.debug(`Sending pty_resize: rows=${term.rows}, cols=${term.cols}`);
+                 window.app.socket.emit('pty_resize', { rows: term.rows, cols: term.cols });
             }
         };
         
-        setTimeout(sendResize, 200); // Send initial resize after a slight delay
-        terminal.onResize(sendResize);
+        setTimeout(sendResize, 200);
+        term.onResize(sendResize);
         // Consider window resize listener if fitAddon doesn't cover all cases.
         // window.addEventListener('resize', () => { try { fitAddon.fit(); } catch(e){ logger.warn('Error on fitAddon resize', e); } });
 
