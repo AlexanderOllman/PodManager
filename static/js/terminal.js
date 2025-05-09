@@ -16,7 +16,8 @@ function initializeTerminal() {
         return;
     }
 
-    // If a terminal instance already exists, dispose of it first
+    let terminateAndDelayStart = false;
+
     if (window.app.controlPlaneTerminal) {
         logger.info('Disposing existing Control Plane CLI terminal instance.');
         try {
@@ -25,12 +26,13 @@ function initializeTerminal() {
             logger.warn('Error disposing existing terminal:', e);
         }
         window.app.controlPlaneTerminal = null;
-        // Also, if the socket is connected, it might be prudent to tell the backend
-        // that the old session (if any was established) should be terminated.
-        // This requires a specific backend event, e.g., 'control_plane_cli_terminate_request'
-        // For now, we rely on the backend's disconnect handler or the new session replacing the old one.
+        
+        if (window.app.socket && window.app.socket.connected) {
+            logger.info('[CtrlCLI] Emitting control_plane_cli_terminate_request from initializeTerminal due to existing instance.');
+            window.app.socket.emit('control_plane_cli_terminate_request');
+            terminateAndDelayStart = true; // Signal that we need to delay before starting new session
+        }
     }
-    // Clear the container explicitly in case dispose didn't remove everything or if no instance existed yet.
     terminalContainer.innerHTML = '';
 
     try {
@@ -56,6 +58,15 @@ function initializeTerminal() {
         term.writeln('-- HPE Private Cloud AI - Control Plane CLI --');
         term.writeln('Attempting to connect to application pod shell...');
         term.writeln('');
+
+        const setupTerminalSessionWithPotentialDelay = () => {
+            if (terminateAndDelayStart) {
+                logger.info('[CtrlCLI] Delaying PTY session start for 500ms to allow backend termination to process.');
+                setTimeout(setupTerminalSession, 500);
+            } else {
+                setupTerminalSession();
+            }
+        };
 
         const setupTerminalSession = () => {
             logger.info('Socket connected. Setting up terminal session.');
@@ -88,7 +99,7 @@ function initializeTerminal() {
         };
 
         if (window.app.socket && window.app.socket.connected) {
-            setupTerminalSession();
+            setupTerminalSessionWithPotentialDelay();
         } else {
             term.writeln('Socket not immediately connected. Waiting for connection...');
             if (!window.app.socket) {
@@ -99,7 +110,7 @@ function initializeTerminal() {
             
             window.app.socket.once('connect', () => {
                 logger.info('Socket connected event received.');
-                setupTerminalSession();
+                setupTerminalSessionWithPotentialDelay();
             });
             window.app.socket.once('connect_error', (err) => {
                 logger.error('Socket connection error:', err);
@@ -148,24 +159,42 @@ function initializeTerminal() {
                     currentLine = '';
                 } else {
                     window.app.socket.emit('control_plane_cli_input', { input: '\r' }); 
-                    // No client-side term.write for enter, PTY handles newline
+                    term.write('\r\n');
                 }
             } else if (domEvent.keyCode === 8) { // Backspace
-                // Let PTY handle backspace for now to simplify
-                if (currentLine.length > 0) { // Still manage currentLine for consistency
-                    currentLine = currentLine.slice(0, -1);
+                if (term.buffer.active.cursorX > 0) { 
+                    term.write('\b \b');
+                    if (currentLine.length > 0) {
+                        currentLine = currentLine.slice(0, -1);
+                    }
                 }
-                 window.app.socket.emit('control_plane_cli_input', { input: '\x08' }); // Send BEL/BS control char
             } else if (domEvent.keyCode === 38) { // Up arrow
-                // History navigation can be complex without client-side echo, disable for this test
-                logger.debug('Up arrow pressed - history temporarily disabled for test.');
+                if (commandHistory.length > 0) {
+                    historyIndex = Math.max(0, historyIndex - 1);
+                    term.write('\x1b[2K\r'); 
+                    const promptChar = '# ';
+                    term.write(promptChar + commandHistory[historyIndex]);
+                    currentLine = commandHistory[historyIndex];
+                    for(let i=0; i < (promptChar.length + currentLine.length); ++i) term.write('\x1b[C');
+                }
             } else if (domEvent.keyCode === 40) { // Down arrow
-                logger.debug('Down arrow pressed - history temporarily disabled for test.');
+                if (historyIndex < commandHistory.length) {
+                    historyIndex++;
+                    term.write('\x1b[2K\r'); 
+                    const promptChar = '# ';
+                    if (historyIndex < commandHistory.length) {
+                        term.write(promptChar + commandHistory[historyIndex]);
+                        currentLine = commandHistory[historyIndex];
+                        for(let i=0; i < (promptChar.length + currentLine.length); ++i) term.write('\x1b[C');
+                    } else {
+                        term.write(promptChar);
+                        currentLine = '';
+                        for(let i=0; i < promptChar.length; ++i) term.write('\x1b[C');
+                    }
+                }
             } else if (printable && key && key.length === 1) { 
                 currentLine += key;
-                // REMOVED: term.write(key); // NO client-side echo for this test
-                // Send the character to the backend, rely on PTY echo
-                window.app.socket.emit('control_plane_cli_input', { input: key }); 
+                term.write(key);
             }
         });
 
