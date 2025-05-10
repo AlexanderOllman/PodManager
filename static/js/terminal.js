@@ -75,6 +75,17 @@ function initializeTerminal() {
             logger.info('Emitting control_plane_cli_start');
             window.app.socket.emit('control_plane_cli_start', {});
 
+            // Add the onData handler for pasted text and other direct terminal input
+            term.onData(data => {
+                logger.debug(`[CtrlCLI] Data received via onData: ${data.length} chars`);
+                if (window.app.socket && window.app.socket.connected) {
+                    window.app.socket.emit('control_plane_cli_input', { input: data });
+                } else {
+                    logger.warn('[CtrlCLI] onData: Socket not connected, cannot send input.');
+                    term.writeln('\r\n\x1b[31mError: Not connected. Cannot send input.\x1b[0m');
+                }
+            });
+
             // Clear previous listeners to avoid duplication if re-initialized
             window.app.socket.off('control_plane_cli_output');
             window.app.socket.on('control_plane_cli_output', function(data) {
