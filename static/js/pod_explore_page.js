@@ -370,16 +370,22 @@ function downloadPodLogs() {
 function setupPodTerminal() {
     const terminalElement = document.getElementById('terminal');
     if (!terminalElement) {
-        console.error('Terminal element not found for pod access.');
+        logger.error('[PodExec] Terminal element not found for pod access.');
         return;
     }
-    terminalElement.innerHTML = ''; // Clear previous terminal instance if any
+    terminalElement.innerHTML = ''; 
 
-    if (window.app.podTerminal) { // If a previous pod terminal instance exists
-        window.app.podTerminal.dispose();
+    if (window.app.podTerminal) {
+        logger.info('[PodExec] Disposing existing pod terminal instance.');
+        try {
+            window.app.podTerminal.dispose();
+        } catch (e) {
+            logger.warn('[PodExec] Error disposing existing pod terminal:', e);
+        }
     }
+    window.app.podTerminal = null; 
 
-    logger.info(`Setting up pod exec terminal for pod: ${namespace}/${podName}`);
+    logger.info(`[PodExec] Setting up pod exec terminal for pod: ${namespace}/${podName}`);
     try {
         const term = new Terminal({
             cursorBlink: true,
@@ -392,62 +398,91 @@ function setupPodTerminal() {
         term.loadAddon(fitAddon);
         term.open(terminalElement);
         fitAddon.fit();
-        window.app.podTerminal = term; 
+        window.app.podTerminal = term;
 
         term.writeln(`Connecting to pod ${podName} in namespace ${namespace}...`);
-        logger.info(`[PodExec] Emitting pod_exec_start for ${namespace}/${podName}`);
 
-        if (!window.app.socket || !window.app.socket.connected) {
-            term.writeln('\x1b[31mError: Socket not connected. Cannot establish terminal session.\x1b[0m');
-            logger.error('[PodExec] Socket not connected for pod terminal.');
-            return;
-        }
-        
-        window.app.socket.emit('pod_exec_start', { namespace: namespace, pod_name: podName });
+        const establishPodPtySession = () => {
+            logger.info(`[PodExec] Socket connected. Initializing PTY session for ${namespace}/${podName}.`);
+            term.writeln('Socket connected. Initializing PTY session...');
 
-        term.onData(data => {
-            logger.debug(`[PodExec] Input data: ${data}`);
-            window.app.socket.emit('pod_exec_input', { namespace: namespace, pod_name: podName, input: data });
-        });
+            logger.info(`[PodExec] Emitting pod_exec_start for ${namespace}/${podName}`);
+            window.app.socket.emit('pod_exec_start', { namespace: namespace, pod_name: podName });
 
-        window.app.socket.off('pod_exec_output'); // Ensure any old listeners for this specific event are off
-        window.app.socket.on('pod_exec_output', (data) => {
-            // Ensure message is for this specific pod terminal instance if multiple could exist (though current design is one per page)
-            if (data.namespace === namespace && data.pod_name === podName) {
-                if (data.output) {
-                    logger.debug(`[PodExec] Output data: ${data.output}`);
-                    term.write(data.output);
+            term.onData(data => {
+                // logger.debug(`[PodExec] Input data: ${data}`); // Can be very verbose
+                window.app.socket.emit('pod_exec_input', { namespace: namespace, pod_name: podName, input: data });
+            });
+
+            window.app.socket.off('pod_exec_output'); 
+            window.app.socket.on('pod_exec_output', (data) => {
+                if (data.namespace === namespace && data.pod_name === podName) {
+                    if (data.output) {
+                        // logger.debug(`[PodExec] Output data: ${data.output}`);
+                        term.write(data.output);
+                    }
+                    if (data.error) {
+                        logger.error(`[PodExec] Error from backend: ${data.error}`);
+                        term.writeln(`\n\x1b[31mError: ${data.error}\x1b[0m`);
+                    }
                 }
-                if (data.error) {
-                    logger.error(`[PodExec] Error from backend: ${data.error}`);
-                    term.writeln(`\n\x1b[31mError: ${data.error}\x1b[0m`);
-                }
-            }
-        });
-        
-        window.app.socket.off('pod_exec_exit');
-        window.app.socket.on('pod_exec_exit', (data) => {
-             if (data.namespace === namespace && data.pod_name === podName) {
-                logger.info(`[PodExec] Session ended for ${namespace}/${podName}`);
-                term.writeln(`\n\x1b[33mTerminal session for ${podName} ended.\x1b[0m`);
-             }
-        });
+            });
+            
+            window.app.socket.off('pod_exec_exit');
+            window.app.socket.on('pod_exec_exit', (data) => {
+                 if (data.namespace === namespace && data.pod_name === podName) {
+                    logger.info(`[PodExec] Session ended for ${namespace}/${podName}: ${data.message || ''}`);
+                    term.writeln(`\n\x1b[33mTerminal session for ${podName} ended: ${data.message || ''}\x1b[0m`);
+                 }
+            });
 
-        // Generic PTY resize event
-        const sendResize = () => {
-            if (term.rows && term.cols) {
-                 logger.debug(`[PodExec] Sending pty_resize: rows=${term.rows}, cols=${term.cols}`);
-                 window.app.socket.emit('pty_resize', { rows: term.rows, cols: term.cols });
-            }
+            const sendResize = () => {
+                if (term.rows && term.cols && window.app.socket && window.app.socket.connected) {
+                     logger.debug(`[PodExec] Sending pty_resize: rows=${term.rows}, cols=${term.cols}`);
+                     window.app.socket.emit('pty_resize', { rows: term.rows, cols: term.cols });
+                }
+            };
+            setTimeout(sendResize, 150); // Slightly longer delay for pod terminal if needed
+            term.onResize(sendResize); 
         };
-        // Send initial size
-        setTimeout(sendResize, 100); // Allow term to initialize
-        term.onResize(sendResize); // Send on xterm.js resize event
-        // window.addEventListener('resize', () => fitAddon.fit()); // fitAddon.fit() will trigger term.onResize
+
+        if (window.app.socket && window.app.socket.connected) {
+            establishPodPtySession();
+        } else {
+            term.writeln('\x1b[33mSocket not immediately connected. Waiting for connection...\x1b[0m');
+            logger.warn('[PodExec] Socket not immediately connected. Waiting...');
+            if (!window.app.socket) {
+                logger.warn('[PodExec] Socket object not found on window.app, attempting to create and connect.');
+                try {
+                    window.app.socket = io({transports: ['websocket', 'polling']}); 
+                } catch (e) {
+                    logger.error('[PodExec] Failed to initialize io() client:', e);
+                    term.writeln('\x1b[31mError: Failed to initialize socket client. Terminal cannot function.\x1b[0m');
+                    return;
+                }
+            }
+            
+            window.app.socket.once('connect', () => {
+                logger.info('[PodExec] Socket connected event received.');
+                establishPodPtySession();
+            });
+            window.app.socket.once('connect_error', (err) => {
+                logger.error('[PodExec] Socket connection error:', err);
+                term.writeln(`\r\n\x1b[31mError: Failed to establish socket connection: ${err.message}\x1b[0m`);
+            });
+
+            // Ensure connection attempt is made if socket exists but is not connected
+            if (window.app.socket && !window.app.socket.connected && !window.app.socket.connecting) {
+                 logger.info('[PodExec] Attempting to connect socket...');
+                 window.app.socket.connect(); 
+            } else if (window.app.socket && window.app.socket.connecting) {
+                logger.info('[PodExec] Socket is already connecting...');
+            }
+        }
 
     } catch (error) {
         logger.error('[PodExec] Failed to initialize pod terminal:', error);
-        terminalElement.innerHTML = `<div class="alert alert-danger">Failed to initialize terminal: ${error.message}</div>`;
+        if (terminalElement) terminalElement.innerHTML = `<div class="alert alert-danger">Failed to initialize terminal: ${error.message}</div>`;
     }
 }
 
