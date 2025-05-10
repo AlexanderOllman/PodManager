@@ -240,7 +240,7 @@ function initializeTerminal() {
                 }
             } else if (printable && key && key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey) { // Added !ctrlKey and !metaKey here
                 currentLine += key;
-                term.write(key);
+                // term.write(key); // REMOVE THIS LINE - Rely on PTY echo via onData
             }
         });
 
