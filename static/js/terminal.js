@@ -197,15 +197,15 @@ function initializeTerminal() {
 
             if (domEvent.keyCode === 13) { // Enter
                 if (currentLine.trim()) {
-                    logger.debug(`Sending command input: ${currentLine}`);
-                    window.app.socket.emit('control_plane_cli_input', { input: currentLine + '\r' }); 
+                    // Do NOT send currentLine to backend here; onData will handle all input
                     commandHistory.push(currentLine);
                     historyIndex = commandHistory.length;
                     currentLine = '';
-                    term.write('\r\n');
+                    // Optionally, write a newline locally, or rely on PTY echo
+                    // term.write('\r\n');
                 } else {
-                    window.app.socket.emit('control_plane_cli_input', { input: '\r' }); 
-                    term.write('\r\n');
+                    // Do NOT send anything to backend here; onData will handle Enter
+                    // term.write('\r\n');
                 }
             } else if (domEvent.keyCode === 8) { // Backspace
                 if (term.buffer.active.cursorX > 0) { 
@@ -238,8 +238,9 @@ function initializeTerminal() {
                         for(let i=0; i < promptChar.length; ++i) term.write('\x1b[C');
                     }
                 }
-            } else if (printable && key && key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey) { // Printable character
+            } else if (printable && key && key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey) { // Added !ctrlKey and !metaKey here
                 currentLine += key;
+                // term.write(key); // REMOVE THIS LINE - Rely on PTY echo via onData
             }
         });
 
