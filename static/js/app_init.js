@@ -174,6 +174,7 @@ function initializeApp() {
     console.log('Initializing application components...');
     
     initializeBootstrapComponents();
+    fetchAndRenderClusterResourceSummary();
     
     if (typeof fetchResourcesForAllTabs === 'function') fetchResourcesForAllTabs();
     if (typeof fetchClusterCapacity === 'function') fetchClusterCapacity();
@@ -542,4 +543,35 @@ function loadResourcesForTab(tabId) {
         default:
             console.log(`No specific load action defined for tab: ${tabId}`);
     }
+}
+
+function fetchAndRenderClusterResourceSummary() {
+    fetch(window.app.getRelativeUrl('/api/cluster_resource_summary'))
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            // Pods
+            document.getElementById('podsMainValue').textContent = `${data.pods.total_active} / ${data.pods.total_allowed}`;
+            document.getElementById('podsSubLabel').textContent = `${data.pods.percent_used}% used`;
+            document.getElementById('podsProgressBar').style.width = `${data.pods.percent_used}%`;
+            document.getElementById('podsProgressBar').setAttribute('aria-valuenow', data.pods.percent_used);
+            // vCPU
+            document.getElementById('vcpuMainValue').textContent = `${data.vcpu.allocated} / ${data.vcpu.total}`;
+            document.getElementById('vcpuSubLabel').textContent = `${data.vcpu.percent_used}% used`;
+            document.getElementById('vcpuProgressBar').style.width = `${data.vcpu.percent_used}%`;
+            document.getElementById('vcpuProgressBar').setAttribute('aria-valuenow', data.vcpu.percent_used);
+            // RAM
+            document.getElementById('ramMainValue').textContent = `${data.ram.allocated_gib} / ${data.ram.total_gib} GiB`;
+            document.getElementById('ramSubLabel').textContent = `${data.ram.percent_used}% used`;
+            document.getElementById('ramProgressBar').style.width = `${data.ram.percent_used}%`;
+            document.getElementById('ramProgressBar').setAttribute('aria-valuenow', data.ram.percent_used);
+            // GPU
+            document.getElementById('gpuMainValue').textContent = `${data.gpu.allocated} / ${data.gpu.total}`;
+            document.getElementById('gpuSubLabel').textContent = `${data.gpu.percent_used}% used`;
+            document.getElementById('gpuProgressBar').style.width = `${data.gpu.percent_used}%`;
+            document.getElementById('gpuProgressBar').setAttribute('aria-valuenow', data.gpu.percent_used);
+        })
+        .catch(err => {
+            console.error('Failed to fetch cluster resource summary:', err);
+        });
 } 

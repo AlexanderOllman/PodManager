@@ -1241,5 +1241,122 @@ def refresh_database():
             'error': str(e)
         }), 500
 
+@app.route('/api/cluster_resource_summary', methods=['GET'])
+def cluster_resource_summary():
+    """
+    Returns a summary of cluster resources:
+    - Pods: total allowed, total active, percent used
+    - vCPU: total allocatable, total requested, percent used
+    - RAM: total allocatable (GiB), total requested (GiB), percent used
+    - GPU: total allocatable, total requested, percent used
+    """
+    import math
+    try:
+        # Get node allocatable resources
+        nodes_json = run_kubectl_command('kubectl get nodes -o json')
+        nodes = json.loads(nodes_json)
+        total_pods_allowed = 0
+        total_vcpu = 0.0
+        total_ram_gib = 0.0
+        total_gpu = 0
+        for node in nodes.get('items', []):
+            alloc = node.get('status', {}).get('allocatable', {})
+            # Pods
+            pods_str = alloc.get('pods', '0')
+            total_pods_allowed += int(pods_str)
+            # CPU
+            cpu_str = alloc.get('cpu', '0')
+            if cpu_str.endswith('m'):
+                total_vcpu += int(cpu_str[:-1]) / 1000.0
+            else:
+                total_vcpu += float(cpu_str)
+            # Memory
+            mem_str = alloc.get('memory', '0')
+            mem_ki = 0
+            if mem_str.endswith('Ki'):
+                mem_ki = int(mem_str[:-2])
+            elif mem_str.endswith('Mi'):
+                mem_ki = int(mem_str[:-2]) * 1024
+            elif mem_str.endswith('Gi'):
+                mem_ki = int(mem_str[:-2]) * 1024 * 1024
+            total_ram_gib += mem_ki / (1024 * 1024)
+            # GPU
+            gpu_str = alloc.get('nvidia.com/gpu', alloc.get('gpu', '0'))
+            try:
+                total_gpu += int(gpu_str)
+            except Exception:
+                pass
+
+        # Get all pods and sum up resource requests for Running/Pending pods
+        pods_json = run_kubectl_command('kubectl get pods --all-namespaces -o json')
+        pods = json.loads(pods_json)
+        total_active_pods = 0
+        requested_vcpu = 0.0
+        requested_ram_gib = 0.0
+        requested_gpu = 0
+        for pod in pods.get('items', []):
+            phase = pod.get('status', {}).get('phase', '')
+            if phase not in ('Running', 'Pending'):
+                continue
+            total_active_pods += 1
+            for container in pod.get('spec', {}).get('containers', []):
+                req = container.get('resources', {}).get('requests', {})
+                # CPU
+                cpu = req.get('cpu')
+                if cpu:
+                    if str(cpu).endswith('m'):
+                        requested_vcpu += int(str(cpu)[:-1]) / 1000.0
+                    else:
+                        requested_vcpu += float(cpu)
+                # Memory
+                mem = req.get('memory')
+                if mem:
+                    mem_ki = 0
+                    if str(mem).endswith('Ki'):
+                        mem_ki = int(str(mem)[:-2])
+                    elif str(mem).endswith('Mi'):
+                        mem_ki = int(str(mem)[:-2]) * 1024
+                    elif str(mem).endswith('Gi'):
+                        mem_ki = int(str(mem)[:-2]) * 1024 * 1024
+                    requested_ram_gib += mem_ki / (1024 * 1024)
+                # GPU
+                gpu = req.get('nvidia.com/gpu', req.get('gpu'))
+                if gpu:
+                    try:
+                        requested_gpu += int(gpu)
+                    except Exception:
+                        pass
+
+        # Avoid division by zero
+        pods_percent = (total_active_pods / total_pods_allowed * 100) if total_pods_allowed else 0
+        vcpu_percent = (requested_vcpu / total_vcpu * 100) if total_vcpu else 0
+        ram_percent = (requested_ram_gib / total_ram_gib * 100) if total_ram_gib else 0
+        gpu_percent = (requested_gpu / total_gpu * 100) if total_gpu else 0
+
+        return jsonify({
+            'pods': {
+                'total_allowed': total_pods_allowed,
+                'total_active': total_active_pods,
+                'percent_used': round(pods_percent, 1)
+            },
+            'vcpu': {
+                'total': round(total_vcpu, 2),
+                'allocated': round(requested_vcpu, 2),
+                'percent_used': round(vcpu_percent, 1)
+            },
+            'ram': {
+                'total_gib': round(total_ram_gib, 2),
+                'allocated_gib': round(requested_ram_gib, 2),
+                'percent_used': round(ram_percent, 1)
+            },
+            'gpu': {
+                'total': total_gpu,
+                'allocated': requested_gpu,
+                'percent_used': round(gpu_percent, 1)
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
