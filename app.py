@@ -172,11 +172,11 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
     logger.info(f"[{session_type} sid:{sid}] Starting PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
     max_read_bytes = 1024 * 20 # Read up to 20KB at a time
     try:
-        while True:
+    while True:
             socketio.sleep(0.01) # Small sleep to prevent tight loop and allow other greenlets
             if sid not in active_pty_sessions or active_pty_sessions.get(sid, {}).get('fd') != fd:
                 logger.info(f"[{session_type} sid:{sid}] Session terminated or FD changed, stopping read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
-                break
+            break
             
             # Check if fd is readable without blocking
             ready_to_read, _, _ = select.select([fd], [], [], 0) # Timeout of 0 makes it non-blocking
@@ -188,7 +188,7 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
                     logger.info(f"[{session_type} sid:{sid}] OSError on os.read() for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}. Assuming PTY closed.")
                     break # Exit loop, PTY likely closed
 
-                if output:
+        if output:
                     decoded_output = output.decode('utf-8', errors='replace')
                     logger.debug(f"[{session_type} sid:{sid}] PTY Read {len(decoded_output)} chars for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
                     socketio.emit(output_event_name,
@@ -668,7 +668,7 @@ def api_pod_details():
         
         # This route definition will be changed below to match the JS fetch URL.
         # The code below assumes namespace and pod_name are correctly populated.
-
+            
         if not namespace or not pod_name:
              # Fallback or error if not extracted from path by updated route pattern
              # This part will be simplified once the route pattern is updated.
@@ -1010,7 +1010,7 @@ def _cleanup_pty_session(sid, reason_str, session_type_filter=None):
         if session_type_filter and session_to_clean.get('type') != session_type_filter:
             logger.info(f"[{session_to_clean.get('type', 'unknown_pty')} sid:{sid}] Cleanup skipped for session type {session_to_clean.get('type')} due to filter '{session_type_filter}' during {reason_str}.")
             return
-
+        
         active_pty_sessions.pop(sid, None) # Now pop it
         session_type = session_to_clean.get('type', 'unknown_pty')
         log_prefix = f"[{session_type} sid:{sid}]"
@@ -1062,7 +1062,7 @@ def handle_pod_exec_input(data):
             os.write(session['fd'], input_data.encode('utf-8'))
         except OSError as e:
             logger.error(f"[pod_exec sid:{sid}] OSError writing to PTY for {session['namespace']}/{session['pod_name']}: {e}")
-        except Exception as e:
+    except Exception as e:
             logger.error(f"[pod_exec sid:{sid}] Exception writing to PTY: {e}")
     elif not session:
         logger.warning(f"[pod_exec sid:{sid}] Input received but no active session found.")
@@ -1098,7 +1098,7 @@ def handle_control_plane_cli_input(data):
             os.write(session['fd'], input_data.encode('utf-8'))
         except OSError as e:
             logger.error(f"[ctrl_cli sid:{sid}] OSError writing to PTY: {e}")
-        except Exception as e:
+    except Exception as e:
             logger.error(f"[ctrl_cli sid:{sid}] Exception writing to PTY: {e}")
     elif not session:
         logger.warning(f"[ctrl_cli sid:{sid}] Input received but no active session found.")
@@ -1124,9 +1124,9 @@ def handle_pty_resize(data):
             if rows > 0 and cols > 0 :
                  logger.info(f"[pty_resize sid:{sid}] Resizing PTY for {session.get('type')} session to {rows}x{cols}")
                  set_pty_size(session['fd'], rows, cols)
-            else:
+        else:
                 logger.warning(f"[pty_resize sid:{sid}] Invalid rows/cols for resize: {data}")
-        except Exception as e:
+    except Exception as e:
             logger.error(f"[pty_resize sid:{sid}] Error resizing PTY: {e}")
     else:
         logger.warning(f"[pty_resize sid:{sid}] Resize event received but no active session.")

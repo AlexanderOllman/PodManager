@@ -279,8 +279,8 @@ function connectSocketListeners() {
 
 // Function to handle tab navigation and content loading
 function navigateToTab(tabId) {
-    if (window.app.state.navigation.isNavigating) {
-        console.warn('Navigation already in progress, ignoring new request for', tabId);
+    if (window.app.state.navigation.activeTab === tabId) {
+        console.log(`Already on tab: ${tabId}, skipping navigation.`);
         return;
     }
     window.app.state.navigation.isNavigating = true;
@@ -367,10 +367,11 @@ function initNavigation() {
             navigateToTab(targetTabId);
         });
     });
-
     // Handle initial page load based on URL hash or default to 'home'
     const initialTabId = getActiveTabFromURL() || 'home';
-    navigateToTab(initialTabId);
+    if (window.app.state.navigation.activeTab !== initialTabId) {
+        navigateToTab(initialTabId);
+    }
     console.log(`Initial tab set to: ${initialTabId}`);
     window.app.state.navigation.activeTab = initialTabId; 
 }
