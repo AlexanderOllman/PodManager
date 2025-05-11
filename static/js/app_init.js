@@ -173,6 +173,15 @@ window.onpopstate = function(event) {
 function initializeApp() {
     console.log('Initializing application components...');
     
+    // Always initialize socket connection at app startup
+    if (!window.app.socket) {
+        try {
+            window.app.socket = io();
+            console.log('Socket connection initialized at app startup.');
+        } catch (e) {
+            console.warn('Socket.io client (io) not available. Socket-dependent features might not work.', e);
+        }
+    }
     initializeBootstrapComponents();
     fetchAndRenderClusterResourceSummary();
     
@@ -215,21 +224,12 @@ function initializeBootstrapComponents() {
 
 // Socket event listeners
 function connectSocketListeners() {
+    // Only set up event listeners if socket exists
     if (!window.app.socket) {
-        try {
-            window.app.socket = io(); // Initialize socket if not already
-            console.log('Socket connection initialized in connectSocketListeners.');
-        } catch (e) {
-            console.warn('Socket.io client (io) not available. Socket-dependent features might not work.', e);
-            return;
-        }
-    }
-    const socket = window.app.socket;
-    if (!socket) {
-        console.warn('Socket not available for event listeners');
+        console.warn('Socket.io client not initialized. Skipping event listener setup.');
         return;
     }
-
+    const socket = window.app.socket;
     // Ensure terminal output is handled if terminal exists
     socket.on('terminal_output', function(data) {
         if (window.app.terminal && data.data) {
@@ -279,8 +279,8 @@ function connectSocketListeners() {
 
 // Function to handle tab navigation and content loading
 function navigateToTab(tabId) {
-    if (window.app.state.navigation.isNavigating) {
-        console.warn('Navigation already in progress, ignoring new request for', tabId);
+    if (window.app.state.navigation.activeTab === tabId) {
+        console.log(`Already on tab: ${tabId}, skipping navigation.`);
         return;
     }
     window.app.state.navigation.isNavigating = true;
@@ -367,10 +367,11 @@ function initNavigation() {
             navigateToTab(targetTabId);
         });
     });
-
     // Handle initial page load based on URL hash or default to 'home'
     const initialTabId = getActiveTabFromURL() || 'home';
-    navigateToTab(initialTabId);
+    if (window.app.state.navigation.activeTab !== initialTabId) {
+        navigateToTab(initialTabId);
+    }
     console.log(`Initial tab set to: ${initialTabId}`);
     window.app.state.navigation.activeTab = initialTabId; 
 }
