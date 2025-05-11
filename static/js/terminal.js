@@ -238,9 +238,8 @@ function initializeTerminal() {
                         for(let i=0; i < promptChar.length; ++i) term.write('\x1b[C');
                     }
                 }
-            } else if (printable && key && key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey) { // Added !ctrlKey and !metaKey here
+            } else if (printable && key && key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey) { // Printable character
                 currentLine += key;
-                // term.write(key); // REMOVE THIS LINE - Rely on PTY echo via onData
             }
         });
 
