@@ -221,16 +221,6 @@ function refreshDatabase() {
 
 // Main function to fetch resource data
 function fetchResourceData(resourceType, namespace = 'all', fetchAll = false, page = 1, resetData = true) {
-    // Debounce: prevent duplicate fetches for the same resourceType/namespace/page within 2 seconds
-    if (!window.app.lastResourceFetch) window.app.lastResourceFetch = {};
-    const fetchKey = `${resourceType}-${namespace}-page${page}`;
-    const now = Date.now();
-    if (window.app.lastResourceFetch[fetchKey] && now - window.app.lastResourceFetch[fetchKey] < 2000) {
-        console.log(`Debounced duplicate fetch for ${fetchKey}`);
-        return Promise.resolve();
-    }
-    window.app.lastResourceFetch[fetchKey] = now;
-
     console.log(`Fetching ${resourceType} data for ns ${namespace}, fetchAll: ${fetchAll}, page ${page}, reset: ${resetData}`);
 
     if (page === 1 && typeof showLoading === 'function') showLoading(resourceType);
@@ -270,16 +260,6 @@ function fetchResourceData(resourceType, namespace = 'all', fetchAll = false, pa
 
 // Processes a fetched page of resource data and updates the application state
 function processResourcePageData(resourceType, data, page, pageSize = 50) {
-    // Guard: prevent redundant processing for the same resourceType and page within 2 seconds
-    if (!window.app.lastResourceProcess) window.app.lastResourceProcess = {};
-    const processKey = `${resourceType}-page${page}`;
-    const now = Date.now();
-    if (window.app.lastResourceProcess[processKey] && now - window.app.lastResourceProcess[processKey] < 2000) {
-        console.log(`Debounced duplicate process for ${processKey}`);
-        return;
-    }
-    window.app.lastResourceProcess[processKey] = now;
-
     const processingStartTime = performance.now();
 
     if (!window.app.state.resources[resourceType]) {
