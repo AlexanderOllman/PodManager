@@ -19,6 +19,7 @@ import select
 import struct
 import fcntl
 import termios
+from kubernetes import client, config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -172,11 +173,11 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
     logger.info(f"[{session_type} sid:{sid}] Starting PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
     max_read_bytes = 1024 * 20 # Read up to 20KB at a time
     try:
-        while True:
+    while True:
             socketio.sleep(0.01) # Small sleep to prevent tight loop and allow other greenlets
             if sid not in active_pty_sessions or active_pty_sessions.get(sid, {}).get('fd') != fd:
                 logger.info(f"[{session_type} sid:{sid}] Session terminated or FD changed, stopping read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
-                break
+            break
             
             # Check if fd is readable without blocking
             ready_to_read, _, _ = select.select([fd], [], [], 0) # Timeout of 0 makes it non-blocking
@@ -188,7 +189,7 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
                     logger.info(f"[{session_type} sid:{sid}] OSError on os.read() for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}. Assuming PTY closed.")
                     break # Exit loop, PTY likely closed
 
-                if output:
+        if output:
                     decoded_output = output.decode('utf-8', errors='replace')
                     logger.debug(f"[{session_type} sid:{sid}] PTY Read {len(decoded_output)} chars for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
                     socketio.emit(output_event_name,
@@ -668,7 +669,7 @@ def api_pod_details():
         
         # This route definition will be changed below to match the JS fetch URL.
         # The code below assumes namespace and pod_name are correctly populated.
-
+            
         if not namespace or not pod_name:
              # Fallback or error if not extracted from path by updated route pattern
              # This part will be simplified once the route pattern is updated.
@@ -919,138 +920,120 @@ def health_check():
         'message': 'Application is running'
     })
 
-@app.route('/get_cluster_capacity', methods=['GET'])
-def get_cluster_capacity():
-    """
-    Get the total capacity and usage of the Kubernetes cluster
-    Returns CPU cores, memory in Gi, GPU count, pod limits, allocated/used resources, and overprovisioning info
-    """
+@app.route('/api/cluster/resources/summary', methods=['GET'])
+def get_cluster_resources_summary():
+    """Fetch cluster resource summary including allocatable capacity and current utilization."""
     try:
-        # Overprovisioning ratio (default 1.5x)
-        overprov_ratio = float(os.environ.get('OVERPROVISION_RATIO', 1.5))
+        # Ensure Kubernetes client is configured
+        try:
+            config.load_incluster_config()
+            logger.info("Loaded in-cluster Kubernetes config for resource summary.")
+        except config.ConfigException:
+            try:
+                config.load_kube_config()
+                logger.info("Loaded local kubeconfig for resource summary.")
+            except config.ConfigException:
+                logger.error("Could not configure Kubernetes client for resource summary.")
+                return jsonify(error="Could not configure Kubernetes client"), 500
 
-        # Get nodes information
-        command = "kubectl get nodes -o json"
-        output = run_kubectl_command(command)
-        nodes_data = json.loads(output)
+        v1 = client.CoreV1Api()
+        nodes = v1.list_node()
 
-        total_cpu = 0
-        total_memory_ki = 0
-        total_gpu = 0
-        total_pods = 0
+        # --- Calculate Allocatable Capacity --- 
+        total_cpu_cores = 0
+        total_memory_bytes = 0
+        total_pod_capacity = 0
+        total_gpus = 0
+        # gpu_types = {} # Optional: Track different GPU types if needed
 
-        for node in nodes_data.get("items", []):
-            allocatable = node.get("status", {}).get("allocatable", {})
-            # CPU
-            cpu_str = allocatable.get("cpu", "0")
-            if cpu_str.endswith('m'):
-                total_cpu += int(cpu_str[:-1]) / 1000
-            else:
-                total_cpu += float(cpu_str)
-            # Memory
-            memory_str = allocatable.get("memory", "0")
-            if memory_str.endswith('Ki'):
-                total_memory_ki += int(memory_str[:-2])
-            elif memory_str.endswith('Mi'):
-                total_memory_ki += int(memory_str[:-2]) * 1024
-            elif memory_str.endswith('Gi'):
-                total_memory_ki += int(memory_str[:-2]) * 1024 * 1024
-            # GPU
-            gpu_count = allocatable.get("nvidia.com/gpu", 0)
-            if gpu_count:
-                total_gpu += int(gpu_count)
-            generic_gpu = allocatable.get("gpu", 0)
-            if generic_gpu:
-                total_gpu += int(generic_gpu)
-            # Pods
-            pods_str = allocatable.get("pods", "0")
-            total_pods += int(pods_str)
-
-        total_memory_gi = round(total_memory_ki / (1024 * 1024), 1)
-
-        # Overprovisioned values
-        overprov_cpu = round(total_cpu * overprov_ratio, 1)
-        overprov_memory_gi = round(total_memory_gi * overprov_ratio, 1)
-
-        # Get all pods to sum up allocated resources and running pods
-        pod_command = "kubectl get pods --all-namespaces -o json"
-        pod_output = run_kubectl_command(pod_command)
-        pods_data = json.loads(pod_output)
-        allocated_cpu = 0.0
-        allocated_memory_mi = 0.0
-        allocated_gpu = 0
-        running_pods = 0
-        for pod in pods_data.get('items', []):
-            # Count running pods
-            if pod.get('status', {}).get('phase', '').lower() == 'running':
-                running_pods += 1
-            # Sum resource requests for all containers
-            for container in pod.get('spec', {}).get('containers', []):
-                requests = container.get('resources', {}).get('requests', {})
+        for node in nodes.items:
+            allocatable = node.status.allocatable
+            if allocatable:
                 # CPU
-                cpu_req = requests.get('cpu')
-                if cpu_req:
-                    if str(cpu_req).endswith('m'):
-                        allocated_cpu += float(str(cpu_req)[:-1]) / 1000
-                    else:
-                        try:
-                            allocated_cpu += float(cpu_req)
-                        except Exception:
-                            pass
+                cpu_str = allocatable.get('cpu', '0')
+                total_cpu_cores += parse_resource_quantity(cpu_str)
+
                 # Memory
-                mem_req = requests.get('memory')
-                if mem_req:
-                    mem_str = str(mem_req)
-                    if mem_str.endswith('Ki'):
-                        allocated_memory_mi += int(mem_str[:-2]) / 1024
-                    elif mem_str.endswith('Mi'):
-                        allocated_memory_mi += int(mem_str[:-2])
-                    elif mem_str.endswith('Gi'):
-                        allocated_memory_mi += int(mem_str[:-2]) * 1024
-                    else:
-                        try:
-                            allocated_memory_mi += float(mem_str) / (1024 * 1024)
-                        except Exception:
-                            pass
-                # GPU
-                gpu_req = requests.get('nvidia.com/gpu') or requests.get('gpu')
-                if gpu_req:
-                    try:
-                        allocated_gpu += int(gpu_req)
-                    except Exception:
-                        pass
-        allocated_memory_gi = round(allocated_memory_mi / 1024, 2)
-        # Percentages
-        cpu_percent = round((allocated_cpu / total_cpu) * 100, 1) if total_cpu else 0
-        memory_percent = round((allocated_memory_gi / total_memory_gi) * 100, 1) if total_memory_gi else 0
-        gpu_percent = round((allocated_gpu / total_gpu) * 100, 1) if total_gpu else 0
-        pods_percent = round((running_pods / total_pods) * 100, 1) if total_pods else 0
-        return jsonify({
-            "cpu": round(total_cpu, 1),
-            "cpu_allocated": round(allocated_cpu, 2),
-            "cpu_overprovisioned": overprov_cpu,
-            "cpu_percent": cpu_percent,
-            "memory": total_memory_gi,
-            "memory_allocated": allocated_memory_gi,
-            "memory_overprovisioned": overprov_memory_gi,
-            "memory_percent": memory_percent,
-            "gpu": total_gpu,
-            "gpu_allocated": allocated_gpu,
-            "gpu_percent": gpu_percent,
-            "pods": total_pods,
-            "pods_running": running_pods,
-            "pods_percent": pods_percent
-        })
+                memory_str = allocatable.get('memory', '0')
+                total_memory_bytes += parse_resource_quantity(memory_str)
+                
+                # Pods
+                pod_str = allocatable.get('pods', '0')
+                total_pod_capacity += int(pod_str) # Pod capacity is usually a whole number
+
+                # GPUs (assuming standard nvidia.com/gpu label)
+                # Iterate through all keys to catch different GPU types (e.g., nvidia.com/a100, nvidia.com/t4)
+                for key, value in allocatable.items():
+                     if key.startswith('nvidia.com/gpu') or 'gpu' in key.lower(): # Basic check, adjust if needed
+                        gpu_count = int(value) 
+                        total_gpus += gpu_count
+                        # Optional: track types
+                        # gpu_types[key] = gpu_types.get(key, 0) + gpu_count
+
+        # --- Calculate Utilized Resources (Requests & Limits from Running Pods) ---
+        pods = v1.list_pod_for_all_namespaces(watch=False)
+        
+        total_running_pods = 0
+        total_cpu_requests = 0.0
+        total_memory_requests_bytes = 0
+        total_gpu_requests = 0
+        total_cpu_limits = 0.0
+        total_memory_limits_bytes = 0
+        total_gpu_limits = 0
+
+        for pod in pods.items:
+            if pod.status and pod.status.phase == 'Running':
+                total_running_pods += 1
+                if pod.spec and pod.spec.containers:
+                    for container in pod.spec.containers:
+                        # Requests
+                        if container.resources and container.resources.requests:
+                            req = container.resources.requests
+                            total_cpu_requests += parse_resource_quantity(req.get('cpu', '0'))
+                            total_memory_requests_bytes += parse_resource_quantity(req.get('memory', '0'))
+                            # Sum all GPU types requested
+                            for key, value in req.items():
+                                if key.startswith('nvidia.com/gpu') or 'gpu' in key.lower():
+                                     total_gpu_requests += int(value) # GPUs are typically whole numbers in requests
+                        
+                        # Limits
+                        if container.resources and container.resources.limits:
+                            lim = container.resources.limits
+                            total_cpu_limits += parse_resource_quantity(lim.get('cpu', '0'))
+                            total_memory_limits_bytes += parse_resource_quantity(lim.get('memory', '0'))
+                             # Sum all GPU types limited
+                            for key, value in lim.items():
+                                if key.startswith('nvidia.com/gpu') or 'gpu' in key.lower():
+                                     total_gpu_limits += int(value)
+
+        # --- Prepare Summary Data --- 
+        resource_summary = {
+            'allocatable': {
+                'pods': total_pod_capacity,
+                'cpu_cores': round(total_cpu_cores, 2),
+                'memory_bytes': int(total_memory_bytes),
+                'gpu': total_gpus
+                # 'gpu_types': gpu_types # Optional
+            },
+            'utilized': {
+                'running_pods': total_running_pods,
+                'cpu_requests_cores': round(total_cpu_requests, 2),
+                'memory_requests_bytes': int(total_memory_requests_bytes),
+                'gpu_requests': total_gpu_requests
+            },
+            'limits': {
+                'cpu_limits_cores': round(total_cpu_limits, 2),
+                'memory_limits_bytes': int(total_memory_limits_bytes),
+                'gpu_limits': total_gpu_limits
+            }
+        }
+
+        logger.info(f"Calculated Cluster Resource Summary: {resource_summary}")
+        return jsonify(resource_summary)
+
     except Exception as e:
-        app.logger.error(f"Error getting cluster capacity: {str(e)}")
-        return jsonify({
-            "cpu": 256,  # Default fallback
-            "memory": 1024,
-            "gpu": 0,
-            "pods": 0,
-            "pods_running": 0,
-            "error": str(e)
-        }), 500
+        logger.error(f"Error fetching cluster resource summary: {e}", exc_info=True)
+        return jsonify(error=f"Failed to get cluster resource summary: {str(e)}"), 500
 
 @socketio.on('connect')
 def handle_connect():
@@ -1079,7 +1062,7 @@ def _cleanup_pty_session(sid, reason_str, session_type_filter=None):
         if session_type_filter and session_to_clean.get('type') != session_type_filter:
             logger.info(f"[{session_to_clean.get('type', 'unknown_pty')} sid:{sid}] Cleanup skipped for session type {session_to_clean.get('type')} due to filter '{session_type_filter}' during {reason_str}.")
             return
-
+        
         active_pty_sessions.pop(sid, None) # Now pop it
         session_type = session_to_clean.get('type', 'unknown_pty')
         log_prefix = f"[{session_type} sid:{sid}]"
@@ -1131,7 +1114,7 @@ def handle_pod_exec_input(data):
             os.write(session['fd'], input_data.encode('utf-8'))
         except OSError as e:
             logger.error(f"[pod_exec sid:{sid}] OSError writing to PTY for {session['namespace']}/{session['pod_name']}: {e}")
-        except Exception as e:
+    except Exception as e:
             logger.error(f"[pod_exec sid:{sid}] Exception writing to PTY: {e}")
     elif not session:
         logger.warning(f"[pod_exec sid:{sid}] Input received but no active session found.")
@@ -1167,7 +1150,7 @@ def handle_control_plane_cli_input(data):
             os.write(session['fd'], input_data.encode('utf-8'))
         except OSError as e:
             logger.error(f"[ctrl_cli sid:{sid}] OSError writing to PTY: {e}")
-        except Exception as e:
+    except Exception as e:
             logger.error(f"[ctrl_cli sid:{sid}] Exception writing to PTY: {e}")
     elif not session:
         logger.warning(f"[ctrl_cli sid:{sid}] Input received but no active session found.")
@@ -1193,9 +1176,9 @@ def handle_pty_resize(data):
             if rows > 0 and cols > 0 :
                  logger.info(f"[pty_resize sid:{sid}] Resizing PTY for {session.get('type')} session to {rows}x{cols}")
                  set_pty_size(session['fd'], rows, cols)
-            else:
+        else:
                 logger.warning(f"[pty_resize sid:{sid}] Invalid rows/cols for resize: {data}")
-        except Exception as e:
+    except Exception as e:
             logger.error(f"[pty_resize sid:{sid}] Error resizing PTY: {e}")
     else:
         logger.warning(f"[pty_resize sid:{sid}] Resize event received but no active session.")
@@ -1309,6 +1292,46 @@ def refresh_database():
             'success': False,
             'error': str(e)
         }), 500
+
+# --- Helper function needed ---
+def parse_resource_quantity(quantity_str):
+    """Parses Kubernetes resource quantity string (e.g., '10Gi', '500m', '100k') into a base unit (bytes or cores)."""
+    # Basic implementation, needs to be robust
+    try:
+        quantity_str = str(quantity_str).strip()
+        # Handle memory units
+        if quantity_str.endswith('Gi'):
+            return int(quantity_str[:-2]) * (1024**3)
+        elif quantity_str.endswith('Mi'):
+            return int(quantity_str[:-2]) * (1024**2)
+        elif quantity_str.endswith('Ki'):
+            return int(quantity_str[:-2]) * 1024
+        elif quantity_str.endswith('G'): # G = 10^9 bytes
+            return int(quantity_str[:-1]) * (1000**3)
+        elif quantity_str.endswith('M'): # M = 10^6 bytes
+            return int(quantity_str[:-1]) * (1000**2)
+        elif quantity_str.endswith('K'): # K = 10^3 bytes
+            return int(quantity_str[:-1]) * 1000
+        # Handle CPU units
+        elif quantity_str.endswith('m'): # CPU millicores
+            # Return as float for direct comparison/summation with core values
+            return int(quantity_str[:-1]) / 1000.0
+        # Handle base units / other Kubernetes units if needed (T, P, E, etc.)
+        elif quantity_str.isdigit(): # Assuming base unit (bytes for memory, cores for CPU based on context)
+             # Returning as float allows summation for both CPU (cores) and memory (bytes)
+             # Convert memory back to int if strict typing needed later
+             return float(quantity_str)
+        else: # Add other suffixes like Ti, Pi, E, P, T, G, M, k etc. if needed
+             logger.warning(f"Unsupported resource quantity format: {quantity_str}")
+             return 0
+    except ValueError:
+        logger.error(f"ValueError parsing resource quantity: {quantity_str}")
+        return 0
+    except Exception as e:
+        logger.error(f"Unexpected error parsing resource quantity '{quantity_str}': {e}")
+        return 0
+
+# --- End Helper Function ---
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
