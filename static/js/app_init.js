@@ -604,25 +604,67 @@ function fetchClusterCapacity() {
             const limits = data.limits || {};
 
             // Pods Card
-            const podAlloc = allocatable.pods || 0;
+            // const podAlloc = allocatable.pods || 0; // Removed
+            const podTotal = utilized.total_existing_pods || 0; // Use total existing pods
             const podUtil = utilized.running_pods || 0;
-            const podPerc = podAlloc > 0 ? Math.round((podUtil / podAlloc) * 100) : 0;
+            // const podPerc = podAlloc > 0 ? Math.round((podUtil / podAlloc) * 100) : 0; // Removed percentage
             updateText('podRunningValue', podUtil);
-            updateText('podAllocatableValue', podAlloc);
-            updateText('podPercentageValue', podPerc);
-            updateProgress('podProgressBar', podPerc);
+            // updateText('podAllocatableValue', podAlloc); // Removed
+            updateText('podTotalValue', podTotal); // Update total value span
+            // updateText('podPercentageValue', podPerc); // Removed
+            // updateProgress('podProgressBar', podPerc); // Removed progress update
 
-            // CPU Card
-            const cpuAlloc = allocatable.cpu_cores || 0;
-            const cpuUtil = utilized.cpu_requests_cores || 0;
-            const cpuLimit = limits.cpu_limits_cores || 0;
-            const cpuPerc = cpuAlloc > 0 ? Math.round((cpuUtil / cpuAlloc) * 100) : 0;
-            updateText('cpuUtilizedValue', cpuUtil.toFixed(1));
-            updateText('cpuAllocatableValue', cpuAlloc.toFixed(1));
-            updateText('cpuPercentageValue', cpuPerc);
-            updateText('cpuLimitValue', cpuLimit.toFixed(1));
-            updateProgress('cpuProgressBar', cpuPerc);
+            // Store summary data for potential reuse (e.g., by toggle)
+            window.app.state.clusterSummary = data;
 
+            // Initial UI update function
+            const updateCpuCard = (useLimitAsMax = false) => {
+                const summary = window.app.state.clusterSummary;
+                if (!summary) return; // Guard against missing data
+
+                const allocatable = summary.allocatable || {};
+                const utilized = summary.utilized || {};
+                const limits = summary.limits || {};
+
+                const cpuAlloc = allocatable.cpu_cores || 0;
+                const cpuUtil = utilized.cpu_requests_cores || 0;
+                const cpuLimit = limits.cpu_limits_cores || 0;
+                
+                const denominator = useLimitAsMax ? cpuLimit : cpuAlloc;
+                const cpuPerc = denominator > 0 ? Math.round((cpuUtil / denominator) * 100) : 0;
+
+                updateText('cpuUtilizedValue', cpuUtil.toFixed(1));
+                updateText('cpuAllocatableValue', cpuAlloc.toFixed(1));
+                updateText('cpuPercentageValue', cpuPerc);
+                updateText('cpuLimitValue', cpuLimit.toFixed(1));
+                updateProgress('cpuProgressBar', cpuPerc);
+
+                // Update toggle label
+                const toggleLabel = document.getElementById('cpuToggleLabel');
+                if (toggleLabel) {
+                    toggleLabel.textContent = useLimitAsMax ? 'Allocatable:' : 'Limit:';
+                }
+                 // Update the main value display label based on toggle
+                const cpuMainValueText = document.querySelector('#cpuUtilizedValue')?.parentElement;
+                if (cpuMainValueText) {
+                     cpuMainValueText.nextElementSibling.textContent = `${cpuPerc}% Utilized (${useLimitAsMax ? 'vs Limit' : 'vs Allocatable'})`; 
+                     // Or adjust structure if needed to better place this text
+                }
+            };
+            
+            // Initial update using allocatable
+            updateCpuCard(false);
+
+            // Add event listener for the toggle
+            const cpuToggle = document.getElementById('cpuViewToggle');
+            if (cpuToggle) {
+                // Remove existing listener to avoid duplication if fetchClusterCapacity is called again
+                cpuToggle.removeEventListener('change', handleCpuToggleChange);
+                cpuToggle.addEventListener('change', handleCpuToggleChange);
+            } else {
+                console.warn('CPU View Toggle element (cpuViewToggle) not found.');
+            }
+            
             // Memory Card
             const memAllocBytes = allocatable.memory_bytes || 0;
             const memUtilBytes = utilized.memory_requests_bytes || 0;
@@ -659,4 +701,36 @@ function fetchClusterCapacity() {
             const progressBarsToReset = ['podProgressBar', 'cpuProgressBar', 'memoryProgressBar', 'gpuProgressBar'];
             progressBarsToReset.forEach(id => updateProgress(id, 0));
         });
+}
+
+// Define the handler function separately to allow removal
+function handleCpuToggleChange(event) {
+    const useLimit = event.target.checked;
+    // Find the update function - might need refactoring if fetchClusterCapacity isn't always defining it
+    // For now, assume it exists in a scope or we re-find the data
+    const updateCpuCardFunc = window.app._updateCpuCardFunc; // Need to store this ref 
+    if (typeof updateCpuCardFunc === 'function') {
+         updateCpuCardFunc(useLimit);
+    } else {
+        console.error('updateCpuCard function reference not found for toggle.');
+        // Fallback: Re-fetch or re-calculate using stored data
+        if (window.app.state.clusterSummary) {
+             // Re-implement minimal update logic here if function reference is lost
+             // This is less ideal than maintaining the function reference
+             const summary = window.app.state.clusterSummary;
+             const allocatable = summary.allocatable || {};
+             const utilized = summary.utilized || {};
+             const limits = summary.limits || {};
+             const cpuUtil = utilized.cpu_requests_cores || 0;
+             const denominator = useLimit ? (limits.cpu_limits_cores || 0) : (allocatable.cpu_cores || 0);
+             const cpuPerc = denominator > 0 ? Math.round((cpuUtil / denominator) * 100) : 0;
+             const updateText = (id, value) => { /* ... */ }; // Re-define helpers or make global
+             const updateProgress = (id, percentage) => { /* ... */ };
+             updateText('cpuPercentageValue', cpuPerc);
+             updateProgress('cpuProgressBar', cpuPerc);
+             // Update labels too... 
+        } else {
+            console.error('Cluster summary data not found for toggle fallback.');
+        }
+    }
 } 

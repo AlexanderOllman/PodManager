@@ -973,7 +973,11 @@ def get_cluster_resources_summary():
         # --- Calculate Utilized Resources (Requests & Limits from Running Pods) ---
         pods = v1.list_pod_for_all_namespaces(watch=False)
         
+        total_existing_pods = len(pods.items) # Count all pods fetched
         total_running_pods = 0
+        # We could also count inactive/pending etc. if needed
+        # total_inactive_allocated_pods = 0 
+
         total_cpu_requests = 0.0
         total_memory_requests_bytes = 0
         total_gpu_requests = 0
@@ -1009,13 +1013,14 @@ def get_cluster_resources_summary():
         # --- Prepare Summary Data --- 
         resource_summary = {
             'allocatable': {
-                'pods': total_pod_capacity,
+                # 'pods': total_pod_capacity, # Remove - not used for card
                 'cpu_cores': round(total_cpu_cores, 2),
                 'memory_bytes': int(total_memory_bytes),
                 'gpu': total_gpus
                 # 'gpu_types': gpu_types # Optional
             },
             'utilized': {
+                'total_existing_pods': total_existing_pods, # Add total count
                 'running_pods': total_running_pods,
                 'cpu_requests_cores': round(total_cpu_requests, 2),
                 'memory_requests_bytes': int(total_memory_requests_bytes),

@@ -27,14 +27,8 @@
                         </div>
                         <div class="mt-auto">
                             <h3 class="metric-value mb-1">
-                                <span id="podRunningValue">-</span> / <span id="podAllocatableValue">-</span>
+                                <span id="podRunningValue">-</span> Running / <span id="podTotalValue">-</span> Total
                             </h3>
-                            <span class="metric-percentage">
-                                <span id="podPercentageValue">-</span>%
-                            </span>
-                            <div class="progress mt-2" style="height: 5px;">
-                                <div class="progress-bar" id="podProgressBar" role="progressbar" style="width: 0%;"></div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -58,7 +52,13 @@
                             <div class="progress mt-2" style="height: 5px;">
                                 <div class="progress-bar" id="cpuProgressBar" role="progressbar" style="width: 0%;"></div>
                             </div>
-                             <span class="metric-limit text-muted small position-absolute bottom-0 end-0 pe-2 pb-1">Limit: <span id="cpuLimitValue">-</span> Cores</span>
+                             <div class="metric-limit text-muted small position-absolute bottom-0 end-0 pe-2 pb-1 d-flex align-items-center">
+                                 <div class="form-check form-switch form-switch-sm me-1">
+                                     <input class="form-check-input" type="checkbox" role="switch" id="cpuViewToggle" title="Toggle between Allocatable and Limit view">
+                                     <label class="form-check-label" for="cpuViewToggle" id="cpuToggleLabel">Limit:</label> 
+                                 </div>
+                                 <span id="cpuLimitValue">-</span> Cores
+                            </div>
                         </div>
                     </div>
                 </div>
