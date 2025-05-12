@@ -172,19 +172,7 @@ window.onpopstate = function(event) {
 // Main application initialization
 function initializeApp() {
     console.log('Initializing application components...');
-    
-    // Always initialize socket connection at app startup
-    if (!window.app.socket) {
-        try {
-            window.app.socket = io();
-            console.log('Socket connection initialized at app startup.');
-        } catch (e) {
-            console.warn('Socket.io client (io) not available. Socket-dependent features might not work.', e);
-        }
-    }
     initializeBootstrapComponents();
-    fetchAndRenderClusterResourceSummary();
-    
     if (typeof fetchResourcesForAllTabs === 'function') fetchResourcesForAllTabs();
     if (typeof fetchClusterCapacity === 'function') fetchClusterCapacity();
     if (typeof checkGitAvailability === 'function') checkGitAvailability();
@@ -224,12 +212,24 @@ function initializeBootstrapComponents() {
 
 // Socket event listeners
 function connectSocketListeners() {
-    // Only set up event listeners if socket exists
     if (!window.app.socket) {
-        console.warn('Socket.io client not initialized. Skipping event listener setup.');
-        return;
+        try {
+            window.app.socket = io(); // Initialize socket if not already
+            console.log('Socket connection initialized in connectSocketListeners.');
+            window.app.socket.on('connect', function() {
+                fetchAndRenderClusterResourceSummary();
+            });
+        } catch (e) {
+            console.warn('Socket.io client (io) not available. Socket-dependent features might not work.', e);
+            return;
+        }
     }
     const socket = window.app.socket;
+    if (!socket) {
+        console.warn('Socket not available for event listeners');
+        return;
+    }
+
     // Ensure terminal output is handled if terminal exists
     socket.on('terminal_output', function(data) {
         if (window.app.terminal && data.data) {

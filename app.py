@@ -1241,15 +1241,16 @@ def refresh_database():
             'error': str(e)
         }), 500
 
+import time
+resource_summary_cache = {'data': None, 'timestamp': 0}
+RESOURCE_SUMMARY_CACHE_TTL = 5  # seconds
+
 @app.route('/api/cluster_resource_summary', methods=['GET'])
 def cluster_resource_summary():
-    """
-    Returns a summary of cluster resources:
-    - Pods: total allowed, total active, percent used
-    - vCPU: total allocatable, total requested, percent used
-    - RAM: total allocatable (GiB), total requested (GiB), percent used
-    - GPU: total allocatable, total requested, percent used
-    """
+    now = time.time()
+    if resource_summary_cache['data'] and now - resource_summary_cache['timestamp'] < RESOURCE_SUMMARY_CACHE_TTL:
+        return jsonify(resource_summary_cache['data'])
+    # ... existing logic ...
     import math
     try:
         # Get node allocatable resources
@@ -1261,16 +1262,13 @@ def cluster_resource_summary():
         total_gpu = 0
         for node in nodes.get('items', []):
             alloc = node.get('status', {}).get('allocatable', {})
-            # Pods
             pods_str = alloc.get('pods', '0')
             total_pods_allowed += int(pods_str)
-            # CPU
             cpu_str = alloc.get('cpu', '0')
             if cpu_str.endswith('m'):
                 total_vcpu += int(cpu_str[:-1]) / 1000.0
             else:
                 total_vcpu += float(cpu_str)
-            # Memory
             mem_str = alloc.get('memory', '0')
             mem_ki = 0
             if mem_str.endswith('Ki'):
@@ -1280,14 +1278,11 @@ def cluster_resource_summary():
             elif mem_str.endswith('Gi'):
                 mem_ki = int(mem_str[:-2]) * 1024 * 1024
             total_ram_gib += mem_ki / (1024 * 1024)
-            # GPU
             gpu_str = alloc.get('nvidia.com/gpu', alloc.get('gpu', '0'))
             try:
                 total_gpu += int(gpu_str)
             except Exception:
                 pass
-
-        # Get all pods and sum up resource requests for Running/Pending pods
         pods_json = run_kubectl_command('kubectl get pods --all-namespaces -o json')
         pods = json.loads(pods_json)
         total_active_pods = 0
@@ -1301,14 +1296,12 @@ def cluster_resource_summary():
             total_active_pods += 1
             for container in pod.get('spec', {}).get('containers', []):
                 req = container.get('resources', {}).get('requests', {})
-                # CPU
                 cpu = req.get('cpu')
                 if cpu:
                     if str(cpu).endswith('m'):
                         requested_vcpu += int(str(cpu)[:-1]) / 1000.0
                     else:
                         requested_vcpu += float(cpu)
-                # Memory
                 mem = req.get('memory')
                 if mem:
                     mem_ki = 0
@@ -1319,21 +1312,17 @@ def cluster_resource_summary():
                     elif str(mem).endswith('Gi'):
                         mem_ki = int(str(mem)[:-2]) * 1024 * 1024
                     requested_ram_gib += mem_ki / (1024 * 1024)
-                # GPU
                 gpu = req.get('nvidia.com/gpu', req.get('gpu'))
                 if gpu:
                     try:
                         requested_gpu += int(gpu)
                     except Exception:
                         pass
-
-        # Avoid division by zero
         pods_percent = (total_active_pods / total_pods_allowed * 100) if total_pods_allowed else 0
         vcpu_percent = (requested_vcpu / total_vcpu * 100) if total_vcpu else 0
         ram_percent = (requested_ram_gib / total_ram_gib * 100) if total_ram_gib else 0
         gpu_percent = (requested_gpu / total_gpu * 100) if total_gpu else 0
-
-        return jsonify({
+        result = {
             'pods': {
                 'total_allowed': total_pods_allowed,
                 'total_active': total_active_pods,
@@ -1354,7 +1343,10 @@ def cluster_resource_summary():
                 'allocated': requested_gpu,
                 'percent_used': round(gpu_percent, 1)
             }
-        })
+        }
+        resource_summary_cache['data'] = result
+        resource_summary_cache['timestamp'] = now
+        return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
