@@ -4,7 +4,57 @@
 
 {% block additional_styles %}
 <style>
-    /* Any page-specific styles that aren't included in main.css */
+    .dashboard-metric-card {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+        margin-bottom: 1rem;
+    }
+
+    .dashboard-metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .dashboard-metric-card .card-icon {
+        font-size: 1.5rem;
+        margin-bottom: 0.5rem;
+        color: #6c757d;
+    }
+
+    .dashboard-metric-card .card-title {
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #495057;
+    }
+
+    .dashboard-metric-card .progress {
+        height: 8px;
+        border-radius: 4px;
+        background-color: #e9ecef;
+    }
+
+    .dashboard-metric-card .progress-bar {
+        transition: width 0.6s ease;
+    }
+
+    .dashboard-metric-card .text-end {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+
+    /* Card-specific colors */
+    .pods-card .card-icon { color: #0d6efd; }
+    .cpu-card .card-icon { color: #dc3545; }
+    .ram-card .card-icon { color: #198754; }
+    .gpu-card .card-icon { color: #6f42c1; }
+
+    /* Progress bar colors based on utilization */
+    .progress-bar.bg-success { background-color: #198754 !important; }
+    .progress-bar.bg-warning { background-color: #ffc107 !important; }
+    .progress-bar.bg-danger { background-color: #dc3545 !important; }
 </style>
 {% endblock %}
 
@@ -22,53 +72,76 @@
                 <div class="dashboard-metric-card pods-card">
                     <div class="card-body">
                         <i class="fas fa-cubes card-icon"></i>
-                        <h5 class="card-title">Pods</h5>
-                        <h3 class="counter-value" id="podsCount">-</h3>
-                        <span class="counter-info" id="podsInfo">-</span>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" id="podsProgressBar" role="progressbar" style="width: 0%"></div>
+                        <h5 class="card-title">Pod Capacity</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span>Active / Total:</span>
+                            <span><span id="totalPodsActive">-</span> / <span id="totalPodsAllowed">-</span></span>
+                        </div>
+                        <div class="progress mb-2">
+                            <div class="progress-bar" id="podProgressBar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="text-end">
+                            <span id="podUtilizationPercentage">0%</span> utilized
                         </div>
                     </div>
                 </div>
             </div>
+
             <!-- vCPU Card -->
             <div class="col-md-3">
                 <div class="dashboard-metric-card cpu-card">
                     <div class="card-body">
                         <i class="fas fa-microchip card-icon"></i>
-                        <h5 class="card-title">vCPU</h5>
-                        <h3 class="counter-value" id="vcpuCount">-</h3>
-                        <span class="counter-info" id="vcpuInfo">-</span>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" id="vcpuProgressBar" role="progressbar" style="width: 0%"></div>
+                        <h5 class="card-title">vCPU Capacity</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span>Used / Total:</span>
+                            <span><span id="allocatedCPUCores">-</span> / <span id="totalCPUCores">-</span> cores</span>
+                        </div>
+                        <div class="progress mb-2">
+                            <div class="progress-bar" id="cpuProgressBar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="text-end">
+                            <span id="cpuUtilizationPercentage">0%</span> utilized
                         </div>
                     </div>
                 </div>
             </div>
+
             <!-- RAM Card -->
             <div class="col-md-3">
                 <div class="dashboard-metric-card ram-card">
                     <div class="card-body">
                         <i class="fas fa-memory card-icon"></i>
-                        <h5 class="card-title">RAM</h5>
-                        <h3 class="counter-value" id="ramCount">-</h3>
-                        <span class="counter-info" id="ramInfo">-</span>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" id="ramProgressBar" role="progressbar" style="width: 0%"></div>
+                        <h5 class="card-title">RAM Capacity</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span>Used / Total:</span>
+                            <span><span id="allocatedRAM">-</span> / <span id="totalRAM">-</span> GB</span>
+                        </div>
+                        <div class="progress mb-2">
+                            <div class="progress-bar" id="ramProgressBar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="text-end">
+                            <span id="ramUtilizationPercentage">0%</span> utilized
                         </div>
                     </div>
                 </div>
             </div>
+
             <!-- GPU Card -->
             <div class="col-md-3">
                 <div class="dashboard-metric-card gpu-card">
                     <div class="card-body">
                         <i class="fas fa-tachometer-alt card-icon"></i>
-                        <h5 class="card-title">GPU</h5>
-                        <h3 class="counter-value" id="gpuCount">-</h3>
-                        <span class="counter-info" id="gpuInfo">-</span>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" id="gpuProgressBar" role="progressbar" style="width: 0%"></div>
+                        <h5 class="card-title">GPU Capacity</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span>Used / Total:</span>
+                            <span><span id="allocatedGPUs">-</span> / <span id="totalGPUs">-</span> GPUs</span>
+                        </div>
+                        <div class="progress mb-2">
+                            <div class="progress-bar" id="gpuProgressBar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="text-end">
+                            <span id="gpuUtilizationPercentage">0%</span> utilized
                         </div>
                     </div>
                 </div>
@@ -391,9 +464,9 @@
                 </div>
             </div>
             <div class="col-md-6 text-end">
-                    <button class="btn btn-outline-primary" id="refreshResourcesBtn" onclick="refreshResourcesPage()">
-                        <i class="fas fa-sync-alt me-1"></i> Refresh
-                    </button>
+                <button class="btn btn-outline-primary" id="refreshResourcesBtn" onclick="refreshResourcesPage()">
+                    <i class="fas fa-sync-alt me-1"></i> Refresh
+                </button>
             </div>
         </div>
         
