@@ -172,11 +172,11 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
     logger.info(f"[{session_type} sid:{sid}] Starting PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
     max_read_bytes = 1024 * 20 # Read up to 20KB at a time
     try:
-    while True:
+        while True:
             socketio.sleep(0.01) # Small sleep to prevent tight loop and allow other greenlets
             if sid not in active_pty_sessions or active_pty_sessions.get(sid, {}).get('fd') != fd:
                 logger.info(f"[{session_type} sid:{sid}] Session terminated or FD changed, stopping read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
-            break
+                break
             
             # Check if fd is readable without blocking
             ready_to_read, _, _ = select.select([fd], [], [], 0) # Timeout of 0 makes it non-blocking
@@ -188,7 +188,7 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
                     logger.info(f"[{session_type} sid:{sid}] OSError on os.read() for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}. Assuming PTY closed.")
                     break # Exit loop, PTY likely closed
 
-        if output:
+                if output:
                     decoded_output = output.decode('utf-8', errors='replace')
                     logger.debug(f"[{session_type} sid:{sid}] PTY Read {len(decoded_output)} chars for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
                     socketio.emit(output_event_name,
@@ -668,7 +668,7 @@ def api_pod_details():
         
         # This route definition will be changed below to match the JS fetch URL.
         # The code below assumes namespace and pod_name are correctly populated.
-            
+
         if not namespace or not pod_name:
              # Fallback or error if not extracted from path by updated route pattern
              # This part will be simplified once the route pattern is updated.
@@ -1010,7 +1010,7 @@ def _cleanup_pty_session(sid, reason_str, session_type_filter=None):
         if session_type_filter and session_to_clean.get('type') != session_type_filter:
             logger.info(f"[{session_to_clean.get('type', 'unknown_pty')} sid:{sid}] Cleanup skipped for session type {session_to_clean.get('type')} due to filter '{session_type_filter}' during {reason_str}.")
             return
-        
+
         active_pty_sessions.pop(sid, None) # Now pop it
         session_type = session_to_clean.get('type', 'unknown_pty')
         log_prefix = f"[{session_type} sid:{sid}]"
@@ -1062,7 +1062,7 @@ def handle_pod_exec_input(data):
             os.write(session['fd'], input_data.encode('utf-8'))
         except OSError as e:
             logger.error(f"[pod_exec sid:{sid}] OSError writing to PTY for {session['namespace']}/{session['pod_name']}: {e}")
-    except Exception as e:
+        except Exception as e:
             logger.error(f"[pod_exec sid:{sid}] Exception writing to PTY: {e}")
     elif not session:
         logger.warning(f"[pod_exec sid:{sid}] Input received but no active session found.")
@@ -1098,7 +1098,7 @@ def handle_control_plane_cli_input(data):
             os.write(session['fd'], input_data.encode('utf-8'))
         except OSError as e:
             logger.error(f"[ctrl_cli sid:{sid}] OSError writing to PTY: {e}")
-    except Exception as e:
+        except Exception as e:
             logger.error(f"[ctrl_cli sid:{sid}] Exception writing to PTY: {e}")
     elif not session:
         logger.warning(f"[ctrl_cli sid:{sid}] Input received but no active session found.")
@@ -1124,9 +1124,9 @@ def handle_pty_resize(data):
             if rows > 0 and cols > 0 :
                  logger.info(f"[pty_resize sid:{sid}] Resizing PTY for {session.get('type')} session to {rows}x{cols}")
                  set_pty_size(session['fd'], rows, cols)
-        else:
+            else:
                 logger.warning(f"[pty_resize sid:{sid}] Invalid rows/cols for resize: {data}")
-    except Exception as e:
+        except Exception as e:
             logger.error(f"[pty_resize sid:{sid}] Error resizing PTY: {e}")
     else:
         logger.warning(f"[pty_resize sid:{sid}] Resize event received but no active session.")
@@ -1240,115 +1240,6 @@ def refresh_database():
             'success': False,
             'error': str(e)
         }), 500
-
-import time
-resource_summary_cache = {'data': None, 'timestamp': 0}
-RESOURCE_SUMMARY_CACHE_TTL = 5  # seconds
-
-@app.route('/api/cluster_resource_summary', methods=['GET'])
-def cluster_resource_summary():
-    now = time.time()
-    if resource_summary_cache['data'] and now - resource_summary_cache['timestamp'] < RESOURCE_SUMMARY_CACHE_TTL:
-        return jsonify(resource_summary_cache['data'])
-    # ... existing logic ...
-    import math
-    try:
-        # Get node allocatable resources
-        nodes_json = run_kubectl_command('kubectl get nodes -o json')
-        nodes = json.loads(nodes_json)
-        total_pods_allowed = 0
-        total_vcpu = 0.0
-        total_ram_gib = 0.0
-        total_gpu = 0
-        for node in nodes.get('items', []):
-            alloc = node.get('status', {}).get('allocatable', {})
-            pods_str = alloc.get('pods', '0')
-            total_pods_allowed += int(pods_str)
-            cpu_str = alloc.get('cpu', '0')
-            if cpu_str.endswith('m'):
-                total_vcpu += int(cpu_str[:-1]) / 1000.0
-            else:
-                total_vcpu += float(cpu_str)
-            mem_str = alloc.get('memory', '0')
-            mem_ki = 0
-            if mem_str.endswith('Ki'):
-                mem_ki = int(mem_str[:-2])
-            elif mem_str.endswith('Mi'):
-                mem_ki = int(mem_str[:-2]) * 1024
-            elif mem_str.endswith('Gi'):
-                mem_ki = int(mem_str[:-2]) * 1024 * 1024
-            total_ram_gib += mem_ki / (1024 * 1024)
-            gpu_str = alloc.get('nvidia.com/gpu', alloc.get('gpu', '0'))
-            try:
-                total_gpu += int(gpu_str)
-            except Exception:
-                pass
-        pods_json = run_kubectl_command('kubectl get pods --all-namespaces -o json')
-        pods = json.loads(pods_json)
-        total_active_pods = 0
-        requested_vcpu = 0.0
-        requested_ram_gib = 0.0
-        requested_gpu = 0
-        for pod in pods.get('items', []):
-            phase = pod.get('status', {}).get('phase', '')
-            if phase not in ('Running', 'Pending'):
-                continue
-            total_active_pods += 1
-            for container in pod.get('spec', {}).get('containers', []):
-                req = container.get('resources', {}).get('requests', {})
-                cpu = req.get('cpu')
-                if cpu:
-                    if str(cpu).endswith('m'):
-                        requested_vcpu += int(str(cpu)[:-1]) / 1000.0
-                    else:
-                        requested_vcpu += float(cpu)
-                mem = req.get('memory')
-                if mem:
-                    mem_ki = 0
-                    if str(mem).endswith('Ki'):
-                        mem_ki = int(str(mem)[:-2])
-                    elif str(mem).endswith('Mi'):
-                        mem_ki = int(str(mem)[:-2]) * 1024
-                    elif str(mem).endswith('Gi'):
-                        mem_ki = int(str(mem)[:-2]) * 1024 * 1024
-                    requested_ram_gib += mem_ki / (1024 * 1024)
-                gpu = req.get('nvidia.com/gpu', req.get('gpu'))
-                if gpu:
-                    try:
-                        requested_gpu += int(gpu)
-                    except Exception:
-                        pass
-        pods_percent = (total_active_pods / total_pods_allowed * 100) if total_pods_allowed else 0
-        vcpu_percent = (requested_vcpu / total_vcpu * 100) if total_vcpu else 0
-        ram_percent = (requested_ram_gib / total_ram_gib * 100) if total_ram_gib else 0
-        gpu_percent = (requested_gpu / total_gpu * 100) if total_gpu else 0
-        result = {
-            'pods': {
-                'total_allowed': total_pods_allowed,
-                'total_active': total_active_pods,
-                'percent_used': round(pods_percent, 1)
-            },
-            'vcpu': {
-                'total': round(total_vcpu, 2),
-                'allocated': round(requested_vcpu, 2),
-                'percent_used': round(vcpu_percent, 1)
-            },
-            'ram': {
-                'total_gib': round(total_ram_gib, 2),
-                'allocated_gib': round(requested_ram_gib, 2),
-                'percent_used': round(ram_percent, 1)
-            },
-            'gpu': {
-                'total': total_gpu,
-                'allocated': requested_gpu,
-                'percent_used': round(gpu_percent, 1)
-            }
-        }
-        resource_summary_cache['data'] = result
-        resource_summary_cache['timestamp'] = now
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)

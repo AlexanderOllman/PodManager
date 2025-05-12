@@ -172,7 +172,9 @@ window.onpopstate = function(event) {
 // Main application initialization
 function initializeApp() {
     console.log('Initializing application components...');
+    
     initializeBootstrapComponents();
+    
     if (typeof fetchResourcesForAllTabs === 'function') fetchResourcesForAllTabs();
     if (typeof fetchClusterCapacity === 'function') fetchClusterCapacity();
     if (typeof checkGitAvailability === 'function') checkGitAvailability();
@@ -216,9 +218,6 @@ function connectSocketListeners() {
         try {
             window.app.socket = io(); // Initialize socket if not already
             console.log('Socket connection initialized in connectSocketListeners.');
-            window.app.socket.on('connect', function() {
-                fetchAndRenderClusterResourceSummary();
-            });
         } catch (e) {
             console.warn('Socket.io client (io) not available. Socket-dependent features might not work.', e);
             return;
@@ -279,8 +278,8 @@ function connectSocketListeners() {
 
 // Function to handle tab navigation and content loading
 function navigateToTab(tabId) {
-    if (window.app.state.navigation.activeTab === tabId) {
-        console.log(`Already on tab: ${tabId}, skipping navigation.`);
+    if (window.app.state.navigation.isNavigating) {
+        console.warn('Navigation already in progress, ignoring new request for', tabId);
         return;
     }
     window.app.state.navigation.isNavigating = true;
@@ -367,11 +366,10 @@ function initNavigation() {
             navigateToTab(targetTabId);
         });
     });
+
     // Handle initial page load based on URL hash or default to 'home'
     const initialTabId = getActiveTabFromURL() || 'home';
-    if (window.app.state.navigation.activeTab !== initialTabId) {
-        navigateToTab(initialTabId);
-    }
+    navigateToTab(initialTabId);
     console.log(`Initial tab set to: ${initialTabId}`);
     window.app.state.navigation.activeTab = initialTabId; 
 }
@@ -544,35 +542,4 @@ function loadResourcesForTab(tabId) {
         default:
             console.log(`No specific load action defined for tab: ${tabId}`);
     }
-}
-
-function fetchAndRenderClusterResourceSummary() {
-    fetch(window.app.getRelativeUrl('/api/cluster_resource_summary'))
-        .then(res => res.json())
-        .then(data => {
-            if (data.error) throw new Error(data.error);
-            // Pods
-            document.getElementById('podsMainValue').textContent = `${data.pods.total_active} / ${data.pods.total_allowed}`;
-            document.getElementById('podsSubLabel').textContent = `${data.pods.percent_used}% used`;
-            document.getElementById('podsProgressBar').style.width = `${data.pods.percent_used}%`;
-            document.getElementById('podsProgressBar').setAttribute('aria-valuenow', data.pods.percent_used);
-            // vCPU
-            document.getElementById('vcpuMainValue').textContent = `${data.vcpu.allocated} / ${data.vcpu.total}`;
-            document.getElementById('vcpuSubLabel').textContent = `${data.vcpu.percent_used}% used`;
-            document.getElementById('vcpuProgressBar').style.width = `${data.vcpu.percent_used}%`;
-            document.getElementById('vcpuProgressBar').setAttribute('aria-valuenow', data.vcpu.percent_used);
-            // RAM
-            document.getElementById('ramMainValue').textContent = `${data.ram.allocated_gib} / ${data.ram.total_gib} GiB`;
-            document.getElementById('ramSubLabel').textContent = `${data.ram.percent_used}% used`;
-            document.getElementById('ramProgressBar').style.width = `${data.ram.percent_used}%`;
-            document.getElementById('ramProgressBar').setAttribute('aria-valuenow', data.ram.percent_used);
-            // GPU
-            document.getElementById('gpuMainValue').textContent = `${data.gpu.allocated} / ${data.gpu.total}`;
-            document.getElementById('gpuSubLabel').textContent = `${data.gpu.percent_used}% used`;
-            document.getElementById('gpuProgressBar').style.width = `${data.gpu.percent_used}%`;
-            document.getElementById('gpuProgressBar').setAttribute('aria-valuenow', data.gpu.percent_used);
-        })
-        .catch(err => {
-            console.error('Failed to fetch cluster resource summary:', err);
-        });
 } 
