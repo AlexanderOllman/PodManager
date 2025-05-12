@@ -921,61 +921,136 @@ def health_check():
 
 @app.route('/get_cluster_capacity', methods=['GET'])
 def get_cluster_capacity():
+    """
+    Get the total capacity and usage of the Kubernetes cluster
+    Returns CPU cores, memory in Gi, GPU count, pod limits, allocated/used resources, and overprovisioning info
+    """
     try:
-        # Get node information
-        node_info = subprocess.run(
-            "kubectl get nodes -o json",
-            shell=True, check=True, capture_output=True, text=True
-        )
-        nodes = json.loads(node_info.stdout)
+        # Overprovisioning ratio (default 1.5x)
+        overprov_ratio = float(os.environ.get('OVERPROVISION_RATIO', 1.5))
+
+        # Get nodes information
+        command = "kubectl get nodes -o json"
+        output = run_kubectl_command(command)
+        nodes_data = json.loads(output)
 
         total_cpu = 0
-        total_memory = 0  # in GB
+        total_memory_ki = 0
         total_gpu = 0
-        max_pods = 0
+        total_pods = 0
 
-        for node in nodes.get('items', []):
-            allocatable = node.get('status', {}).get('allocatable', {})
-            
-            # CPU cores
-            cpu_str = allocatable.get('cpu', '0')
-            if cpu_str.endswith('m'):  # millicores
+        for node in nodes_data.get("items", []):
+            allocatable = node.get("status", {}).get("allocatable", {})
+            # CPU
+            cpu_str = allocatable.get("cpu", "0")
+            if cpu_str.endswith('m'):
                 total_cpu += int(cpu_str[:-1]) / 1000
             else:
-                total_cpu += int(cpu_str)
-
-            # Memory in GB
-            memory_str = allocatable.get('memory', '0')
+                total_cpu += float(cpu_str)
+            # Memory
+            memory_str = allocatable.get("memory", "0")
             if memory_str.endswith('Ki'):
-                total_memory += int(memory_str[:-2]) / (1024 * 1024)
+                total_memory_ki += int(memory_str[:-2])
             elif memory_str.endswith('Mi'):
-                total_memory += int(memory_str[:-2]) / 1024
+                total_memory_ki += int(memory_str[:-2]) * 1024
             elif memory_str.endswith('Gi'):
-                total_memory += int(memory_str[:-2])
-            elif memory_str.endswith('Ti'):
-                total_memory += int(memory_str[:-2]) * 1024
+                total_memory_ki += int(memory_str[:-2]) * 1024 * 1024
+            # GPU
+            gpu_count = allocatable.get("nvidia.com/gpu", 0)
+            if gpu_count:
+                total_gpu += int(gpu_count)
+            generic_gpu = allocatable.get("gpu", 0)
+            if generic_gpu:
+                total_gpu += int(generic_gpu)
+            # Pods
+            pods_str = allocatable.get("pods", "0")
+            total_pods += int(pods_str)
 
-            # GPUs
-            gpu_str = allocatable.get('nvidia.com/gpu', '0')
-            total_gpu += int(gpu_str)
+        total_memory_gi = round(total_memory_ki / (1024 * 1024), 1)
 
-            # Max pods per node
-            pods_str = allocatable.get('pods', '0')
-            max_pods += int(pods_str)
+        # Overprovisioned values
+        overprov_cpu = round(total_cpu * overprov_ratio, 1)
+        overprov_memory_gi = round(total_memory_gi * overprov_ratio, 1)
 
+        # Get all pods to sum up allocated resources and running pods
+        pod_command = "kubectl get pods --all-namespaces -o json"
+        pod_output = run_kubectl_command(pod_command)
+        pods_data = json.loads(pod_output)
+        allocated_cpu = 0.0
+        allocated_memory_mi = 0.0
+        allocated_gpu = 0
+        running_pods = 0
+        for pod in pods_data.get('items', []):
+            # Count running pods
+            if pod.get('status', {}).get('phase', '').lower() == 'running':
+                running_pods += 1
+            # Sum resource requests for all containers
+            for container in pod.get('spec', {}).get('containers', []):
+                requests = container.get('resources', {}).get('requests', {})
+                # CPU
+                cpu_req = requests.get('cpu')
+                if cpu_req:
+                    if str(cpu_req).endswith('m'):
+                        allocated_cpu += float(str(cpu_req)[:-1]) / 1000
+                    else:
+                        try:
+                            allocated_cpu += float(cpu_req)
+                        except Exception:
+                            pass
+                # Memory
+                mem_req = requests.get('memory')
+                if mem_req:
+                    mem_str = str(mem_req)
+                    if mem_str.endswith('Ki'):
+                        allocated_memory_mi += int(mem_str[:-2]) / 1024
+                    elif mem_str.endswith('Mi'):
+                        allocated_memory_mi += int(mem_str[:-2])
+                    elif mem_str.endswith('Gi'):
+                        allocated_memory_mi += int(mem_str[:-2]) * 1024
+                    else:
+                        try:
+                            allocated_memory_mi += float(mem_str) / (1024 * 1024)
+                        except Exception:
+                            pass
+                # GPU
+                gpu_req = requests.get('nvidia.com/gpu') or requests.get('gpu')
+                if gpu_req:
+                    try:
+                        allocated_gpu += int(gpu_req)
+                    except Exception:
+                        pass
+        allocated_memory_gi = round(allocated_memory_mi / 1024, 2)
+        # Percentages
+        cpu_percent = round((allocated_cpu / total_cpu) * 100, 1) if total_cpu else 0
+        memory_percent = round((allocated_memory_gi / total_memory_gi) * 100, 1) if total_memory_gi else 0
+        gpu_percent = round((allocated_gpu / total_gpu) * 100, 1) if total_gpu else 0
+        pods_percent = round((running_pods / total_pods) * 100, 1) if total_pods else 0
         return jsonify({
-            'cpu': round(total_cpu, 1),
-            'memory': round(total_memory, 1),
-            'gpu': total_gpu,
-            'maxPods': max_pods
+            "cpu": round(total_cpu, 1),
+            "cpu_allocated": round(allocated_cpu, 2),
+            "cpu_overprovisioned": overprov_cpu,
+            "cpu_percent": cpu_percent,
+            "memory": total_memory_gi,
+            "memory_allocated": allocated_memory_gi,
+            "memory_overprovisioned": overprov_memory_gi,
+            "memory_percent": memory_percent,
+            "gpu": total_gpu,
+            "gpu_allocated": allocated_gpu,
+            "gpu_percent": gpu_percent,
+            "pods": total_pods,
+            "pods_running": running_pods,
+            "pods_percent": pods_percent
         })
-
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error getting cluster capacity: {e.stderr}")
-        return jsonify({'error': 'Failed to get cluster capacity'}), 500
     except Exception as e:
-        logger.error(f"Unexpected error getting cluster capacity: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        app.logger.error(f"Error getting cluster capacity: {str(e)}")
+        return jsonify({
+            "cpu": 256,  # Default fallback
+            "memory": 1024,
+            "gpu": 0,
+            "pods": 0,
+            "pods_running": 0,
+            "error": str(e)
+        }), 500
 
 @socketio.on('connect')
 def handle_connect():
