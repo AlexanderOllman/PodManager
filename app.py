@@ -172,11 +172,11 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
     logger.info(f"[{session_type} sid:{sid}] Starting PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
     max_read_bytes = 1024 * 20 # Read up to 20KB at a time
     try:
-        while True:
+    while True:
             socketio.sleep(0.01) # Small sleep to prevent tight loop and allow other greenlets
             if sid not in active_pty_sessions or active_pty_sessions.get(sid, {}).get('fd') != fd:
                 logger.info(f"[{session_type} sid:{sid}] Session terminated or FD changed, stopping read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
-                break
+            break
             
             # Check if fd is readable without blocking
             ready_to_read, _, _ = select.select([fd], [], [], 0) # Timeout of 0 makes it non-blocking
@@ -188,7 +188,7 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
                     logger.info(f"[{session_type} sid:{sid}] OSError on os.read() for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}. Assuming PTY closed.")
                     break # Exit loop, PTY likely closed
 
-                if output:
+        if output:
                     decoded_output = output.decode('utf-8', errors='replace')
                     logger.debug(f"[{session_type} sid:{sid}] PTY Read {len(decoded_output)} chars for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
                     socketio.emit(output_event_name,
@@ -668,7 +668,7 @@ def api_pod_details():
         
         # This route definition will be changed below to match the JS fetch URL.
         # The code below assumes namespace and pod_name are correctly populated.
-
+            
         if not namespace or not pod_name:
              # Fallback or error if not extracted from path by updated route pattern
              # This part will be simplified once the route pattern is updated.
@@ -922,8 +922,8 @@ def health_check():
 @app.route('/get_cluster_capacity', methods=['GET'])
 def get_cluster_capacity():
     """
-    Get the total capacity of the Kubernetes cluster
-    Returns CPU cores, memory in Gi, and GPU count
+    Get the total capacity and current usage of the Kubernetes cluster
+    Returns total/used/max for pods, vCPU, RAM, and GPU
     """
     try:
         # Get nodes information
@@ -931,9 +931,10 @@ def get_cluster_capacity():
         output = run_kubectl_command(command)
         nodes_data = json.loads(output)
         
-        total_cpu = 0
+        total_vcpu = 0
         total_memory_ki = 0
         total_gpu = 0
+        max_pods = 0
         
         # Sum up allocatable resources from all nodes
         for node in nodes_data.get("items", []):
@@ -942,10 +943,9 @@ def get_cluster_capacity():
             # CPU - convert from Kubernetes format (can be in cores or millicores)
             cpu_str = allocatable.get("cpu", "0")
             if cpu_str.endswith('m'):
-                # Convert millicores to cores
-                total_cpu += int(cpu_str[:-1]) / 1000
+                total_vcpu += int(cpu_str[:-1]) / 1000
             else:
-                total_cpu += int(cpu_str)
+                total_vcpu += int(cpu_str)
             
             # Memory - convert from Kubernetes format (usually in Ki)
             memory_str = allocatable.get("memory", "0")
@@ -960,26 +960,94 @@ def get_cluster_capacity():
             gpu_count = allocatable.get("nvidia.com/gpu", 0)
             if gpu_count:
                 total_gpu += int(gpu_count)
-            
-            # Also check for generic 'gpu' resource
             generic_gpu = allocatable.get("gpu", 0)
             if generic_gpu:
                 total_gpu += int(generic_gpu)
         
-        # Convert memory to Gi for easier display
-        total_memory_gi = round(total_memory_ki / (1024 * 1024), 1)
+            # Pods
+            pods_str = allocatable.get("pods", "0")
+            max_pods += int(pods_str)
+        
+        total_ram_gi = round(total_memory_ki / (1024 * 1024), 1)
+        
+        # Get all pods for usage calculation
+        pod_output = run_kubectl_command("kubectl get pods --all-namespaces -o json")
+        pods_data = json.loads(pod_output)
+        active_pods = 0
+        used_vcpu = 0
+        used_ram_mi = 0
+        used_gpu = 0
+        
+        for pod in pods_data.get("items", []):
+            # Only count non-terminated pods
+            phase = pod.get("status", {}).get("phase", "Unknown")
+            if phase not in ["Succeeded", "Failed", "Unknown"]:
+                active_pods += 1
+            # Sum resource requests for all containers in all pods (regardless of phase)
+            for container in pod.get("spec", {}).get("containers", []):
+                requests = container.get("resources", {}).get("requests", {})
+                # vCPU
+                cpu_req = requests.get("cpu")
+                if cpu_req:
+                    if str(cpu_req).endswith('m'):
+                        used_vcpu += float(str(cpu_req)[:-1]) / 1000
+                    else:
+                        try:
+                            used_vcpu += float(cpu_req)
+                        except ValueError:
+                            pass
+                # RAM
+                mem_req = requests.get("memory")
+                if mem_req:
+                    if str(mem_req).endswith('Mi'):
+                        used_ram_mi += float(str(mem_req)[:-2])
+                    elif str(mem_req).endswith('Gi'):
+                        used_ram_mi += float(str(mem_req)[:-2]) * 1024
+                    elif str(mem_req).endswith('Ki'):
+                        used_ram_mi += float(str(mem_req)[:-2]) / 1024
+                    else:
+                        try:
+                            used_ram_mi += float(mem_req) / (1024 * 1024)
+                        except ValueError:
+                            pass
+                # GPU
+                gpu_req = requests.get("nvidia.com/gpu") or requests.get("gpu")
+                if gpu_req:
+                    try:
+                        used_gpu += float(gpu_req)
+                    except ValueError:
+                        pass
+        used_ram_gi = round(used_ram_mi / 1024, 2)
         
         return jsonify({
-            "cpu": round(total_cpu, 1),
-            "memory": total_memory_gi,
-            "gpu": total_gpu
+            "max_pods": max_pods,
+            "active_pods": active_pods,
+            "pods_percent": round((active_pods / max_pods * 100) if max_pods else 0, 1),
+            "total_vcpu": round(total_vcpu, 1),
+            "used_vcpu": round(used_vcpu, 2),
+            "vcpu_percent": round((used_vcpu / total_vcpu * 100) if total_vcpu else 0, 1),
+            "total_ram": total_ram_gi,
+            "used_ram": used_ram_gi,
+            "ram_percent": round((used_ram_gi / total_ram_gi * 100) if total_ram_gi else 0, 1),
+            "total_gpu": total_gpu,
+            "used_gpu": int(used_gpu),
+            "gpu_percent": round((used_gpu / total_gpu * 100) if total_gpu else 0, 1)
         })
     except Exception as e:
         app.logger.error(f"Error getting cluster capacity: {str(e)}")
         return jsonify({
-            "cpu": 256,  # Default fallback
-            "memory": 1024,
-            "gpu": 0,
+            "max_pods": 0,
+            "active_pods": 0,
+            "pods_percent": 0,
+            "total_vcpu": 256,
+            "used_vcpu": 0,
+            "vcpu_percent": 0,
+            "total_ram": 1024,
+            "used_ram": 0,
+            "ram_percent": 0,
+            "total_gpu": 0,
+            "used_gpu": 0,
+            "gpu_percent": 0,
             "error": str(e)
         }), 500
 
@@ -1010,7 +1078,7 @@ def _cleanup_pty_session(sid, reason_str, session_type_filter=None):
         if session_type_filter and session_to_clean.get('type') != session_type_filter:
             logger.info(f"[{session_to_clean.get('type', 'unknown_pty')} sid:{sid}] Cleanup skipped for session type {session_to_clean.get('type')} due to filter '{session_type_filter}' during {reason_str}.")
             return
-
+        
         active_pty_sessions.pop(sid, None) # Now pop it
         session_type = session_to_clean.get('type', 'unknown_pty')
         log_prefix = f"[{session_type} sid:{sid}]"
@@ -1062,7 +1130,7 @@ def handle_pod_exec_input(data):
             os.write(session['fd'], input_data.encode('utf-8'))
         except OSError as e:
             logger.error(f"[pod_exec sid:{sid}] OSError writing to PTY for {session['namespace']}/{session['pod_name']}: {e}")
-        except Exception as e:
+    except Exception as e:
             logger.error(f"[pod_exec sid:{sid}] Exception writing to PTY: {e}")
     elif not session:
         logger.warning(f"[pod_exec sid:{sid}] Input received but no active session found.")
@@ -1098,7 +1166,7 @@ def handle_control_plane_cli_input(data):
             os.write(session['fd'], input_data.encode('utf-8'))
         except OSError as e:
             logger.error(f"[ctrl_cli sid:{sid}] OSError writing to PTY: {e}")
-        except Exception as e:
+    except Exception as e:
             logger.error(f"[ctrl_cli sid:{sid}] Exception writing to PTY: {e}")
     elif not session:
         logger.warning(f"[ctrl_cli sid:{sid}] Input received but no active session found.")
@@ -1124,9 +1192,9 @@ def handle_pty_resize(data):
             if rows > 0 and cols > 0 :
                  logger.info(f"[pty_resize sid:{sid}] Resizing PTY for {session.get('type')} session to {rows}x{cols}")
                  set_pty_size(session['fd'], rows, cols)
-            else:
+        else:
                 logger.warning(f"[pty_resize sid:{sid}] Invalid rows/cols for resize: {data}")
-        except Exception as e:
+    except Exception as e:
             logger.error(f"[pty_resize sid:{sid}] Error resizing PTY: {e}")
     else:
         logger.warning(f"[pty_resize sid:{sid}] Resize event received but no active session.")
