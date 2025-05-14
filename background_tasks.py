@@ -10,10 +10,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class KubernetesDataUpdater:
-    def __init__(self, update_interval: int = 300):  # 5 minutes default
+    def __init__(self, update_interval: int = 300, env_metrics_collector_func=None):  # 5 minutes default
         self.update_interval = update_interval
         self.thread = None
         self.running = False
+        self.env_metrics_collector = env_metrics_collector_func
 
     def run_kubectl_command(self, command: str) -> dict:
         """Execute kubectl command and return JSON output."""
@@ -129,6 +130,9 @@ class KubernetesDataUpdater:
         while self.running:
             try:
                 self._update_resources()
+                if self.env_metrics_collector:
+                    logger.info("Calling environment metrics collector from background task...")
+                    self.env_metrics_collector() # Call the passed-in function
             except Exception as e:
                 logger.error(f"Error in update loop: {str(e)}")
             time.sleep(self.update_interval)
@@ -139,6 +143,11 @@ class KubernetesDataUpdater:
         if self.thread:
             self.thread.join()
             logger.info("Background updater stopped")
+
+    def set_env_metrics_collector(self, collector_func):
+        """Allows app.py to set the metrics collector function after initialization."""
+        self.env_metrics_collector = collector_func
+        logger.info("Environment metrics collector function has been set for background updater.")
 
 # Create a global instance
 updater = KubernetesDataUpdater() 

@@ -55,6 +55,14 @@ socketio = SocketIO(
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
 
+# Initialize the updater from background_tasks
+# (updater instance is created in background_tasks.py and imported)
+if updater and hasattr(updater, 'set_env_metrics_collector'):
+    updater.set_env_metrics_collector(_collect_and_store_environment_metrics)
+    logging.info("Environment metrics collector has been set for the background updater.")
+else:
+    logging.warning("Updater not available or does not have set_env_metrics_collector method.")
+
 # Start the background updater
 updater.start()
 
@@ -1506,43 +1514,14 @@ def get_environment_metrics_endpoint():
         logging.error(f"Error in /api/environment_metrics endpoint: {str(e)}", exc_info=True)
         return jsonify({"error": "An error occurred while fetching environment metrics."}), 500
 
-# Ensure this is defined before the __main__ block if you have one,
-# or at a suitable place after app initialization.
-# This will run once when the first request comes in if using before_first_request,
-# or on app start if structured differently.
-
-# Using with app.app_context() for initialization tasks is generally preferred
-# for newer Flask versions if you need access to app config or extensions.
-# However, for a one-off startup task like this, a simple call might suffice
-# if `db` is globally initialized and doesn't strictly need app context *during its own initialization*.
-
-# Call to collect metrics on application startup.
-# This needs to be placed carefully depending on your app structure.
-# If app is defined globally:
-# with app.app_context(): # Ensures application context is active
-#     _collect_and_store_environment_metrics()
-# The above `with app.app_context()` is good if `_collect_and_store_environment_metrics` or `db` needs it.
-# Given `db` is a global instance from `database.py`, it might not strictly need app context for this call.
-
-# Deferring the startup call to after the app object is fully defined. 
-# A cleaner way is often an app factory or explicit init calls. 
-# For now, let's assume this will be called by the WSGI server after loading app.py.
-# A simple (though less ideal for complex apps) way to try and run it once:
-_COLLECTED_ON_STARTUP = False
-if not _COLLECTED_ON_STARTUP:
-    try:
-        # Ensuring app context for the startup metric collection
-        # Need to make sure 'app' is the Flask app instance
-        with app.app_context():
-             _collect_and_store_environment_metrics()
-        _COLLECTED_ON_STARTUP = True
-        logging.info("Initial collection of environment metrics completed on WSGI server startup.")
-    except Exception as e:
-        logging.error(f"Error during initial collection of environment metrics on WSGI startup: {e}", exc_info=True)
-
 if __name__ == '__main__':
     # This block runs when you execute `python app.py` directly.
     # It's common to run development server here.
+    # Set the collector for the updater instance when running directly
+    if updater and hasattr(updater, 'set_env_metrics_collector'):
+        updater.set_env_metrics_collector(_collect_and_store_environment_metrics)
+    
     with app.app_context(): # Ensures logs etc. within this are tied to app context
-        _collect_and_store_environment_metrics() # Collect once on direct run startup
+        # Optionally, collect once on direct run startup, after updater is configured
+        _collect_and_store_environment_metrics() 
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)
