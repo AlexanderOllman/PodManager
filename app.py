@@ -19,7 +19,7 @@ import select
 import struct
 import fcntl
 import termios
-from kubernetes import client, config
+import re # For parsing resource units
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -920,125 +920,69 @@ def health_check():
         'message': 'Application is running'
     })
 
-@app.route('/api/cluster/resources/summary', methods=['GET'])
-def get_cluster_resources_summary():
-    """Fetch cluster resource summary including allocatable capacity and current utilization."""
+@app.route('/get_cluster_capacity', methods=['GET'])
+def get_cluster_capacity():
+    """
+    Get the total capacity of the Kubernetes cluster
+    Returns CPU cores, memory in Gi, and GPU count
+    """
     try:
-        # Ensure Kubernetes client is configured
-        try:
-            config.load_incluster_config()
-            logger.info("Loaded in-cluster Kubernetes config for resource summary.")
-        except config.ConfigException:
-            try:
-                config.load_kube_config()
-                logger.info("Loaded local kubeconfig for resource summary.")
-            except config.ConfigException:
-                logger.error("Could not configure Kubernetes client for resource summary.")
-                return jsonify(error="Could not configure Kubernetes client"), 500
-
-        v1 = client.CoreV1Api()
-        nodes = v1.list_node()
-
-        # --- Calculate Allocatable Capacity --- 
-        total_cpu_cores = 0
-        total_memory_bytes = 0
-        total_pod_capacity = 0
-        total_gpus = 0
-        # gpu_types = {} # Optional: Track different GPU types if needed
-
-        for node in nodes.items:
-            allocatable = node.status.allocatable
-            if allocatable:
-                # CPU
-                cpu_str = allocatable.get('cpu', '0')
-                total_cpu_cores += parse_resource_quantity(cpu_str)
-
-                # Memory
-                memory_str = allocatable.get('memory', '0')
-                total_memory_bytes += parse_resource_quantity(memory_str)
-                
-                # Pods
-                pod_str = allocatable.get('pods', '0')
-                total_pod_capacity += int(pod_str) # Pod capacity is usually a whole number
-
-                # GPUs (assuming standard nvidia.com/gpu label)
-                # Iterate through all keys to catch different GPU types (e.g., nvidia.com/a100, nvidia.com/t4)
-                for key, value in allocatable.items():
-                     if key.startswith('nvidia.com/gpu') or 'gpu' in key.lower(): # Basic check, adjust if needed
-                        gpu_count = int(value) 
-                        total_gpus += gpu_count
-                        # Optional: track types
-                        # gpu_types[key] = gpu_types.get(key, 0) + gpu_count
-
-        # --- Calculate Utilized Resources (Requests & Limits from Running Pods) ---
-        pods = v1.list_pod_for_all_namespaces(watch=False)
+        # Get nodes information
+        command = "kubectl get nodes -o json"
+        output = run_kubectl_command(command)
+        nodes_data = json.loads(output)
         
-        total_existing_pods = len(pods.items) # Count all pods fetched
-        total_running_pods = 0
-        # We could also count inactive/pending etc. if needed
-        # total_inactive_allocated_pods = 0 
-
-        total_cpu_requests = 0.0
-        total_memory_requests_bytes = 0
-        total_gpu_requests = 0
-        total_cpu_limits = 0.0
-        total_memory_limits_bytes = 0
-        total_gpu_limits = 0
-
-        for pod in pods.items:
-            if pod.status and pod.status.phase == 'Running':
-                total_running_pods += 1
-                if pod.spec and pod.spec.containers:
-                    for container in pod.spec.containers:
-                        # Requests
-                        if container.resources and container.resources.requests:
-                            req = container.resources.requests
-                            total_cpu_requests += parse_resource_quantity(req.get('cpu', '0'))
-                            total_memory_requests_bytes += parse_resource_quantity(req.get('memory', '0'))
-                            # Sum all GPU types requested
-                            for key, value in req.items():
-                                if key.startswith('nvidia.com/gpu') or 'gpu' in key.lower():
-                                     total_gpu_requests += int(value) # GPUs are typically whole numbers in requests
-                        
-                        # Limits
-                        if container.resources and container.resources.limits:
-                            lim = container.resources.limits
-                            total_cpu_limits += parse_resource_quantity(lim.get('cpu', '0'))
-                            total_memory_limits_bytes += parse_resource_quantity(lim.get('memory', '0'))
-                             # Sum all GPU types limited
-                            for key, value in lim.items():
-                                if key.startswith('nvidia.com/gpu') or 'gpu' in key.lower():
-                                     total_gpu_limits += int(value)
-
-        # --- Prepare Summary Data --- 
-        resource_summary = {
-            'allocatable': {
-                # 'pods': total_pod_capacity, # Remove - not used for card
-                'cpu_cores': round(total_cpu_cores, 2),
-                'memory_bytes': int(total_memory_bytes),
-                'gpu': total_gpus
-                # 'gpu_types': gpu_types # Optional
-            },
-            'utilized': {
-                'total_existing_pods': total_existing_pods, # Add total count
-                'running_pods': total_running_pods,
-                'cpu_requests_cores': round(total_cpu_requests, 2),
-                'memory_requests_bytes': int(total_memory_requests_bytes),
-                'gpu_requests': total_gpu_requests
-            },
-            'limits': {
-                'cpu_limits_cores': round(total_cpu_limits, 2),
-                'memory_limits_bytes': int(total_memory_limits_bytes),
-                'gpu_limits': total_gpu_limits
-            }
-        }
-
-        logger.info(f"Calculated Cluster Resource Summary: {resource_summary}")
-        return jsonify(resource_summary)
-
+        total_cpu = 0
+        total_memory_ki = 0
+        total_gpu = 0
+        
+        # Sum up allocatable resources from all nodes
+        for node in nodes_data.get("items", []):
+            allocatable = node.get("status", {}).get("allocatable", {})
+            
+            # CPU - convert from Kubernetes format (can be in cores or millicores)
+            cpu_str = allocatable.get("cpu", "0")
+            if cpu_str.endswith('m'):
+                # Convert millicores to cores
+                total_cpu += int(cpu_str[:-1]) / 1000
+            else:
+                total_cpu += int(cpu_str)
+            
+            # Memory - convert from Kubernetes format (usually in Ki)
+            memory_str = allocatable.get("memory", "0")
+            if memory_str.endswith('Ki'):
+                total_memory_ki += int(memory_str[:-2])
+            elif memory_str.endswith('Mi'):
+                total_memory_ki += int(memory_str[:-2]) * 1024
+            elif memory_str.endswith('Gi'):
+                total_memory_ki += int(memory_str[:-2]) * 1024 * 1024
+            
+            # GPU - look for NVIDIA GPUs or any custom GPU resource
+            gpu_count = allocatable.get("nvidia.com/gpu", 0)
+            if gpu_count:
+                total_gpu += int(gpu_count)
+            
+            # Also check for generic 'gpu' resource
+            generic_gpu = allocatable.get("gpu", 0)
+            if generic_gpu:
+                total_gpu += int(generic_gpu)
+        
+        # Convert memory to Gi for easier display
+        total_memory_gi = round(total_memory_ki / (1024 * 1024), 1)
+        
+        return jsonify({
+            "cpu": round(total_cpu, 1),
+            "memory": total_memory_gi,
+            "gpu": total_gpu
+        })
     except Exception as e:
-        logger.error(f"Error fetching cluster resource summary: {e}", exc_info=True)
-        return jsonify(error=f"Failed to get cluster resource summary: {str(e)}"), 500
+        app.logger.error(f"Error getting cluster capacity: {str(e)}")
+        return jsonify({
+            "cpu": 256,  # Default fallback
+            "memory": 1024,
+            "gpu": 0,
+            "error": str(e)
+        }), 500
 
 @socketio.on('connect')
 def handle_connect():
@@ -1298,45 +1242,164 @@ def refresh_database():
             'error': str(e)
         }), 500
 
-# --- Helper function needed ---
-def parse_resource_quantity(quantity_str):
-    """Parses Kubernetes resource quantity string (e.g., '10Gi', '500m', '100k') into a base unit (bytes or cores)."""
-    # Basic implementation, needs to be robust
+def parse_cpu_to_cores(cpu_str):
+    """Converts Kubernetes CPU string to float in cores (e.g., \"100m\" -> 0.1, \"1\" -> 1.0)."""
+    if not cpu_str:
+        return 0.0
+    if isinstance(cpu_str, (int, float)):
+        return float(cpu_str)
+    if cpu_str.endswith('m'): # millicores
+        return float(cpu_str[:-1]) / 1000
+    if cpu_str.endswith('n'): # nanocores (less common for requests/limits, but good to have)
+        return float(cpu_str[:-1]) / 1_000_000_000
     try:
-        quantity_str = str(quantity_str).strip()
-        # Handle memory units
-        if quantity_str.endswith('Gi'):
-            return int(quantity_str[:-2]) * (1024**3)
-        elif quantity_str.endswith('Mi'):
-            return int(quantity_str[:-2]) * (1024**2)
-        elif quantity_str.endswith('Ki'):
-            return int(quantity_str[:-2]) * 1024
-        elif quantity_str.endswith('G'): # G = 10^9 bytes
-            return int(quantity_str[:-1]) * (1000**3)
-        elif quantity_str.endswith('M'): # M = 10^6 bytes
-            return int(quantity_str[:-1]) * (1000**2)
-        elif quantity_str.endswith('K'): # K = 10^3 bytes
-            return int(quantity_str[:-1]) * 1000
-        # Handle CPU units
-        elif quantity_str.endswith('m'): # CPU millicores
-            # Return as float for direct comparison/summation with core values
-            return int(quantity_str[:-1]) / 1000.0
-        # Handle base units / other Kubernetes units if needed (T, P, E, etc.)
-        elif quantity_str.isdigit(): # Assuming base unit (bytes for memory, cores for CPU based on context)
-             # Returning as float allows summation for both CPU (cores) and memory (bytes)
-             # Convert memory back to int if strict typing needed later
-             return float(quantity_str)
-        else: # Add other suffixes like Ti, Pi, E, P, T, G, M, k etc. if needed
-             logger.warning(f"Unsupported resource quantity format: {quantity_str}")
-             return 0
+        return float(cpu_str) # assume cores if no unit
     except ValueError:
-        logger.error(f"ValueError parsing resource quantity: {quantity_str}")
+        logger.warning(f"Could not parse CPU string: {cpu_str}")
+        return 0.0
+
+def parse_memory_to_bytes(mem_str):
+    """Converts Kubernetes memory string to bytes (e.g., \"1Gi\" -> 1024*1024*1024, \"500Mi\" -> 500*1024*1024)."""
+    if not mem_str:
         return 0
-    except Exception as e:
-        logger.error(f"Unexpected error parsing resource quantity '{quantity_str}': {e}")
+    if isinstance(mem_str, (int, float)): # Assuming it's already in a numeric form, potentially bytes
+        return int(mem_str)
+    
+    multipliers = {
+        'E': 1000**6, 'P': 1000**5, 'T': 1000**4, 'G': 1000**3, 'M': 1000**2, 'K': 1000**1,
+        'Ei': 1024**6, 'Pi': 1024**5, 'Ti': 1024**4, 'Gi': 1024**3, 'Mi': 1024**2, 'Ki': 1024**1,
+    }
+    mem_str = str(mem_str)
+    for suffix, multiplier in multipliers.items():
+        if mem_str.endswith(suffix):
+            try:
+                return int(float(mem_str[:-len(suffix)]) * multiplier)
+            except ValueError:
+                logger.warning(f"Could not parse memory string: {mem_str}")
+                return 0
+    try:
+        return int(mem_str) # assume bytes if no unit
+    except ValueError:
+        logger.warning(f"Could not parse memory string (no unit, not int): {mem_str}")
         return 0
 
-# --- End Helper Function ---
+@app.route('/api/cluster/resource_summary', methods=['GET'])
+def get_cluster_resource_summary():
+    logger.info("Fetching cluster resource summary...")
+    summary = {
+        'pods': {'total_allocatable': 0, 'current_running': 0, 'percentage_used': 0},
+        'cpu': {'total_allocatable_cores': 0, 'total_capacity_cores': 0, 'current_utilized_cores': 0, 'percentage_used': 0},
+        'memory': {'total_allocatable_bytes': 0, 'total_capacity_bytes': 0, 'current_utilized_bytes': 0, 'percentage_used': 0},
+        'gpu': {'total_allocatable': 0, 'current_utilized': 0, 'percentage_used': 0}
+    }
+    # Define the GPU resource key. This might need to be configurable.
+    GPU_RESOURCE_KEY = 'nvidia.com/gpu' 
+
+    try:
+        # 1. Get Node Allocatable & Capacity Resources
+        node_data_str = run_kubectl_command("kubectl get nodes -o json")
+        if "Error:" in node_data_str:
+            logger.error(f"Error fetching node data: {node_data_str}")
+            return jsonify(error=f"Failed to fetch node data: {node_data_str}"), 500
+        
+        node_data = json.loads(node_data_str)
+        total_node_cpu_allocatable = 0
+        total_node_cpu_capacity = 0
+        total_node_mem_allocatable = 0
+        total_node_mem_capacity = 0
+        total_node_gpu_allocatable = 0
+        # total_node_gpu_capacity = 0 # Capacity for GPUs is usually the same as allocatable from nodes
+
+        for node in node_data.get('items', []):
+            allocatable = node.get('status', {}).get('allocatable', {})
+            capacity = node.get('status', {}).get('capacity', {})
+            
+            total_node_cpu_allocatable += parse_cpu_to_cores(allocatable.get('cpu', '0'))
+            total_node_cpu_capacity += parse_cpu_to_cores(capacity.get('cpu', '0'))
+            total_node_mem_allocatable += parse_memory_to_bytes(allocatable.get('memory', '0'))
+            total_node_mem_capacity += parse_memory_to_bytes(capacity.get('memory', '0'))
+            total_node_gpu_allocatable += int(allocatable.get(GPU_RESOURCE_KEY, '0'))
+            # total_node_gpu_capacity += int(capacity.get(GPU_RESOURCE_KEY, '0'))
+
+
+        summary['cpu']['total_allocatable_cores'] = total_node_cpu_allocatable
+        summary['cpu']['total_capacity_cores'] = total_node_cpu_capacity # For overprovisioning display
+        summary['memory']['total_allocatable_bytes'] = total_node_mem_allocatable
+        summary['memory']['total_capacity_bytes'] = total_node_mem_capacity # For overprovisioning display
+        summary['gpu']['total_allocatable'] = total_node_gpu_allocatable
+        
+        # For pods, 'allocatable' is often considered the pod capacity of the cluster.
+        # Kubernetes itself doesn't expose a single "max pods" for the cluster directly in nodes,
+        # but node's pod capacity is summed.
+        # For simplicity, we'll use the pod limit on nodes if available.
+        # A more accurate "total pods allowable" might involve schedulability checks or cluster-level config.
+        # For now, let's estimate from node capacity, if the `pods` field is present.
+        # If not, this remains 0, and the frontend should handle it.
+        node_pod_capacity_sum = 0
+        for node in node_data.get('items', []):
+            node_pod_capacity_sum += int(node.get('status', {}).get('capacity', {}).get('pods', '0'))
+        summary['pods']['total_allocatable'] = node_pod_capacity_sum if node_pod_capacity_sum > 0 else 250 # Fallback if not reported well
+
+
+        # 2. Get Pod Utilized Resources (from database)
+        # Assuming db.get_resources('pods') returns all pods with their specs
+        all_pods_from_db = db.get_resources('pods') # This might need adjustment based on actual db schema and function
+        
+        running_pods_count = 0
+        current_cpu_requests_sum = 0
+        current_mem_requests_sum = 0
+        current_gpu_limits_sum = 0 # GPUs are typically requested via limits
+
+        for pod_db_entry in all_pods_from_db:
+            # The structure of pod_db_entry depends on what db.get_resources('pods') returns.
+            # We need access to pod status and container resource requests/limits.
+            # Example: pod_db_entry might be a dict from 'kubectl get pod -o json' stored in DB.
+            
+            status_phase = pod_db_entry.get('status', {}).get('phase', '').lower()
+            if status_phase == 'running':
+                running_pods_count += 1
+
+            # Summing requests from all containers in the pod
+            containers = pod_db_entry.get('spec', {}).get('containers', [])
+            init_containers = pod_db_entry.get('spec', {}).get('initContainers', []) # Also consider init containers
+
+            for container_list in [containers, init_containers]:
+                for container in container_list:
+                    resources = container.get('resources', {})
+                    requests = resources.get('requests', {})
+                    limits = resources.get('limits', {}) # GPU is usually in limits
+                    
+                    current_cpu_requests_sum += parse_cpu_to_cores(requests.get('cpu', '0'))
+                    current_mem_requests_sum += parse_memory_to_bytes(requests.get('memory', '0'))
+                    current_gpu_limits_sum += int(limits.get(GPU_RESOURCE_KEY, '0'))
+        
+        summary['pods']['current_running'] = running_pods_count
+        summary['cpu']['current_utilized_cores'] = current_cpu_requests_sum
+        summary['memory']['current_utilized_bytes'] = current_mem_requests_sum
+        summary['gpu']['current_utilized'] = current_gpu_limits_sum
+
+        # 3. Calculate Percentages
+        if summary['pods']['total_allocatable'] > 0:
+            summary['pods']['percentage_used'] = round((summary['pods']['current_running'] / summary['pods']['total_allocatable']) * 100, 1)
+        
+        if summary['cpu']['total_allocatable_cores'] > 0:
+            summary['cpu']['percentage_used'] = round((summary['cpu']['current_utilized_cores'] / summary['cpu']['total_allocatable_cores']) * 100, 1)
+        
+        if summary['memory']['total_allocatable_bytes'] > 0:
+            summary['memory']['percentage_used'] = round((summary['memory']['current_utilized_bytes'] / summary['memory']['total_allocatable_bytes']) * 100, 1)
+
+        if summary['gpu']['total_allocatable'] > 0:
+            summary['gpu']['percentage_used'] = round((summary['gpu']['current_utilized'] / summary['gpu']['total_allocatable']) * 100, 1)
+
+        logger.info(f"Cluster resource summary generated: {summary}")
+        return jsonify(summary)
+
+    except json.JSONDecodeError as e:
+        logger.error(f"JSONDecodeError fetching resource summary: {e}. Data: {node_data_str[:500]}") # Log first 500 chars
+        return jsonify(error=f"Failed to parse Kubernetes API response: {e}"), 500
+    except Exception as e:
+        logger.error(f"Exception fetching resource summary: {e}", exc_info=True)
+        return jsonify(error=f"An unexpected error occurred: {e}"), 500
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)

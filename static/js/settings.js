@@ -197,4 +197,50 @@ function clearRefreshLog() {
     if (refreshLog) {
         refreshLog.innerHTML = '<div class="text-muted fst-italic">-- Log appears here during refresh --</div>';
     }
-} 
+}
+
+// Manually refreshes the database by calling the backend API
+function refreshDatabase() {
+    const statusDiv = document.getElementById('databaseRefreshStatus');
+    if (!statusDiv) {
+        console.error('databaseRefreshStatus element not found.');
+        Swal.fire('UI Error', 'Could not find status display element.', 'error');
+        return;
+    }
+
+    statusDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Refreshing database... Please wait.</div>';
+    statusDiv.style.display = 'block';
+
+    const url = window.app.getRelativeUrl('/api/refresh-database');
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            statusDiv.innerHTML = `<div class="alert alert-success"><i class="fas fa-check-circle"></i> ${data.message || 'Database refreshed successfully!'}</div>`;
+            // Dispatch event for other components to listen to (e.g., dashboard cards)
+            document.dispatchEvent(new CustomEvent('databaserefreshcomplete'));
+            console.log('Dispatched databaserefreshcomplete event.');
+        } else {
+            statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Error: ${data.error || 'Unknown error refreshing database.'}</div>`;
+        }
+    })
+    .catch(error => {
+        console.error('Error calling refreshDatabase API:', error);
+        statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Network or server error: ${error.message}</div>`;
+    })
+    .finally(() => {
+        // Optionally hide the status message after a few seconds
+        setTimeout(() => {
+            if (statusDiv) statusDiv.style.display = 'none';
+        }, 5000); 
+    });
+}
+
+// Make sure to call checkGitAvailability if it's relevant for the settings page initialization
+// document.addEventListener('DOMContentLoaded', checkGitAvailability); 
+// This is usually handled by app_init.js calling specific init functions for tabs. 

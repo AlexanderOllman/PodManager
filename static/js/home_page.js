@@ -1,0 +1,131 @@
+// home_page.js\n\n// Initialize or reinitialize the home page (called on initial load and navigation to home)\nfunction initializeHomePage() {\n    console.log(\'Initializing home page...\');\n\n    // Check if returning from pod view and force reload if necessary\n    const returningFromPodView = sessionStorage.getItem(\'returning_from_pod_view\') === \'true\';\n    if (returningFromPodView) {\n        console.log(\'Detected return from pod view - forcing reload of resources\');\n        sessionStorage.removeItem(\'returning_from_pod_view\');\n        // Force reset of cached resources for home page tabs\n        const homePageTabs = [\'pods\', \'services\', \'inferenceservices\', \'deployments\', \'configmaps\', \'secrets\'];\n        homePageTabs.forEach(tab => {\n            if (window.app.state.cache.resources) delete window.app.state.cache.resources[tab];\n            if (window.app.state.cache.lastFetch) delete window.app.state.cache.lastFetch[tab];\n            if (window.app.state.resources[tab]) {\n                window.app.state.resources[tab].items = [];\n                window.app.state.resources[tab].loadedPages = [];\n            }\n        });\n    }\n\n    // Reset resources if navigating back to home or returning from pod view\n    if (window.app.state.navigation?.isNavigating || returningFromPodView) {\n        console.log(\'Resetting resources for home page due to navigation or pod view return.\');\n        // Similar reset as above, ensure all home page related resource states are cleared\n        const homePageTabs = [\'pods\', \'services\', \'inferenceservices\', \'deployments\', \'configmaps\', \'secrets\'];\n        homePageTabs.forEach(tab => {\n            if (window.app.state.cache.resources) delete window.app.state.cache.resources[tab];\n            if (window.app.state.cache.lastFetch) delete window.app.state.cache.lastFetch[tab];\n             if (window.app.state.resources[tab]) {\n                window.app.state.resources[tab].items = [];\n                window.app.state.resources[tab].loadedPages = [];\n                window.app.state.resources[tab].currentPage = 1;\n                window.app.state.resources[tab].totalCount = 0;\n            }\n        });\n        window.app.state.navigation.isNavigating = false;\n\n        if (typeof fetchClusterCapacity === \'function\') {\n            console.log(\'Fetching cluster capacity after navigation to home.\');\n            fetchClusterCapacity();\n        }\n    }\n\n    // Determine active tab for the home page (could be \'home\' itself or a sub-resource tab)\n    const activeTabId = window.app.state.navigation?.activeTab || \'home\';\n    console.log(`Home page: effective active tab from navigation state: ${activeTabId}`);\n\n    // Activate the overall home tab or a specific resource tab if deep-linked\n    // activateTab(activeTabId, false); // activateTab might need to be globally available or part of home_page.js\n    // For now, assume bootstrap handles the visual activation based on URL or prior state.\n\n    // Delay resource loading slightly to ensure DOM and other initializations are complete\n    setTimeout(() => {\n        if (typeof loadResourcesForTab === \'function\') {\n            loadResourcesForTab(\'home\'); // \'home\' will trigger loading for its active inner tab or default\n        } else {\n            console.warn(\'loadResourcesForTab function not found for home page initialization.\');\n            // Fallback to loading pods directly if the helper is missing\n            if (typeof fetchResourceData === \'function\') fetchResourceData(\'pods\', \'all\', false, 1, true);\n        }\n        if (typeof initializeGPUFilter === \'function\') {\n             initializeGPUFilter(); // Initialize GPU filter if on home page showing pods\n        }\n    }, 200);\n}\n\n// Initial fetch for all resource tabs shown on the home page (or lazy load setup)\nfunction fetchResourcesForAllTabs() {\n    const resourceTypes = [\'pods\', \'services\', \'inferenceservices\', \'deployments\', \'configmaps\', \'secrets\'];\n    \n    fetchClusterCapacity().then(() => {\n        // Determine the currently active resource tab within the home page dashboard\n        const activeResourceTabLink = document.querySelector(\'#resourceTabs .nav-link.active\');\n        let activeResourceTabId = \'pods\'; // Default to pods\n        if (activeResourceTabLink) {\n            const target = activeResourceTabLink.getAttribute(\'data-bs-target\');\n            if (target) activeResourceTabId = target.replace(\'#\', \'\');\n        }\n\n        console.log(`Home dashboard: Initializing with active resource tab: ${activeResourceTabId}`);\n        if (typeof fetchResourceData === \'function\') {\n            fetchResourceData(activeResourceTabId, \'all\', false, 1, true); // Load page 1, reset data\n        }\n\n        // Set up lazy loading or pre-emptive loading for other tabs\n        resourceTypes.forEach(resourceType => {\n            if (resourceType !== activeResourceTabId) {\n                const tabElement = document.getElementById(`${resourceType}-tab`);\n                if (tabElement) {\n                    const newTabElement = tabElement.cloneNode(true); // To remove old listeners\n                    tabElement.parentNode.replaceChild(newTabElement, tabElement);\n                    newTabElement.addEventListener(\'click\', () => {\n                        // Check if data needs loading (e.g., not loaded or stale)\n                        const namespaceSelector = document.getElementById(`${resourceType}Namespace`);\n                        const currentNamespace = namespaceSelector ? namespaceSelector.value : \'all\';\n                        const cacheKey = `${resourceType}-${currentNamespace}-full-1`;\n                        const isStale = !window.app.state.cache.lastFetch[cacheKey] || \n                                        (Date.now() - window.app.state.cache.lastFetch[cacheKey] > window.app.CACHE_TIMEOUT);\n\n                        if (!window.app.state.resources[resourceType] || !window.app.state.resources[resourceType].items || window.app.state.resources[resourceType].items.length === 0 || isStale) {\n                            console.log(`Lazy loading ${resourceType} data on click...`);\n                            fetchResourceData(resourceType, currentNamespace, false, 1, true);\n                        }\n                    });\n                }\n            }\n        });\n    }).catch(error => {\n        console.error(\"Failed to fetch cluster capacity before loading home tabs:\", error);\n        // Attempt to load default tab (pods) anyway\n        if (typeof fetchResourceData === \'function\') {\n            fetchResourceData(\'pods\', \'all\', false, 1, true);\n        }\n    });\n}\n\n// Loads resources for the specified tab ID (could be \'home\' or a specific resource)\nfunction loadResourcesForTab(tabId) {\n    console.log(`loadResourcesForTab called for: ${tabId}`);\n\n    if (tabId === \'resources\' && typeof loadResourcesPage === \'function\') {\n        loadResourcesPage();\n        return;\n    }\n\n    if (tabId === \'home\') {\n        let activeSubTabId = \'pods\'; // Default for home page\n        try {\n            // Find the active nav-link within the resourceTabs container for the home page\n            const activeSubTabLink = document.querySelector(\'#resourceTabs .nav-link.active\');\n            if (activeSubTabLink) {\n                const target = activeSubTabLink.getAttribute(\'data-bs-target\'); // e.g., \"#pods\"\n                if (target) activeSubTabId = target.substring(1); // Remove #\n            }\n            console.log(`Home page active resource sub-tab: ${activeSubTabId}`);\n        } catch (e) {\n            console.warn(\'Could not determine active resource sub-tab for home, defaulting to pods.\', e);\n        }\n        const namespaceSelector = document.getElementById(`${activeSubTabId}Namespace`);\n        const currentNamespace = namespaceSelector ? namespaceSelector.value : \'all\';\n        if (typeof fetchResourceData === \'function\') {\n             fetchResourceData(activeSubTabId, currentNamespace, false, 1, true); // page 1, reset\n        }\n        if (activeSubTabId === \'pods\' && typeof initializeGPUFilter === \'function\') {\n            initializeGPUFilter();\n        }\n        return;\n    }\n    \n    // For other direct top-level tabs like \'cli\', \'yaml\', etc.\n    const directTabId = tabId.replace(\'-tab\', \'\'); // Normalize ID\n    if ([\'cli\', \'yaml\', \'namespaces\', \'charts\', \'settings\'].includes(directTabId)) {\n        console.log(`Non-resource tab selected: ${directTabId}. No data fetch needed by this function.`);\n        // Specific initialization for these tabs should be handled by their own modules or event listeners\n    } else if (directTabId && typeof fetchResourceData === \'function\') {\n        // This case might be for a resource tab that is *not* under the \'home\' dashboard structure\n        // but is a top-level tab itself. Adjust if this isn\'t the application structure.\n        console.log(`Direct resource tab ${directTabId} selected, fetching data.`);\n        fetchResourceData(directTabId, \'all\', false, 1, true);\n    } else if (!directTabId) {\n        console.warn(\`No valid tab ID derived from ${tabId}, defaulting to pods.\`);\n        if (typeof fetchResourceData === \'function\') fetchResourceData(\'pods\', \'all\', false, 1, true);\n    }\n}\n\n\n// Updates dashboard metric cards (total pods, running, errors, CPU, GPU)\nfunction updateDashboardMetrics(podsData) {\n    if (!podsData || !Array.isArray(podsData)) {\n        console.warn(\'updateDashboardMetrics called with invalid or empty podsData. Length:\', podsData?.length);\n        // Reset metrics to 0 or \'-\' if data is invalid/empty\n        document.getElementById(\'totalPodsCount\').textContent = \'0\';\n        document.getElementById(\'runningPodsCount\').textContent = \'0\';\n        document.getElementById(\'succeededPodsCount\').textContent = \'0\';\n        document.getElementById(\'errorPodsCount\').textContent = \'0\';\n        document.getElementById(\'totalCPUCount\').textContent = \'-\';\n        document.getElementById(\'totalCPUPercentage\').textContent = \'0\';\n        const cpuProgressBar = document.getElementById(\'cpuProgressBar\');\n        if (cpuProgressBar) cpuProgressBar.style.width = \'0%\';\n        document.getElementById(\'totalGPUCount\').textContent = \'0\';\n        // Potentially update GPU progress bar if one exists\n        return;\n    }\n    console.log(\'Updating dashboard metrics with data from\', podsData.length, \'pods\');\n\n    const totalPods = podsData.length;\n    const runningPods = podsData.filter(p => p.status?.phase?.toLowerCase() === \'running\').length;\n    const succeededPods = podsData.filter(p => p.status?.phase?.toLowerCase() === \'succeeded\').length;\n    const errorPods = podsData.filter(p => {\n        const phase = p.status?.phase?.toLowerCase();\n        return phase === \'failed\' || phase === \'error\' || phase === \'unknown\' ||\n               (p.status?.containerStatuses && p.status.containerStatuses.some(cs => \n                   cs.state && (\n                       (cs.state.waiting && [\'crashloopbackoff\', \'error\', \'errimagepull\', \'imagepullbackoff\', \'createcontainererror\'].includes(cs.state.waiting.reason?.toLowerCase())) ||\n                       (cs.state.terminated && cs.state.terminated.exitCode !== 0)\n                   )\n               ));\n    }).length;\n\n    document.getElementById(\'totalPodsCount\').textContent = totalPods;\n    document.getElementById(\'runningPodsCount\').textContent = runningPods;\n    document.getElementById(\'succeededPodsCount\').textContent = succeededPods;\n    document.getElementById(\'errorPodsCount\').textContent = errorPods;\n\n    let totalCPURequest = 0;\n    let totalGPURequest = 0;\n    podsData.forEach(pod => {\n        if (typeof getResourceUsage === \'function\') {\n            const usage = getResourceUsage(pod);\n            if (usage.cpu && usage.cpu !== \'-\') totalCPURequest += parseFloat(usage.cpu);\n            if (usage.gpu && usage.gpu !== \'-\') totalGPURequest += parseInt(usage.gpu);\n        }\n    });\n\n    console.log(`Total CPU request: ${totalCPURequest.toFixed(1)} cores, Total GPU request: ${totalGPURequest} GPUs`);\n    console.log(`Cluster capacity: CPU ${window.clusterCapacity?.cpu || \'unknown\'}, GPU ${window.clusterCapacity?.gpu || \'unknown\'}`);\n\n    const cpuPercentage = (window.clusterCapacity?.cpu && window.clusterCapacity.cpu > 0) \n        ? Math.round((totalCPURequest / window.clusterCapacity.cpu) * 100) : 0;\n    \n    document.getElementById(\'totalCPUCount\').textContent = totalCPURequest.toFixed(1);\n    document.getElementById(\'totalCPUPercentage\').textContent = cpuPercentage;\n    const cpuProgressBar = document.getElementById(\'cpuProgressBar\');\n    if (cpuProgressBar) {\n        cpuProgressBar.style.width = `${cpuPercentage}%`;\n        if (cpuPercentage >= 90) cpuProgressBar.style.background = \'linear-gradient(to right, #f5f5f5, #ff5a5a)\';\n        else if (cpuPercentage >= 75) cpuProgressBar.style.background = \'linear-gradient(to right, #f5f5f5, #ffb800)\';\n        else cpuProgressBar.style.background = \'linear-gradient(to right, #f5f5f5, #01a982)\';\n    }\n\n    document.getElementById(\'totalGPUCount\').textContent = totalGPURequest.toString();\n    // Store pods with GPU for filtering if GPU dashboard module needs it\n    if (typeof getResourceUsage === \'function\') {\n         window.podsWithGPUs = podsData.filter(pod => {\n            const usage = getResourceUsage(pod);\n            return usage.gpu && usage.gpu !== \'-\' && parseInt(usage.gpu) > 0;\n        });\n    }\n   \n    // Update GPU filter UI if the GPU dashboard/filter module is managing it\n    if (typeof updateGpuFilterUI === \'function\') { // Assumes a function in gpu_dashboard.js\n        updateGpuFilterUI();\n    }\n}\n
+
+const homeLogger = {
+    debug: (...args) => console.debug('[HomePage]', ...args),
+    info: (...args) => console.info('[HomePage]', ...args),
+    warn: (...args) => console.warn('[HomePage]', ...args),
+    error: (...args) => console.error('[HomePage]', ...args),
+};
+
+function formatBytesToGiB(bytes) {
+    if (bytes === undefined || bytes === null || isNaN(bytes) || bytes === 0) return '0';
+    const gib = bytes / (1024 * 1024 * 1024);
+    return gib.toFixed(1); // 1 decimal place for GiB
+}
+
+function formatNumber(num, decimalPlaces = 0) {
+    if (num === undefined || num === null || isNaN(num)) return '-';
+    return num.toFixed(decimalPlaces);
+}
+
+function updateTextContent(elementId, text, defaultValue = '-') {
+    const element = document.getElementById(elementId);
+    if (element) {
+        element.textContent = text !== undefined && text !== null && !isNaN(text) ? String(text) : defaultValue;
+    } else {
+        homeLogger.warn(`Element with ID ${elementId} not found.`);
+    }
+}
+
+function updateProgressBar(elementId, percentage) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        const p = Math.max(0, Math.min(100, parseFloat(percentage) || 0));
+        element.style.width = `${p}%`;
+        element.setAttribute('aria-valuenow', p);
+        // Optional: Change color based on percentage
+        if (p >= 90) element.className = 'progress-bar bg-danger';
+        else if (p >= 75) element.className = 'progress-bar bg-warning';
+        else element.className = 'progress-bar bg-success'; 
+    } else {
+        homeLogger.warn(`Progress bar with ID ${elementId} not found.`);
+    }
+}
+
+function fetchAndDisplayResourceSummary() {
+    homeLogger.info('Fetching cluster resource summary...');
+    const url = window.app.getRelativeUrl('/api/cluster/resource_summary');
+
+    fetch(url)
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errData => {
+                    throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+                }).catch(() => {
+                    throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            homeLogger.info('Resource summary data received:', data);
+
+            // Pods Card
+            updateTextContent('runningPodsDisplay', formatNumber(data.pods?.current_running));
+            updateTextContent('allocatablePodsDisplay', formatNumber(data.pods?.total_allocatable));
+            updateTextContent('podsPercentage', formatNumber(data.pods?.percentage_used, 1));
+            updateProgressBar('podsProgressBar', data.pods?.percentage_used);
+
+            // vCPU Card
+            updateTextContent('utilizedCpuDisplay', formatNumber(data.cpu?.current_utilized_cores, 1));
+            updateTextContent('allocatableCpuDisplay', formatNumber(data.cpu?.total_allocatable_cores, 1));
+            updateTextContent('cpuPercentage', formatNumber(data.cpu?.percentage_used, 1));
+            updateProgressBar('cpuProgressBar', data.cpu?.percentage_used);
+            updateTextContent('totalNodeCpuCapacityDisplay', formatNumber(data.cpu?.total_capacity_cores, 1));
+
+            // RAM Card
+            updateTextContent('utilizedMemoryDisplay', formatBytesToGiB(data.memory?.current_utilized_bytes));
+            updateTextContent('allocatableMemoryDisplay', formatBytesToGiB(data.memory?.total_allocatable_bytes));
+            updateTextContent('memoryPercentage', formatNumber(data.memory?.percentage_used, 1));
+            updateProgressBar('memoryProgressBar', data.memory?.percentage_used);
+            updateTextContent('totalNodeMemoryCapacityDisplay', formatBytesToGiB(data.memory?.total_capacity_bytes));
+
+            // GPU Card
+            updateTextContent('utilizedGpuDisplay', formatNumber(data.gpu?.current_utilized));
+            updateTextContent('allocatableGpuDisplay', formatNumber(data.gpu?.total_allocatable));
+            updateTextContent('gpuPercentage', formatNumber(data.gpu?.percentage_used, 1));
+            updateProgressBar('gpuProgressBar', data.gpu?.percentage_used);
+            
+        })
+        .catch(error => {
+            homeLogger.error('Error fetching or processing cluster resource summary:', error);
+            // Optionally, update cards to show error state or 'N/A'
+            const errorDisplayIds = [
+                'runningPodsDisplay', 'allocatablePodsDisplay', 'podsPercentage',
+                'utilizedCpuDisplay', 'allocatableCpuDisplay', 'cpuPercentage', 'totalNodeCpuCapacityDisplay',
+                'utilizedMemoryDisplay', 'allocatableMemoryDisplay', 'memoryPercentage', 'totalNodeMemoryCapacityDisplay',
+                'utilizedGpuDisplay', 'allocatableGpuDisplay', 'gpuPercentage'
+            ];
+            errorDisplayIds.forEach(id => updateTextContent(id, 'N/A'));
+            const progressBars = ['podsProgressBar', 'cpuProgressBar', 'memoryProgressBar', 'gpuProgressBar'];
+            progressBars.forEach(id => updateProgressBar(id, 0));
+        });
+}
+
+function initializeHomePage() {
+    homeLogger.info('Initializing home page specific components...');
+    // Fetch resource summary when home page is initialized or shown
+    fetchAndDisplayResourceSummary();
+
+    // Add listeners for refresh buttons if they exist and should trigger this update
+    const refreshButton = document.getElementById('refreshDashboardMetricsButton'); // Example ID
+    if (refreshButton) {
+        refreshButton.addEventListener('click', fetchAndDisplayResourceSummary);
+    }
+    // Hook into the global refresh database mechanism if desired
+    // This assumes a custom event 'databaseRefreshed' is dispatched after `updater._update_resources()`
+    // or the refresh button directly calls fetchAndDisplayResourceSummary
+    document.addEventListener('databaserefreshcomplete', fetchAndDisplayResourceSummary); 
+    // Alternatively, if using the existing /api/refresh-database, ensure that function call in app_init.js
+    // also triggers fetchAndDisplayResourceSummary or a similar specific refresh for these cards.
+}
+
+// Ensure this script runs after the DOM is loaded if it's not already handled
+// This is typically handled by how app_init.js calls initialization functions for different pages/tabs.
+// If home_page.js is loaded directly and expected to self-initialize:
+// if (document.readyState === 'loading') {  // Loading hasn't finished yet
+//     document.addEventListener('DOMContentLoaded', initializeHomePage);
+// } else {  // `DOMContentLoaded` has already fired
+//     initializeHomePage(); // Call it directly if the main app structure doesn't
+// }
+// For now, assume app_init.js will call initializeHomePage when the home tab is active. 

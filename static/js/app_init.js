@@ -175,6 +175,7 @@ function initializeApp() {
     
     initializeBootstrapComponents();
     
+    if (typeof fetchResourcesForAllTabs === 'function') fetchResourcesForAllTabs();
     if (typeof fetchClusterCapacity === 'function') fetchClusterCapacity();
     if (typeof checkGitAvailability === 'function') checkGitAvailability();
     if (typeof fetchNamespaces === 'function') fetchNamespaces(); // For events tab
@@ -328,10 +329,8 @@ function navigateToTab(tabId) {
     }
 
     // General content loading or specific function calls based on tabId
-    if (tabId === 'home') {
-        // initializeHomePage(); // Removed call - Handled by general init/capacity fetch
-        // Trigger capacity fetch again if needed when explicitly navigating home
-         if (typeof fetchClusterCapacity === 'function') fetchClusterCapacity(); 
+    if (tabId === 'home' && typeof initializeHomePage === 'function') {
+        initializeHomePage();
     } else if (tabId === 'resources' && typeof loadResourcesPage === 'function') {
         loadResourcesPage();
     } else if (tabId === 'namespaces' && typeof initializeNamespacePage === 'function') {
@@ -466,13 +465,11 @@ function loadResourcesForTab(tabId) {
 
     switch(tabId) {
         case 'home':
-            // if (typeof initializeHomePage === 'function') { // Removed call check
-            //     initializeHomePage(); // Removed call - Let home tab load normally, capacity fetched by initializeApp
-            // } else {
-            //     console.warn('initializeHomePage function not found.');
-            // }
-             // Ensure capacity is loaded when home is selected
-             if (typeof fetchClusterCapacity === 'function') fetchClusterCapacity();
+            if (typeof initializeHomePage === 'function') {
+                initializeHomePage(); // Let home_page.js handle its specific logic and sub-tabs
+            } else {
+                console.warn('initializeHomePage function not found.');
+            }
             break;
         case 'resources':
             if (typeof loadResourcesPage === 'function') {
@@ -544,193 +541,5 @@ function loadResourcesForTab(tabId) {
              break;
         default:
             console.log(`No specific load action defined for tab: ${tabId}`);
-    }
-}
-
-// Function to fetch cluster capacity and update relevant UI elements
-function fetchClusterCapacity() {
-    const url = window.app.getRelativeUrl('/api/cluster/resources/summary'); // Updated endpoint
-    console.log('Fetching cluster resource summary...');
-    fetch(url)
-        .then(response => {
-            if (!response.ok) {
-                // Try to parse error from JSON body
-                return response.json().then(errData => {
-                    throw new Error(errData.error || `HTTP error! status: ${response.status} - ${response.statusText}`);
-                }).catch(() => {
-                    // Fallback if JSON parsing fails
-                    throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
-                });
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Cluster resource summary data received:', data);
-
-            // Helper to update text content safely
-            const updateText = (id, value) => {
-                const el = document.getElementById(id);
-                if (el) {
-                    el.textContent = value;
-                } else {
-                    console.warn(`Element with ID ${id} not found for update.`);
-                }
-            };
-
-            // Helper to update progress bar safely
-            const updateProgress = (id, percentage) => {
-                const el = document.getElementById(id);
-                if (el) {
-                    const safePercentage = Math.max(0, Math.min(100, percentage)); // Clamp between 0 and 100
-                    el.style.width = `${safePercentage}%`;
-                    // Optional: Adjust color based on percentage
-                     if (safePercentage >= 90) el.className = 'progress-bar bg-danger';
-                     else if (safePercentage >= 75) el.className = 'progress-bar bg-warning';
-                     else el.className = 'progress-bar bg-success';
-                } else {
-                    console.warn(`Progress bar with ID ${id} not found for update.`);
-                }
-            };
-            
-            // Helper to convert bytes to GiB
-            const bytesToGiB = (bytes) => {
-                if (typeof bytes !== 'number' || isNaN(bytes) || bytes < 0) return '-';
-                return (bytes / (1024**3)).toFixed(1);
-            };
-
-            // Extract data (handle potential undefined/null)
-            const allocatable = data.allocatable || {};
-            const utilized = data.utilized || {};
-            const limits = data.limits || {};
-
-            // Pods Card
-            // const podAlloc = allocatable.pods || 0; // Removed
-            const podTotal = utilized.total_existing_pods || 0; // Use total existing pods
-            const podUtil = utilized.running_pods || 0;
-            // const podPerc = podAlloc > 0 ? Math.round((podUtil / podAlloc) * 100) : 0; // Removed percentage
-            updateText('podRunningValue', podUtil);
-            // updateText('podAllocatableValue', podAlloc); // Removed
-            updateText('podTotalValue', podTotal); // Update total value span
-            // updateText('podPercentageValue', podPerc); // Removed
-            // updateProgress('podProgressBar', podPerc); // Removed progress update
-
-            // Store summary data for potential reuse (e.g., by toggle)
-            window.app.state.clusterSummary = data;
-
-            // Initial UI update function
-            const updateCpuCard = (useLimitAsMax = false) => {
-                const summary = window.app.state.clusterSummary;
-                if (!summary) return; // Guard against missing data
-
-                const allocatable = summary.allocatable || {};
-                const utilized = summary.utilized || {};
-                const limits = summary.limits || {};
-
-                const cpuAlloc = allocatable.cpu_cores || 0;
-                const cpuUtil = utilized.cpu_requests_cores || 0;
-                const cpuLimit = limits.cpu_limits_cores || 0;
-                
-                const denominator = useLimitAsMax ? cpuLimit : cpuAlloc;
-                const cpuPerc = denominator > 0 ? Math.round((cpuUtil / denominator) * 100) : 0;
-
-                updateText('cpuUtilizedValue', cpuUtil.toFixed(1));
-                updateText('cpuAllocatableValue', cpuAlloc.toFixed(1));
-                updateText('cpuPercentageValue', cpuPerc);
-                updateText('cpuLimitValue', cpuLimit.toFixed(1));
-                updateProgress('cpuProgressBar', cpuPerc);
-
-                // Update toggle label
-                const toggleLabel = document.getElementById('cpuToggleLabel');
-                if (toggleLabel) {
-                    toggleLabel.textContent = useLimitAsMax ? 'Allocatable:' : 'Limit:';
-                }
-                 // Update the main value display label based on toggle
-                const cpuMainValueText = document.querySelector('#cpuUtilizedValue')?.parentElement;
-                if (cpuMainValueText) {
-                     cpuMainValueText.nextElementSibling.textContent = `${cpuPerc}% Utilized (${useLimitAsMax ? 'vs Limit' : 'vs Allocatable'})`; 
-                     // Or adjust structure if needed to better place this text
-                }
-            };
-            
-            // Initial update using allocatable
-            updateCpuCard(false);
-
-            // Add event listener for the toggle
-            const cpuToggle = document.getElementById('cpuViewToggle');
-            if (cpuToggle) {
-                // Remove existing listener to avoid duplication if fetchClusterCapacity is called again
-                cpuToggle.removeEventListener('change', handleCpuToggleChange);
-                cpuToggle.addEventListener('change', handleCpuToggleChange);
-            } else {
-                console.warn('CPU View Toggle element (cpuViewToggle) not found.');
-            }
-            
-            // Memory Card
-            const memAllocBytes = allocatable.memory_bytes || 0;
-            const memUtilBytes = utilized.memory_requests_bytes || 0;
-            const memLimitBytes = limits.memory_limits_bytes || 0;
-            const memPerc = memAllocBytes > 0 ? Math.round((memUtilBytes / memAllocBytes) * 100) : 0;
-            updateText('memoryUtilizedValue', bytesToGiB(memUtilBytes));
-            updateText('memoryAllocatableValue', bytesToGiB(memAllocBytes));
-            updateText('memoryPercentageValue', memPerc);
-            updateText('memoryLimitValue', bytesToGiB(memLimitBytes));
-            updateProgress('memoryProgressBar', memPerc);
-            
-            // GPU Card
-            const gpuAlloc = allocatable.gpu || 0;
-            const gpuUtil = utilized.gpu_requests || 0;
-            const gpuLimit = limits.gpu_limits || 0;
-            const gpuPerc = gpuAlloc > 0 ? Math.round((gpuUtil / gpuAlloc) * 100) : 0;
-            updateText('gpuUtilizedValue', gpuUtil);
-            updateText('gpuAllocatableValue', gpuAlloc);
-            updateText('gpuPercentageValue', gpuPerc);
-            updateText('gpuLimitValue', gpuLimit);
-            updateProgress('gpuProgressBar', gpuPerc);
-
-        })
-        .catch(error => {
-            console.error('Failed to fetch or process cluster resource summary:', error);
-            // Optionally update UI to show error state for cards
-             const idsToReset = [
-                'podRunningValue', 'podAllocatableValue', 'podPercentageValue', 
-                'cpuUtilizedValue', 'cpuAllocatableValue', 'cpuPercentageValue', 'cpuLimitValue',
-                'memoryUtilizedValue', 'memoryAllocatableValue', 'memoryPercentageValue', 'memoryLimitValue',
-                'gpuUtilizedValue', 'gpuAllocatableValue', 'gpuPercentageValue', 'gpuLimitValue'
-            ];
-            idsToReset.forEach(id => updateText(id, 'Err'));
-            const progressBarsToReset = ['podProgressBar', 'cpuProgressBar', 'memoryProgressBar', 'gpuProgressBar'];
-            progressBarsToReset.forEach(id => updateProgress(id, 0));
-        });
-}
-
-// Define the handler function separately to allow removal
-function handleCpuToggleChange(event) {
-    const useLimit = event.target.checked;
-    // Find the update function - might need refactoring if fetchClusterCapacity isn't always defining it
-    // For now, assume it exists in a scope or we re-find the data
-    const updateCpuCardFunc = window.app._updateCpuCardFunc; // Need to store this ref 
-    if (typeof updateCpuCardFunc === 'function') {
-         updateCpuCardFunc(useLimit);
-    } else {
-        console.error('updateCpuCard function reference not found for toggle.');
-        // Fallback: Re-fetch or re-calculate using stored data
-        if (window.app.state.clusterSummary) {
-             // Re-implement minimal update logic here if function reference is lost
-             // This is less ideal than maintaining the function reference
-             const summary = window.app.state.clusterSummary;
-             const allocatable = summary.allocatable || {};
-             const utilized = summary.utilized || {};
-             const limits = summary.limits || {};
-             const cpuUtil = utilized.cpu_requests_cores || 0;
-             const denominator = useLimit ? (limits.cpu_limits_cores || 0) : (allocatable.cpu_cores || 0);
-             const cpuPerc = denominator > 0 ? Math.round((cpuUtil / denominator) * 100) : 0;
-             const updateText = (id, value) => { /* ... */ }; // Re-define helpers or make global
-             const updateProgress = (id, percentage) => { /* ... */ };
-             updateText('cpuPercentageValue', cpuPerc);
-             updateProgress('cpuProgressBar', cpuPerc);
-             // Update labels too... 
-        } else {
-            console.error('Cluster summary data not found for toggle fallback.');
-        }
     }
 } 

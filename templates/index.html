@@ -5,6 +5,16 @@
 {% block additional_styles %}
 <style>
     /* Any page-specific styles that aren't included in main.css */
+    .dashboard-metric-card .card-body {
+        position: relative; /* For absolute positioning of capacity text */
+        padding-bottom: 2.5rem; /* Ensure space for capacity text */
+    }
+    .capacity-info {
+        position: absolute;
+        bottom: 0.5rem;
+        right: 0.75rem;
+        font-size: 0.75em;
+    }
 </style>
 {% endblock %}
 
@@ -18,95 +28,70 @@
         <!-- Metric Cards -->
         <div class="row mb-4">
             <!-- Pods Card -->
-            <div class="col-md-3 mb-3 mb-md-0">
-                <div class="dashboard-metric-card pods-card h-100">
-                    <div class="card-body d-flex flex-column">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title mb-0">Pod Allocation</h5>
-                            <i class="fas fa-cubes card-icon text-secondary"></i>
-                        </div>
-                        <div class="mt-auto">
-                            <h3 class="metric-value mb-1">
-                                <span id="podRunningValue">-</span> Running / <span id="podTotalValue">-</span> Total
-                            </h3>
+            <div class="col-md-3">
+                <div class="dashboard-metric-card pods-card">
+                    <div class="card-body">
+                        <i class="fas fa-cubes card-icon"></i>
+                        <h5 class="card-title">Total Pods</h5>
+                        <h3 class="counter-value">
+                            <span id="runningPodsDisplay">-</span> / <span id="allocatablePodsDisplay">-</span>
+                        </h3>
+                        <span class="counter-info"><span id="podsPercentage">0</span>% Used</span>
+                        <div class="progress mt-2">
+                            <div class="progress-bar" id="podsProgressBar" role="progressbar" style="width: 0%;"></div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- vCPU Card -->
-            <div class="col-md-3 mb-3 mb-md-0">
-                <div class="dashboard-metric-card cpu-card h-100">
-                    <div class="card-body d-flex flex-column">
-                         <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title mb-0">vCPU Allocation</h5>
-                            <i class="fas fa-microchip card-icon text-secondary"></i>
+            <div class="col-md-3">
+                <div class="dashboard-metric-card cpu-card">
+                    <div class="card-body">
+                        <i class="fas fa-microchip card-icon"></i>
+                        <h5 class="card-title">vCPU Usage</h5>
+                        <h3 class="counter-value" id="utilizedCpuDisplay">-</h3>
+                        <span class="counter-info">
+                            <span id="cpuPercentage">-</span>% of <span id="allocatableCpuDisplay">-</span> Cores
+                        </span>
+                        <div class="progress mt-2">
+                            <div class="progress-bar" id="cpuProgressBar" role="progressbar" style="width: 0%;"></div>
                         </div>
-                       <div class="mt-auto position-relative">
-                            <h3 class="metric-value mb-1">
-                                <span id="cpuUtilizedValue">-</span> / <span id="cpuAllocatableValue">-</span> Cores
-                            </h3>
-                             <span class="metric-percentage">
-                                <span id="cpuPercentageValue">-</span>%
-                            </span>
-                            <div class="progress mt-2" style="height: 5px;">
-                                <div class="progress-bar" id="cpuProgressBar" role="progressbar" style="width: 0%;"></div>
-                            </div>
-                             <div class="metric-limit text-muted small position-absolute bottom-0 end-0 pe-2 pb-1 d-flex align-items-center">
-                                 <div class="form-check form-switch form-switch-sm me-1">
-                                     <input class="form-check-input" type="checkbox" role="switch" id="cpuViewToggle" title="Toggle between Allocatable and Limit view">
-                                     <label class="form-check-label" for="cpuViewToggle" id="cpuToggleLabel">Limit:</label> 
-                                 </div>
-                                 <span id="cpuLimitValue">-</span> Cores
-                            </div>
+                        <small class="text-muted capacity-info">Capacity: <span id="totalNodeCpuCapacityDisplay">-</span> Cores</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- RAM Card (was Future Metric Card) -->
+            <div class="col-md-3">
+                <div class="dashboard-metric-card memory-card">
+                    <div class="card-body">
+                        <i class="fas fa-memory card-icon"></i>
+                        <h5 class="card-title">RAM Usage</h5>
+                        <h3 class="counter-value" id="utilizedMemoryDisplay">-</h3>
+                        <span class="counter-info">
+                            <span id="memoryPercentage">-</span>% of <span id="allocatableMemoryDisplay">-</span> GiB
+                        </span>
+                        <div class="progress mt-2">
+                            <div class="progress-bar" id="memoryProgressBar" role="progressbar" style="width: 0%;"></div>
                         </div>
+                        <small class="text-muted capacity-info">Capacity: <span id="totalNodeMemoryCapacityDisplay">-</span> GiB</small>
                     </div>
                 </div>
             </div>
 
-            <!-- Memory Card (was GPU) -->
-            <div class="col-md-3 mb-3 mb-md-0">
-                <div class="dashboard-metric-card memory-card h-100">
-                    <div class="card-body d-flex flex-column">
-                         <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title mb-0">Memory Allocation</h5>
-                            <i class="fas fa-memory card-icon text-secondary"></i>
-                        </div>
-                        <div class="mt-auto position-relative">
-                             <h3 class="metric-value mb-1">
-                                <span id="memoryUtilizedValue">-</span> / <span id="memoryAllocatableValue">-</span> GiB
-                            </h3>
-                            <span class="metric-percentage">
-                                <span id="memoryPercentageValue">-</span>%
-                            </span>
-                            <div class="progress mt-2" style="height: 5px;">
-                                <div class="progress-bar" id="memoryProgressBar" role="progressbar" style="width: 0%;"></div>
-                            </div>
-                            <span class="metric-limit text-muted small position-absolute bottom-0 end-0 pe-2 pb-1">Limit: <span id="memoryLimitValue">-</span> GiB</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- GPU Card (was Resource Metric) -->
-            <div class="col-md-3 mb-3 mb-md-0">
-                <div class="dashboard-metric-card gpu-card h-100">
-                    <div class="card-body d-flex flex-column">
-                         <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title mb-0">GPU Allocation</h5>
-                             <i class="fas fa-server card-icon text-secondary"></i>
-                        </div>
-                       <div class="mt-auto position-relative">
-                            <h3 class="metric-value mb-1">
-                                <span id="gpuUtilizedValue">-</span> / <span id="gpuAllocatableValue">-</span> GPUs
-                            </h3>
-                             <span class="metric-percentage">
-                                <span id="gpuPercentageValue">-</span>%
-                            </span>
-                             <div class="progress mt-2" style="height: 5px;">
-                                <div class="progress-bar" id="gpuProgressBar" role="progressbar" style="width: 0%;"></div>
-                            </div>
-                            <span class="metric-limit text-muted small position-absolute bottom-0 end-0 pe-2 pb-1">Limit: <span id="gpuLimitValue">-</span> GPUs</span>
+            <!-- GPU Card -->
+            <div class="col-md-3">
+                <div class="dashboard-metric-card gpu-card">
+                    <div class="card-body">
+                        <i class="fas fa-tachometer-alt card-icon"></i>
+                        <h5 class="card-title">GPU Resources</h5>
+                        <h3 class="counter-value" id="utilizedGpuDisplay">-</h3>
+                        <span class="counter-info">
+                             <span id="gpuPercentage">-</span>% of <span id="allocatableGpuDisplay">-</span> GPUs
+                        </span>
+                        <div class="progress mt-2">
+                            <div class="progress-bar" id="gpuProgressBar" role="progressbar" style="width: 0%;"></div>
                         </div>
                     </div>
                 </div>
@@ -761,7 +746,7 @@
 {% endblock %}
 
 {% block page_scripts %}
-    <!-- <script src="{{ url_for('static', filename='js/home_page.js') }}"></script> -->
+    <script src="{{ url_for('static', filename='js/home_page.js') }}"></script>
     <script src="{{ url_for('static', filename='js/terminal.js') }}"></script>
     <script src="{{ url_for('static', filename='js/yaml_deploy.js') }}"></script>
     <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
