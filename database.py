@@ -45,6 +45,21 @@ class Database:
                         UNIQUE(metric_type, namespace)
                     )
                 ''')
+
+                # Create environment_metrics table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS environment_metrics (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        total_node_pod_capacity INTEGER,
+                        total_node_allocatable_cpu_millicores INTEGER,
+                        total_node_allocatable_memory_bytes INTEGER, -- Storing as bytes (BIGINT)
+                        total_node_allocatable_gpus INTEGER,
+                        cpu_limit_percentage INTEGER,
+                        memory_limit_percentage INTEGER
+                        -- Add other global environment metrics here if needed in the future
+                    )
+                ''')
                 
                 conn.commit()
                 logging.info(f"Database initialized successfully at {self.db_path}")
@@ -155,6 +170,57 @@ class Database:
             logging.error(f"Error retrieving metrics: {str(e)}")
             return []
 
+    def update_environment_metrics(self, metrics_data: Dict) -> bool:
+        """Update the single row in environment_metrics table with the latest metrics."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Delete existing metrics (should only be one row)
+                cursor.execute('DELETE FROM environment_metrics')
+                
+                # Insert the new metrics
+                cursor.execute('''
+                    INSERT INTO environment_metrics (
+                        total_node_pod_capacity,
+                        total_node_allocatable_cpu_millicores,
+                        total_node_allocatable_memory_bytes,
+                        total_node_allocatable_gpus,
+                        cpu_limit_percentage,
+                        memory_limit_percentage
+                        -- timestamp is DEFAULT CURRENT_TIMESTAMP
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    metrics_data.get('total_node_pod_capacity'),
+                    metrics_data.get('total_node_allocatable_cpu_millicores'),
+                    metrics_data.get('total_node_allocatable_memory_bytes'),
+                    metrics_data.get('total_node_allocatable_gpus'),
+                    metrics_data.get('cpu_limit_percentage'),
+                    metrics_data.get('memory_limit_percentage')
+                ))
+                conn.commit()
+                logging.info("Successfully updated environment metrics.")
+                return True
+        except Exception as e:
+            logging.error(f"Error updating environment_metrics: {str(e)}")
+            return False
+
+    def get_latest_environment_metrics(self) -> Optional[Dict]:
+        """Retrieve the latest environment metrics."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row # Access columns by name
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM environment_metrics ORDER BY timestamp DESC LIMIT 1')
+                row = cursor.fetchone()
+                if row:
+                    return dict(row)
+                return None
+        except Exception as e:
+            logging.error(f"Error retrieving latest environment_metrics: {str(e)}")
+            return None
+
     def clear_old_data(self, days: int = 7):
         """Clear data older than specified number of days."""
         try:
@@ -169,6 +235,11 @@ class Database:
                 cursor.execute('''
                     DELETE FROM metrics 
                     WHERE last_updated < datetime('now', ?)
+                ''', (f'-{days} days',))
+
+                cursor.execute('''
+                    DELETE FROM environment_metrics
+                    WHERE timestamp < datetime('now', ?)
                 ''', (f'-{days} days',))
                 
                 conn.commit()

@@ -19,7 +19,8 @@ import select
 import struct
 import fcntl
 import termios
-import re # For parsing resource units
+import re
+from typing import Optional, Union, Dict
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -91,12 +92,157 @@ else:
     logger.warning("Control Plane CLI will show an error if initiated, as it cannot exec into the application's pod.")
 # --- End Get App's Pod and Namespace ---
 
-def run_kubectl_command(command):
+def run_kubectl_command(command: list, is_json_output: bool = True) -> Optional[Union[dict, str]]:
+    """Runs a kubectl command and returns its output."""
     try:
-        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return result.stdout.decode('utf-8')
-    except subprocess.CalledProcessError as e:
-        return f"Error: {e.stderr.decode('utf-8')}"
+        full_command = ['kubectl'] + command
+        logging.info(f"Running kubectl command: {' '.join(full_command)}")
+        process = subprocess.Popen(full_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = process.communicate(timeout=60) # 60-second timeout
+
+        if process.returncode != 0:
+            logging.error(f"Error running kubectl command {' '.join(full_command)}: {stderr.strip()}")
+            return None
+        
+        if is_json_output:
+            return json.loads(stdout)
+        return stdout.strip()
+    except subprocess.TimeoutExpired:
+        logging.error(f"Timeout running kubectl command: {' '.join(full_command)}")
+        if process:
+            process.kill()
+            process.communicate()
+        return None
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to decode JSON from kubectl command {' '.join(full_command)}: {e}")
+        logging.debug(f"Non-JSON stdout from kubectl: {stdout[:500]}...") # Log first 500 chars
+        return None
+    except Exception as e:
+        logging.error(f"An unexpected error occurred running kubectl command {' '.join(full_command)}: {str(e)}")
+        return None
+
+def parse_cpu_to_millicores(cpu_string: str) -> int:
+    """Converts a CPU string (e.g., '500m', '1', '0.5') to millicores."""
+    if not cpu_string:
+        return 0
+    cpu_string = str(cpu_string).strip()
+    if cpu_string.endswith('m'): # millicores
+        return int(cpu_string[:-1])
+    if cpu_string.endswith('u'): # microcores
+        return int(cpu_string[:-1]) // 1000 
+    if cpu_string.endswith('n'): # nanocores
+        return int(cpu_string[:-1]) // 1000000
+    try:
+        # Assuming it's in full cores if no suffix
+        return int(float(cpu_string) * 1000)
+    except ValueError:
+        logging.warning(f"Could not parse CPU string: {cpu_string}")
+        return 0
+
+def parse_memory_to_bytes(memory_string: str) -> int:
+    """Converts a memory string (e.g., '128Mi', '1Gi', '500Ki', '1024') to bytes."""
+    if not memory_string:
+        return 0
+    memory_string = str(memory_string).strip()
+    multipliers = {
+        'k': 1000, 'ki': 1024,
+        'm': 1000**2, 'mi': 1024**2,
+        'g': 1000**3, 'gi': 1024**3,
+        't': 1000**4, 'ti': 1024**4,
+        'p': 1000**5, 'pi': 1024**5,
+        'e': 1000**6, 'ei': 1024**6,
+    }
+    # Normalize to lowercase and identify multiplier
+    memory_string_lower = memory_string.lower()
+    unit = None
+    value_str = memory_string_lower
+
+    for u in sorted(multipliers.keys(), key=len, reverse=True): # Check longer units first (e.g., 'ki' before 'k')
+        if memory_string_lower.endswith(u):
+            unit = u
+            value_str = memory_string_lower[:-len(u)]
+            break
+    
+    try:
+        value = float(value_str)
+        if unit:
+            return int(value * multipliers[unit])
+        else: # Assume bytes if no unit
+            return int(value)
+    except ValueError:
+        logging.warning(f"Could not parse memory string: {memory_string}")
+        return 0
+
+def _extract_limits_from_describe_nodes(describe_output: str) -> Dict[str, int]:
+    """Parses the 'Allocated resources' section of 'kubectl describe nodes' output."""
+    limits = {'cpu_limit_percentage': 100, 'memory_limit_percentage': 100} # Default to 100% if not found
+    try:
+        # Regex to find the Limits percentage for CPU and Memory
+        # Example line: cpu                        10m (0%)           100m (10%)
+        cpu_match = re.search(r"cpu\\s+\\S+\\s+\\(\\S+?\\)\\s+\\S+\\s+\\((\\d+)%\\)", describe_output)
+        memory_match = re.search(r"memory\\s+\\S+\\s+\\(\\S+?\\)\\s+\\S+\\s+\\((\\d+)%\\)", describe_output)
+
+        if cpu_match:
+            limits['cpu_limit_percentage'] = int(cpu_match.group(1))
+        else:
+            logging.warning("Could not find CPU limit percentage in 'kubectl describe nodes' output.")
+
+        if memory_match:
+            limits['memory_limit_percentage'] = int(memory_match.group(1))
+        else:
+            logging.warning("Could not find Memory limit percentage in 'kubectl describe nodes' output.")
+            
+    except Exception as e:
+        logging.error(f"Error parsing 'kubectl describe nodes' output for limits: {e}")
+    return limits
+
+def _collect_and_store_environment_metrics():
+    """Collects cluster-wide metrics and stores them in the database."""
+    logging.info("Starting collection of environment metrics...")
+    
+    nodes_data = run_kubectl_command(["get", "nodes", "-o", "json"])
+    if not nodes_data or 'items' not in nodes_data:
+        logging.error("Failed to fetch node data or data format is incorrect.")
+        return
+
+    total_pod_capacity = 0
+    total_allocatable_cpu_millicores = 0
+    total_allocatable_memory_bytes = 0
+    total_allocatable_gpus = 0
+
+    for node in nodes_data.get('items', []):
+        status = node.get('status', {})
+        capacity = status.get('capacity', {})
+        allocatable = status.get('allocatable', {})
+
+        total_pod_capacity += int(capacity.get('pods', 0))
+        total_allocatable_cpu_millicores += parse_cpu_to_millicores(allocatable.get('cpu', '0'))
+        total_allocatable_memory_bytes += parse_memory_to_bytes(allocatable.get('memory', '0'))
+        # Assuming GPU resource name is 'nvidia.com/gpu'. This might need to be configurable or detected.
+        total_allocatable_gpus += int(allocatable.get('nvidia.com/gpu', 0)) 
+
+    # Fetch overallocation limits from 'kubectl describe nodes'
+    # This command output is text, not JSON, so we parse it differently
+    describe_nodes_output = run_kubectl_command(["describe", "nodes"], is_json_output=False)
+    overcommit_limits = {'cpu_limit_percentage': 100, 'memory_limit_percentage': 100} # Defaults
+    if describe_nodes_output:
+        overcommit_limits = _extract_limits_from_describe_nodes(describe_nodes_output)
+    else:
+        logging.warning("Failed to get 'kubectl describe nodes' output for overcommit limits. Using defaults.")
+
+    metrics_data = {
+        'total_node_pod_capacity': total_pod_capacity,
+        'total_node_allocatable_cpu_millicores': total_allocatable_cpu_millicores,
+        'total_node_allocatable_memory_bytes': total_allocatable_memory_bytes,
+        'total_node_allocatable_gpus': total_allocatable_gpus,
+        'cpu_limit_percentage': overcommit_limits['cpu_limit_percentage'],
+        'memory_limit_percentage': overcommit_limits['memory_limit_percentage']
+    }
+
+    if db.update_environment_metrics(metrics_data):
+        logging.info("Successfully collected and stored environment metrics.")
+    else:
+        logging.error("Failed to store environment metrics in the database.")
 
 @app.route('/')
 def index():
@@ -1228,178 +1374,175 @@ def delete_pod():
 
 @app.route('/api/refresh-database', methods=['POST'])
 def refresh_database():
-    """Manually refresh the database with current Kubernetes resources."""
+    """Manually refresh the database with current Kubernetes resources and environment metrics."""
     try:
-        updater._update_resources()
+        logging.info("Manual database refresh requested: Updating Kubernetes resources...")
+        updater._update_resources() # Existing call to update standard k8s resources
+        logging.info("Manual database refresh: Updating environment metrics...")
+        _collect_and_store_environment_metrics() # New call for environment metrics
         return jsonify({
             'success': True,
-            'message': 'Database refreshed successfully'
+            'message': 'Database and environment metrics refreshed successfully'
         })
     except Exception as e:
-        logging.error(f"Error refreshing database: {str(e)}")
+        logging.error(f"Error refreshing database and environment metrics: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
 
-def parse_cpu_to_cores(cpu_str):
-    """Converts Kubernetes CPU string to float in cores (e.g., \"100m\" -> 0.1, \"1\" -> 1.0)."""
-    if not cpu_str:
-        return 0.0
-    if isinstance(cpu_str, (int, float)):
-        return float(cpu_str)
-    if cpu_str.endswith('m'): # millicores
-        return float(cpu_str[:-1]) / 1000
-    if cpu_str.endswith('n'): # nanocores (less common for requests/limits, but good to have)
-        return float(cpu_str[:-1]) / 1_000_000_000
+@app.route('/api/environment_metrics', methods=['GET'])
+def get_environment_metrics_endpoint():
     try:
-        return float(cpu_str) # assume cores if no unit
-    except ValueError:
-        logger.warning(f"Could not parse CPU string: {cpu_str}")
-        return 0.0
+        env_metrics = db.get_latest_environment_metrics()
+        if not env_metrics:
+            # Fallback: try to collect them if missing, then try again.
+            logging.warning("Environment metrics not found in DB, attempting to collect now.")
+            _collect_and_store_environment_metrics() # Attempt to populate
+            env_metrics = db.get_latest_environment_metrics() # Try fetching again
+            if not env_metrics:
+                logging.error("Failed to retrieve or collect environment metrics.")
+                return jsonify({"error": "Environment metrics are currently unavailable."}), 503
 
-def parse_memory_to_bytes(mem_str):
-    """Converts Kubernetes memory string to bytes (e.g., \"1Gi\" -> 1024*1024*1024, \"500Mi\" -> 500*1024*1024)."""
-    if not mem_str:
-        return 0
-    if isinstance(mem_str, (int, float)): # Assuming it's already in a numeric form, potentially bytes
-        return int(mem_str)
-    
-    multipliers = {
-        'E': 1000**6, 'P': 1000**5, 'T': 1000**4, 'G': 1000**3, 'M': 1000**2, 'K': 1000**1,
-        'Ei': 1024**6, 'Pi': 1024**5, 'Ti': 1024**4, 'Gi': 1024**3, 'Mi': 1024**2, 'Ki': 1024**1,
-    }
-    mem_str = str(mem_str)
-    for suffix, multiplier in multipliers.items():
-        if mem_str.endswith(suffix):
-            try:
-                return int(float(mem_str[:-len(suffix)]) * multiplier)
-            except ValueError:
-                logger.warning(f"Could not parse memory string: {mem_str}")
-                return 0
-    try:
-        return int(mem_str) # assume bytes if no unit
-    except ValueError:
-        logger.warning(f"Could not parse memory string (no unit, not int): {mem_str}")
-        return 0
+        all_pods_data = db.get_resources('pods') # This returns a list of dicts (parsed JSON)
 
-@app.route('/api/cluster/resource_summary', methods=['GET'])
-def get_cluster_resource_summary():
-    logger.info("Fetching cluster resource summary...")
-    summary = {
-        'pods': {'total_allocatable': 0, 'current_running': 0, 'percentage_used': 0},
-        'cpu': {'total_allocatable_cores': 0, 'total_capacity_cores': 0, 'current_utilized_cores': 0, 'percentage_used': 0},
-        'memory': {'total_allocatable_bytes': 0, 'total_capacity_bytes': 0, 'current_utilized_bytes': 0, 'percentage_used': 0},
-        'gpu': {'total_allocatable': 0, 'current_utilized': 0, 'percentage_used': 0}
-    }
-    # Define the GPU resource key. This might need to be configurable.
-    GPU_RESOURCE_KEY = 'nvidia.com/gpu' 
+        current_running_pods = 0
+        current_cpu_request_millicores = 0
+        current_memory_request_bytes = 0
+        current_gpu_request_units = 0
 
-    try:
-        # 1. Get Node Allocatable & Capacity Resources
-        node_data_str = run_kubectl_command("kubectl get nodes -o json")
-        if "Error:" in node_data_str:
-            logger.error(f"Error fetching node data: {node_data_str}")
-            return jsonify(error=f"Failed to fetch node data: {node_data_str}"), 500
-        
-        node_data = json.loads(node_data_str)
-        total_node_cpu_allocatable = 0
-        total_node_cpu_capacity = 0
-        total_node_mem_allocatable = 0
-        total_node_mem_capacity = 0
-        total_node_gpu_allocatable = 0
-        # total_node_gpu_capacity = 0 # Capacity for GPUs is usually the same as allocatable from nodes
+        for pod_resource in all_pods_data:
+            # pod_resource is the full pod JSON structure stored in the 'data' column
+            # Ensure it's a dict, though db.get_resources should already handle json.loads
+            if not isinstance(pod_resource, dict):
+                logging.warning(f"Skipping pod resource as it is not a dict: {type(pod_resource)}")
+                continue
 
-        for node in node_data.get('items', []):
-            allocatable = node.get('status', {}).get('allocatable', {})
-            capacity = node.get('status', {}).get('capacity', {})
-            
-            total_node_cpu_allocatable += parse_cpu_to_cores(allocatable.get('cpu', '0'))
-            total_node_cpu_capacity += parse_cpu_to_cores(capacity.get('cpu', '0'))
-            total_node_mem_allocatable += parse_memory_to_bytes(allocatable.get('memory', '0'))
-            total_node_mem_capacity += parse_memory_to_bytes(capacity.get('memory', '0'))
-            total_node_gpu_allocatable += int(allocatable.get(GPU_RESOURCE_KEY, '0'))
-            # total_node_gpu_capacity += int(capacity.get(GPU_RESOURCE_KEY, '0'))
-
-
-        summary['cpu']['total_allocatable_cores'] = total_node_cpu_allocatable
-        summary['cpu']['total_capacity_cores'] = total_node_cpu_capacity # For overprovisioning display
-        summary['memory']['total_allocatable_bytes'] = total_node_mem_allocatable
-        summary['memory']['total_capacity_bytes'] = total_node_mem_capacity # For overprovisioning display
-        summary['gpu']['total_allocatable'] = total_node_gpu_allocatable
-        
-        # For pods, 'allocatable' is often considered the pod capacity of the cluster.
-        # Kubernetes itself doesn't expose a single "max pods" for the cluster directly in nodes,
-        # but node's pod capacity is summed.
-        # For simplicity, we'll use the pod limit on nodes if available.
-        # A more accurate "total pods allowable" might involve schedulability checks or cluster-level config.
-        # For now, let's estimate from node capacity, if the `pods` field is present.
-        # If not, this remains 0, and the frontend should handle it.
-        node_pod_capacity_sum = 0
-        for node in node_data.get('items', []):
-            node_pod_capacity_sum += int(node.get('status', {}).get('capacity', {}).get('pods', '0'))
-        summary['pods']['total_allocatable'] = node_pod_capacity_sum if node_pod_capacity_sum > 0 else 250 # Fallback if not reported well
-
-
-        # 2. Get Pod Utilized Resources (from database)
-        # Assuming db.get_resources('pods') returns all pods with their specs
-        all_pods_from_db = db.get_resources('pods') # This might need adjustment based on actual db schema and function
-        
-        running_pods_count = 0
-        current_cpu_requests_sum = 0
-        current_mem_requests_sum = 0
-        current_gpu_limits_sum = 0 # GPUs are typically requested via limits
-
-        for pod_db_entry in all_pods_from_db:
-            # The structure of pod_db_entry depends on what db.get_resources('pods') returns.
-            # We need access to pod status and container resource requests/limits.
-            # Example: pod_db_entry might be a dict from 'kubectl get pod -o json' stored in DB.
-            
-            status_phase = pod_db_entry.get('status', {}).get('phase', '').lower()
+            status_phase = pod_resource.get('status', {}).get('phase', '').lower()
             if status_phase == 'running':
-                running_pods_count += 1
+                current_running_pods += 1
+            
+            spec = pod_resource.get('spec', {})
+            for container in spec.get('containers', []):
+                resources = container.get('resources', {})
+                requests = resources.get('requests', {})
+                if requests:
+                    current_cpu_request_millicores += parse_cpu_to_millicores(requests.get('cpu', '0'))
+                    current_memory_request_bytes += parse_memory_to_bytes(requests.get('memory', '0'))
+                    # Assuming GPU resource name is 'nvidia.com/gpu'. This should match collection logic.
+                    current_gpu_request_units += int(requests.get('nvidia.com/gpu', 0))
+            
+            # Consider initContainers as well if their requests should be counted towards active usage
+            for init_container in spec.get('initContainers', []):
+                resources = init_container.get('resources', {})
+                requests = resources.get('requests', {})
+                if requests: # Typically init containers run to completion, but their peak could be considered
+                           # For simplicity, often only running container requests are summed for 'active' usage.
+                           # We will include them here as they can contribute to allocatable pressure.
+                    current_cpu_request_millicores += parse_cpu_to_millicores(requests.get('cpu', '0'))
+                    current_memory_request_bytes += parse_memory_to_bytes(requests.get('memory', '0'))
+                    current_gpu_request_units += int(requests.get('nvidia.com/gpu', 0))
 
-            # Summing requests from all containers in the pod
-            containers = pod_db_entry.get('spec', {}).get('containers', [])
-            init_containers = pod_db_entry.get('spec', {}).get('initContainers', []) # Also consider init containers
 
-            for container_list in [containers, init_containers]:
-                for container in container_list:
-                    resources = container.get('resources', {})
-                    requests = resources.get('requests', {})
-                    limits = resources.get('limits', {}) # GPU is usually in limits
-                    
-                    current_cpu_requests_sum += parse_cpu_to_cores(requests.get('cpu', '0'))
-                    current_mem_requests_sum += parse_memory_to_bytes(requests.get('memory', '0'))
-                    current_gpu_limits_sum += int(limits.get(GPU_RESOURCE_KEY, '0'))
+        # Prepare the response
+        response_data = {
+            'pods': {
+                'total_capacity': env_metrics.get('total_node_pod_capacity', 0),
+                'current_running': current_running_pods,
+                'percentage_running': 0
+            },
+            'vcpu': {
+                'total_allocatable_millicores': env_metrics.get('total_node_allocatable_cpu_millicores', 0),
+                'current_request_millicores': current_cpu_request_millicores,
+                'percentage_utilized': 0,
+                'limit_percentage': env_metrics.get('cpu_limit_percentage', 100),
+                'overprovision_limit_millicores': 0
+            },
+            'memory': {
+                'total_allocatable_bytes': env_metrics.get('total_node_allocatable_memory_bytes', 0),
+                'current_request_bytes': current_memory_request_bytes,
+                'percentage_utilized': 0,
+                'limit_percentage': env_metrics.get('memory_limit_percentage', 100),
+                'overprovision_limit_bytes': 0
+            },
+            'gpu': {
+                'total_allocatable_units': env_metrics.get('total_node_allocatable_gpus', 0),
+                'current_request_units': current_gpu_request_units,
+                'percentage_utilized': 0
+            },
+            'last_updated_timestamp': env_metrics.get('timestamp')
+        }
+
+        # Calculate percentages and overprovision limits
+        if response_data['pods']['total_capacity'] > 0:
+            response_data['pods']['percentage_running'] = round(
+                (response_data['pods']['current_running'] / response_data['pods']['total_capacity']) * 100, 1
+            )
+
+        if response_data['vcpu']['total_allocatable_millicores'] > 0:
+            response_data['vcpu']['percentage_utilized'] = round(
+                (response_data['vcpu']['current_request_millicores'] / response_data['vcpu']['total_allocatable_millicores']) * 100, 1
+            )
+            response_data['vcpu']['overprovision_limit_millicores'] = int(
+                response_data['vcpu']['total_allocatable_millicores'] * (response_data['vcpu']['limit_percentage'] / 100.0)
+            )
+
+        if response_data['memory']['total_allocatable_bytes'] > 0:
+            response_data['memory']['percentage_utilized'] = round(
+                (response_data['memory']['current_request_bytes'] / response_data['memory']['total_allocatable_bytes']) * 100, 1
+            )
+            response_data['memory']['overprovision_limit_bytes'] = int(
+                response_data['memory']['total_allocatable_bytes'] * (response_data['memory']['limit_percentage'] / 100.0)
+            )
+
+        if response_data['gpu']['total_allocatable_units'] > 0:
+            response_data['gpu']['percentage_utilized'] = round(
+                (response_data['gpu']['current_request_units'] / response_data['gpu']['total_allocatable_units']) * 100, 1
+            )
         
-        summary['pods']['current_running'] = running_pods_count
-        summary['cpu']['current_utilized_cores'] = current_cpu_requests_sum
-        summary['memory']['current_utilized_bytes'] = current_mem_requests_sum
-        summary['gpu']['current_utilized'] = current_gpu_limits_sum
+        return jsonify(response_data)
 
-        # 3. Calculate Percentages
-        if summary['pods']['total_allocatable'] > 0:
-            summary['pods']['percentage_used'] = round((summary['pods']['current_running'] / summary['pods']['total_allocatable']) * 100, 1)
-        
-        if summary['cpu']['total_allocatable_cores'] > 0:
-            summary['cpu']['percentage_used'] = round((summary['cpu']['current_utilized_cores'] / summary['cpu']['total_allocatable_cores']) * 100, 1)
-        
-        if summary['memory']['total_allocatable_bytes'] > 0:
-            summary['memory']['percentage_used'] = round((summary['memory']['current_utilized_bytes'] / summary['memory']['total_allocatable_bytes']) * 100, 1)
-
-        if summary['gpu']['total_allocatable'] > 0:
-            summary['gpu']['percentage_used'] = round((summary['gpu']['current_utilized'] / summary['gpu']['total_allocatable']) * 100, 1)
-
-        logger.info(f"Cluster resource summary generated: {summary}")
-        return jsonify(summary)
-
-    except json.JSONDecodeError as e:
-        logger.error(f"JSONDecodeError fetching resource summary: {e}. Data: {node_data_str[:500]}") # Log first 500 chars
-        return jsonify(error=f"Failed to parse Kubernetes API response: {e}"), 500
     except Exception as e:
-        logger.error(f"Exception fetching resource summary: {e}", exc_info=True)
-        return jsonify(error=f"An unexpected error occurred: {e}"), 500
+        logging.error(f"Error in /api/environment_metrics endpoint: {str(e)}", exc_info=True)
+        return jsonify({"error": "An error occurred while fetching environment metrics."}), 500
+
+# Ensure this is defined before the __main__ block if you have one,
+# or at a suitable place after app initialization.
+# This will run once when the first request comes in if using before_first_request,
+# or on app start if structured differently.
+
+# Using with app.app_context() for initialization tasks is generally preferred
+# for newer Flask versions if you need access to app config or extensions.
+# However, for a one-off startup task like this, a simple call might suffice
+# if `db` is globally initialized and doesn't strictly need app context *during its own initialization*.
+
+# Call to collect metrics on application startup.
+# This needs to be placed carefully depending on your app structure.
+# If app is defined globally:
+# with app.app_context(): # Ensures application context is active
+#     _collect_and_store_environment_metrics()
+# The above `with app.app_context()` is good if `_collect_and_store_environment_metrics` or `db` needs it.
+# Given `db` is a global instance from `database.py`, it might not strictly need app context for this call.
+
+# Deferring the startup call to after the app object is fully defined. 
+# A cleaner way is often an app factory or explicit init calls. 
+# For now, let's assume this will be called by the WSGI server after loading app.py.
+# A simple (though less ideal for complex apps) way to try and run it once:
+_COLLECTED_ON_STARTUP = False
+if not _COLLECTED_ON_STARTUP:
+    try:
+        # Ensuring app context for the startup metric collection
+        # Need to make sure 'app' is the Flask app instance
+        with app.app_context():
+             _collect_and_store_environment_metrics()
+        _COLLECTED_ON_STARTUP = True
+        logging.info("Initial collection of environment metrics completed on WSGI server startup.")
+    except Exception as e:
+        logging.error(f"Error during initial collection of environment metrics on WSGI startup: {e}", exc_info=True)
 
 if __name__ == '__main__':
+    # This block runs when you execute `python app.py` directly.
+    # It's common to run development server here.
+    with app.app_context(): # Ensures logs etc. within this are tied to app context
+        _collect_and_store_environment_metrics() # Collect once on direct run startup
     socketio.run(app, debug=True, host='0.0.0.0', port='8080', allow_unsafe_werkzeug=True)

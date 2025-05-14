@@ -5,15 +5,23 @@
 {% block additional_styles %}
 <style>
     /* Any page-specific styles that aren't included in main.css */
-    .dashboard-metric-card .card-body {
-        position: relative; /* For absolute positioning of capacity text */
-        padding-bottom: 2.5rem; /* Ensure space for capacity text */
+    .metric-details-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 2px 8px; /* row-gap column-gap */
+        align-items: center;
     }
-    .capacity-info {
-        position: absolute;
-        bottom: 0.5rem;
-        right: 0.75rem;
+    .metric-details-grid .label {
+        font-weight: bold;
+    }
+    .metric-details-grid .value {
+        text-align: right;
+    }
+    .overprovision-info {
         font-size: 0.75em;
+        color: #6c757d;
+        text-align: right;
+        margin-top: 5px;
     }
 </style>
 {% endblock %}
@@ -32,14 +40,12 @@
                 <div class="dashboard-metric-card pods-card">
                     <div class="card-body">
                         <i class="fas fa-cubes card-icon"></i>
-                        <h5 class="card-title">Total Pods</h5>
-                        <h3 class="counter-value">
-                            <span id="runningPodsDisplay">-</span> / <span id="allocatablePodsDisplay">-</span>
-                        </h3>
-                        <span class="counter-info"><span id="podsPercentage">0</span>% Used</span>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" id="podsProgressBar" role="progressbar" style="width: 0%;"></div>
-                        </div>
+                        <h5 class="card-title">Pod Capacity & Usage</h5>
+                        <h3 class="counter-value"><span id="podCardRunningCount">-</span> / <span id="podCardTotalCapacity">-</span></h3>
+                        <div class="metric-details">
+                            <span id="podCardPercentage">-</span>% Running
+                                    </div>
+                        <div class="text-muted small mt-1">Last updated: <span id="metricsLastUpdatedPods">-</span></div>
                     </div>
                 </div>
             </div>
@@ -49,50 +55,48 @@
                 <div class="dashboard-metric-card cpu-card">
                     <div class="card-body">
                         <i class="fas fa-microchip card-icon"></i>
-                        <h5 class="card-title">vCPU Usage</h5>
-                        <h3 class="counter-value" id="utilizedCpuDisplay">-</h3>
-                        <span class="counter-info">
-                            <span id="cpuPercentage">-</span>% of <span id="allocatableCpuDisplay">-</span> Cores
-                        </span>
+                        <h5 class="card-title">vCPU Allocation</h5>
+                        <h3 class="counter-value"><span id="vcpuCardUtilized">-</span> / <span id="vcpuCardTotalAllocatable">-</span> <small>Cores</small></h3>
+                        <span class="counter-info"><span id="vcpuCardPercentageUtilized">-</span>% Utilized</span>
                         <div class="progress mt-2">
-                            <div class="progress-bar" id="cpuProgressBar" role="progressbar" style="width: 0%;"></div>
+                            <div class="progress-bar" id="vcpuProgressBar" role="progressbar" style="width: 0%;"></div>
                         </div>
-                        <small class="text-muted capacity-info">Capacity: <span id="totalNodeCpuCapacityDisplay">-</span> Cores</small>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- RAM Card (was Future Metric Card) -->
-            <div class="col-md-3">
-                <div class="dashboard-metric-card memory-card">
-                    <div class="card-body">
-                        <i class="fas fa-memory card-icon"></i>
-                        <h5 class="card-title">RAM Usage</h5>
-                        <h3 class="counter-value" id="utilizedMemoryDisplay">-</h3>
-                        <span class="counter-info">
-                            <span id="memoryPercentage">-</span>% of <span id="allocatableMemoryDisplay">-</span> GiB
-                        </span>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" id="memoryProgressBar" role="progressbar" style="width: 0%;"></div>
-                        </div>
-                        <small class="text-muted capacity-info">Capacity: <span id="totalNodeMemoryCapacityDisplay">-</span> GiB</small>
+                        <div class="overprovision-info">Limit: <span id="vcpuCardOverprovisionLimit">-</span> Cores</div>
+                        <div class="text-muted small mt-1">Last updated: <span id="metricsLastUpdatedVCPU">-</span></div>
                     </div>
                 </div>
             </div>
 
-            <!-- GPU Card -->
+            <!-- RAM Card (Replaces GPU Card for now, GPU will be next) -->
+            <div class="col-md-3">
+                <div class="dashboard-metric-card memory-card">
+                    <div class="card-body">
+                        <i class="fas fa-memory card-icon"></i>
+                        <h5 class="card-title">RAM Allocation</h5>
+                        <h3 class="counter-value"><span id="ramCardUtilized">-</span> / <span id="ramCardTotalAllocatable">-</span> <small>GB</small></h3>
+                        <span class="counter-info"><span id="ramCardPercentageUtilized">-</span>% Utilized</span>
+                        <div class="progress mt-2">
+                            <div class="progress-bar" id="ramProgressBar" role="progressbar" style="width: 0%;"></div>
+                        </div>
+                        <div class="overprovision-info">Limit: <span id="ramCardOverprovisionLimit">-</span> GB</div>
+                        <div class="text-muted small mt-1">Last updated: <span id="metricsLastUpdatedRAM">-</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GPU Card (Replaces "Future Metric Card") -->
             <div class="col-md-3">
                 <div class="dashboard-metric-card gpu-card">
                     <div class="card-body">
                         <i class="fas fa-tachometer-alt card-icon"></i>
-                        <h5 class="card-title">GPU Resources</h5>
-                        <h3 class="counter-value" id="utilizedGpuDisplay">-</h3>
-                        <span class="counter-info">
-                             <span id="gpuPercentage">-</span>% of <span id="allocatableGpuDisplay">-</span> GPUs
-                        </span>
+                        <h5 class="card-title">GPU Allocation</h5>
+                        <h3 class="counter-value"><span id="gpuCardUtilizedUnits">-</span> / <span id="gpuCardTotalAllocatableUnits">-</span> <small>Units</small></h3>
+                        <span class="counter-info"><span id="gpuCardPercentageUtilized">-</span>% Utilized</span>
                         <div class="progress mt-2">
                             <div class="progress-bar" id="gpuProgressBar" role="progressbar" style="width: 0%;"></div>
                         </div>
+                        <div class="text-muted small mt-1">Last updated: <span id="metricsLastUpdatedGPU">-</span></div>
+                        <!-- GPU overprovisioning not typically specified in the same way, omit for now -->
                     </div>
                 </div>
             </div>
@@ -414,9 +418,9 @@
                 </div>
             </div>
             <div class="col-md-6 text-end">
-                <button class="btn btn-outline-primary" id="refreshResourcesBtn" onclick="refreshResourcesPage()">
-                    <i class="fas fa-sync-alt me-1"></i> Refresh
-                </button>
+                    <button class="btn btn-outline-primary" id="refreshResourcesBtn" onclick="refreshResourcesPage()">
+                        <i class="fas fa-sync-alt me-1"></i> Refresh
+                    </button>
             </div>
         </div>
         
