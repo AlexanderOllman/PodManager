@@ -1211,18 +1211,21 @@ def handle_pod_exec_input(data):
     sid = request.sid
     input_data = data.get('input')
     session = active_pty_sessions.get(sid)
-    if session and session['type'] == 'pod_exec' and input_data is not None:
-        logger.debug(f"[pod_exec sid:{sid}] Received input for {session['namespace']}/{session['pod_name']}: {len(input_data)} bytes")
-        try:
-            os.write(session['fd'], input_data.encode('utf-8'))
-        except OSError as e:
-            logger.error(f"[pod_exec sid:{sid}] OSError writing to PTY for {session['namespace']}/{session['pod_name']}: {e}")
-    except Exception as e:
-            logger.error(f"[pod_exec sid:{sid}] Exception writing to PTY: {e}")
-    elif not session:
-        logger.warning(f"[pod_exec sid:{sid}] Input received but no active session found.")
-    elif session['type'] != 'pod_exec':
-        logger.warning(f"[pod_exec sid:{sid}] Input received for a session of type {session['type']}, expected 'pod_exec'.")
+    try:  # Outer try for the whole handler logic
+        if session and session['type'] == 'pod_exec' and input_data is not None:
+            logger.debug(f"[pod_exec sid:{sid}] Received input for {session['namespace']}/{session['pod_name']}: {len(input_data)} bytes")
+            try:  # Inner try specifically for os.write
+                os.write(session['fd'], input_data.encode('utf-8'))
+            except OSError as e_os: # Specific exception for os.write
+                logger.error(f"[pod_exec sid:{sid}] OSError writing to PTY for {session['namespace']}/{session['pod_name']}: {e_os}")
+        elif not session:
+            logger.warning(f"[pod_exec sid:{sid}] Input received but no active session found.")
+        elif session['type'] != 'pod_exec': # Check if type is not 'pod_exec'
+             logger.warning(f"[pod_exec sid:{sid}] Input received for session type {session['type']}, expected 'pod_exec'.")
+        # Add other conditions or an else if necessary based on original intent for input_data being None etc.
+            
+    except Exception as e: # General exception for the whole handler, now correctly placed
+            logger.error(f"[pod_exec sid:{sid}] General exception processing input for PTY: {e}", exc_info=True)
 
 # Similar explicit termination for pod_exec if needed in the future
 @socketio.on('pod_exec_terminate_request')
@@ -1246,19 +1249,21 @@ def handle_control_plane_cli_input(data):
     sid = request.sid
     input_data = data.get('input')
     session = active_pty_sessions.get(sid)
+    try:  # Outer try for the whole handler logic
+        if session and session['type'] == 'ctrl_cli' and input_data is not None:
+            logger.debug(f"[ctrl_cli sid:{sid}] Received input: {len(input_data)} bytes")
+            try:  # Inner try specifically for os.write
+                os.write(session['fd'], input_data.encode('utf-8'))
+            except OSError as e_os: # Specific exception for os.write
+                logger.error(f"[ctrl_cli sid:{sid}] OSError writing to PTY: {e_os}")
+        elif not session:
+            logger.warning(f"[ctrl_cli sid:{sid}] Input received but no active session found.")
+        elif session['type'] != 'ctrl_cli': # Check if type is not 'ctrl_cli'
+            logger.warning(f"[ctrl_cli sid:{sid}] Input received for session type {session['type']}, expected 'ctrl_cli'.")
+        # Add other conditions or an else if necessary based on original intent
 
-    if session and session['type'] == 'ctrl_cli' and input_data is not None:
-        logger.debug(f"[ctrl_cli sid:{sid}] Received input: {len(input_data)} bytes")
-        try:
-            os.write(session['fd'], input_data.encode('utf-8'))
-        except OSError as e:
-            logger.error(f"[ctrl_cli sid:{sid}] OSError writing to PTY: {e}")
-    except Exception as e:
-            logger.error(f"[ctrl_cli sid:{sid}] Exception writing to PTY: {e}")
-    elif not session:
-        logger.warning(f"[ctrl_cli sid:{sid}] Input received but no active session found.")
-    elif session['type'] != 'ctrl_cli':
-        logger.warning(f"[ctrl_cli sid:{sid}] Input received for a session of type {session['type']}, expected 'ctrl_cli'.")
+    except Exception as e: # General exception for the whole handler, now correctly placed
+            logger.error(f"[ctrl_cli sid:{sid}] General exception processing input for PTY: {e}", exc_info=True)
 
 def set_pty_size(fd, rows, cols, width_px=0, height_px=0):
     logger.info(f"Setting PTY size: FD={fd}, Rows={rows}, Cols={cols}")
@@ -1276,14 +1281,14 @@ def handle_pty_resize(data):
         try:
             rows = int(data.get('rows'))
             cols = int(data.get('cols'))
-            if rows > 0 and cols > 0 :
+            if rows > 0 and cols > 0: # Inner if
                  logger.info(f"[pty_resize sid:{sid}] Resizing PTY for {session.get('type')} session to {rows}x{cols}")
                  set_pty_size(session['fd'], rows, cols)
-        else:
+            else: # Else for the inner if, now correctly indented within the try block
                 logger.warning(f"[pty_resize sid:{sid}] Invalid rows/cols for resize: {data}")
-    except Exception as e:
-            logger.error(f"[pty_resize sid:{sid}] Error resizing PTY: {e}")
-    else:
+        except Exception as e: # This except is for the try block
+            logger.error(f"[pty_resize sid:{sid}] Error resizing PTY: {e}", exc_info=True)
+    else: # This else is for the outer 'if session:'
         logger.warning(f"[pty_resize sid:{sid}] Resize event received but no active session.")
 
 @app.route('/api/gpu-pods', methods=['GET'])
