@@ -485,7 +485,7 @@ def get_namespaces():
         # namespaces = json.loads(output) # No longer needed, output_dict is already parsed
         if output_dict and 'items' in output_dict:
             namespace_names = [ns['metadata']['name'] for ns in output_dict.get('items', [])]
-        return jsonify(namespaces=namespace_names)
+            return jsonify(namespaces=namespace_names)
         else:
             logging.error(f"Failed to get namespaces or output format incorrect: {output_dict}")
             return jsonify(namespaces=[], error="Unable to fetch namespaces or parse them")
