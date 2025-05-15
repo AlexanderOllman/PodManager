@@ -1,0 +1,13 @@
+{{- if .Values.clusterAccess.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "pod-manager.fullname" . }}-cluster-role
+  {{- if .Values.clusterAccess.clusterRole.name }}
+  name: {{ .Values.clusterAccess.clusterRole.name }}
+  {{- end }}
+  labels:
+    {{- include "pod-manager.labels" . | nindent 4 }}
+rules:
+  {{- toYaml .Values.clusterAccess.clusterRole.rules | nindent 2 }}
+{{- end }}

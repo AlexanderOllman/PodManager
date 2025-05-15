@@ -1,0 +1,88 @@
+# values.yaml
+replicaCount: 1
+image:
+  repository: fheonix/pod-manager
+  pullPolicy: Always
+  tag: "0.0.2"
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Proxy configuration
+proxy:
+  enabled: false
+  httpProxy: "http://hpeproxy.its.hpecorp.net:80"
+  httpsProxy: "http://hpeproxy.its.hpecorp.net:80"
+  noProxy: "10.96.0.1,10.96.0.0/12,10.96.0.12,10.244.0.0/16,10.43.0.0/16,.external.hpe.local,localhost,.cluster.local,.svc,.default.svc,127.0.0.1,10.227.209.182, 10.227.212.161, 10.227.212.162, 10.227.212.163"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# New section for cluster-wide access
+clusterAccess:
+  create: true
+  clusterRole:
+    name: ""
+    rules:
+      - apiGroups: ["*"]
+        resources: ["*"]
+        verbs: ["*"]
+  clusterRoleBinding:
+    name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+#Platform related options
+ezua:
+  domainName: "${DOMAIN_NAME}"
+  #Use next options in order to configure the application endpoint.
+  #Example of a VirtualService is here:
+  virtualService:
+    endpoint: "pod-manager.${DOMAIN_NAME}"
+    istioGateway: "istio-system/ezaf-gateway"
+
+  authorizationPolicy:
+    namespace: "istio-system"
+    providerName: "oauth2-proxy"
+    matchLabels:
+      istio: "ingressgateway"
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  limits:
+    cpu: 2
+    memory: 4Gi
+  requests:
+    cpu: 2
+    memory: 4Gi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,6 @@
+apiVersion: v2
+appVersion: 0.0.1
+description: Ez Pod Manager
+name: pod-manager
+type: application
+version: 0.0.10
