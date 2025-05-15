@@ -12,7 +12,7 @@ The HPE Private Cloud AI Resource Manager is a comprehensive solution designed t
 
 ## Getting Started
 
-1. Upload the Helm chart (.tgz file) through the 'Import Framework' workflow
+1. Upload the Helm chart (.tgz file) through the 'Import Framework' workflow. Use the included icon, and it is recommended to declare the namespace as 'pod-manager'.
 2. If deploying inside an HPE network:
    - Set the proxy to "enable" in the values.yaml configuration file
 3. In the application:
