@@ -137,29 +137,6 @@ def parse_memory_to_bytes(memory_string: str) -> int:
         logging.warning(f"Could not parse memory string: {memory_string}")
         return 0
 
-def _extract_limits_from_describe_nodes(describe_output: str) -> Dict[str, int]:
-    """Parses the 'Allocated resources' section of 'kubectl describe nodes' output."""
-    limits = {'cpu_limit_percentage': 100, 'memory_limit_percentage': 100} # Default to 100% if not found
-    try:
-        # Regex to find the Limits percentage for CPU and Memory
-        # Example line: cpu                        10m (0%)           100m (10%)
-        cpu_match = re.search(r"cpu\\s+\\S+\\s+\\(\\S+?\\)\\s+\\S+\\s+\\((\\d+)%\\)", describe_output)
-        memory_match = re.search(r"memory\\s+\\S+\\s+\\(\\S+?\\)\\s+\\S+\\s+\\((\\d+)%\\)", describe_output)
-
-        if cpu_match:
-            limits['cpu_limit_percentage'] = int(cpu_match.group(1))
-        else:
-            logging.warning("Could not find CPU limit percentage in 'kubectl describe nodes' output.")
-
-        if memory_match:
-            limits['memory_limit_percentage'] = int(memory_match.group(1))
-        else:
-            logging.warning("Could not find Memory limit percentage in 'kubectl describe nodes' output.")
-            
-    except Exception as e:
-        logging.error(f"Error parsing 'kubectl describe nodes' output for limits: {e}")
-    return limits
-
 def _collect_and_store_environment_metrics():
     """Collects cluster-wide metrics and stores them in the database."""
     logging.info("Starting collection of environment metrics...")
@@ -173,6 +150,8 @@ def _collect_and_store_environment_metrics():
     total_allocatable_cpu_millicores = 0
     total_allocatable_memory_bytes = 0
     total_allocatable_gpus = 0
+    total_capacity_cpu_millicores = 0
+    total_capacity_memory_bytes = 0
 
     for node in nodes_data.get('items', []):
         status = node.get('status', {})
@@ -182,25 +161,28 @@ def _collect_and_store_environment_metrics():
         total_pod_capacity += int(capacity.get('pods', 0))
         total_allocatable_cpu_millicores += parse_cpu_to_millicores(allocatable.get('cpu', '0'))
         total_allocatable_memory_bytes += parse_memory_to_bytes(allocatable.get('memory', '0'))
-        # Assuming GPU resource name is 'nvidia.com/gpu'. This might need to be configurable or detected.
-        total_allocatable_gpus += int(allocatable.get('nvidia.com/gpu', 0)) 
+        total_allocatable_gpus += int(allocatable.get('nvidia.com/gpu', 0))
+        total_capacity_cpu_millicores += parse_cpu_to_millicores(capacity.get('cpu', '0'))
+        total_capacity_memory_bytes += parse_memory_to_bytes(capacity.get('memory', '0'))
 
     # Fetch overallocation limits from 'kubectl describe nodes'
     # This command output is text, not JSON, so we parse it differently
-    describe_nodes_output = run_kubectl_command(["describe", "nodes"], is_json_output=False)
-    overcommit_limits = {'cpu_limit_percentage': 100, 'memory_limit_percentage': 100} # Defaults
-    if describe_nodes_output:
-        overcommit_limits = _extract_limits_from_describe_nodes(describe_nodes_output)
-    else:
-        logging.warning("Failed to get 'kubectl describe nodes' output for overcommit limits. Using defaults.")
+    # describe_nodes_output = run_kubectl_command(["describe", "nodes"], is_json_output=False)
+    # overcommit_limits = {'cpu_limit_percentage': 100, 'memory_limit_percentage': 100} # Defaults
+    # if describe_nodes_output:
+    #     overcommit_limits = _extract_limits_from_describe_nodes(describe_nodes_output)
+    # else:
+    #     logging.warning("Failed to get 'kubectl describe nodes' output for overcommit limits. Using defaults.")
 
     metrics_data = {
         'total_node_pod_capacity': total_pod_capacity,
         'total_node_allocatable_cpu_millicores': total_allocatable_cpu_millicores,
         'total_node_allocatable_memory_bytes': total_allocatable_memory_bytes,
         'total_node_allocatable_gpus': total_allocatable_gpus,
-        'cpu_limit_percentage': overcommit_limits['cpu_limit_percentage'],
-        'memory_limit_percentage': overcommit_limits['memory_limit_percentage']
+        'total_node_capacity_cpu_millicores': total_capacity_cpu_millicores,
+        'total_node_capacity_memory_bytes': total_capacity_memory_bytes
+        # 'cpu_limit_percentage': overcommit_limits['cpu_limit_percentage'],
+        # 'memory_limit_percentage': overcommit_limits['memory_limit_percentage']
     }
 
     if db.update_environment_metrics(metrics_data):
@@ -1428,8 +1410,6 @@ def get_environment_metrics_endpoint():
         current_gpu_request_units = 0
 
         for pod_resource in all_pods_data:
-            # pod_resource is the full pod JSON structure stored in the 'data' column
-            # Ensure it's a dict, though db.get_resources should already handle json.loads
             if not isinstance(pod_resource, dict):
                 logging.warning(f"Skipping pod resource as it is not a dict: {type(pod_resource)}")
                 continue
@@ -1445,16 +1425,12 @@ def get_environment_metrics_endpoint():
                 if requests:
                     current_cpu_request_millicores += parse_cpu_to_millicores(requests.get('cpu', '0'))
                     current_memory_request_bytes += parse_memory_to_bytes(requests.get('memory', '0'))
-                    # Assuming GPU resource name is 'nvidia.com/gpu'. This should match collection logic.
                     current_gpu_request_units += int(requests.get('nvidia.com/gpu', 0))
             
-            # Consider initContainers as well if their requests should be counted towards active usage
             for init_container in spec.get('initContainers', []):
                 resources = init_container.get('resources', {})
                 requests = resources.get('requests', {})
-                if requests: # Typically init containers run to completion, but their peak could be considered
-                           # For simplicity, often only running container requests are summed for 'active' usage.
-                           # We will include them here as they can contribute to allocatable pressure.
+                if requests:
                     current_cpu_request_millicores += parse_cpu_to_millicores(requests.get('cpu', '0'))
                     current_memory_request_bytes += parse_memory_to_bytes(requests.get('memory', '0'))
                     current_gpu_request_units += int(requests.get('nvidia.com/gpu', 0))
@@ -1468,18 +1444,18 @@ def get_environment_metrics_endpoint():
                 'percentage_running': 0
             },
             'vcpu': {
+                'total_capacity_millicores': env_metrics.get('total_node_capacity_cpu_millicores', 0),
                 'total_allocatable_millicores': env_metrics.get('total_node_allocatable_cpu_millicores', 0),
                 'current_request_millicores': current_cpu_request_millicores,
-                'percentage_utilized': 0,
-                'limit_percentage': env_metrics.get('cpu_limit_percentage', 100),
-                'overprovision_limit_millicores': 0
+                'percentage_utilized_vs_allocatable': 0,
+                'percentage_utilized_vs_capacity': 0
             },
             'memory': {
+                'total_capacity_bytes': env_metrics.get('total_node_capacity_memory_bytes', 0),
                 'total_allocatable_bytes': env_metrics.get('total_node_allocatable_memory_bytes', 0),
                 'current_request_bytes': current_memory_request_bytes,
-                'percentage_utilized': 0,
-                'limit_percentage': env_metrics.get('memory_limit_percentage', 100),
-                'overprovision_limit_bytes': 0
+                'percentage_utilized_vs_allocatable': 0,
+                'percentage_utilized_vs_capacity': 0
             },
             'gpu': {
                 'total_allocatable_units': env_metrics.get('total_node_allocatable_gpus', 0),
@@ -1489,26 +1465,28 @@ def get_environment_metrics_endpoint():
             'last_updated_timestamp': env_metrics.get('timestamp')
         }
 
-        # Calculate percentages and overprovision limits
+        # Calculate percentages
         if response_data['pods']['total_capacity'] > 0:
             response_data['pods']['percentage_running'] = round(
                 (response_data['pods']['current_running'] / response_data['pods']['total_capacity']) * 100, 1
             )
 
         if response_data['vcpu']['total_allocatable_millicores'] > 0:
-            response_data['vcpu']['percentage_utilized'] = round(
+            response_data['vcpu']['percentage_utilized_vs_allocatable'] = round(
                 (response_data['vcpu']['current_request_millicores'] / response_data['vcpu']['total_allocatable_millicores']) * 100, 1
             )
-            response_data['vcpu']['overprovision_limit_millicores'] = int(
-                response_data['vcpu']['total_allocatable_millicores'] * (response_data['vcpu']['limit_percentage'] / 100.0)
+        if response_data['vcpu']['total_capacity_millicores'] > 0:
+            response_data['vcpu']['percentage_utilized_vs_capacity'] = round(
+                (response_data['vcpu']['current_request_millicores'] / response_data['vcpu']['total_capacity_millicores']) * 100, 1
             )
 
         if response_data['memory']['total_allocatable_bytes'] > 0:
-            response_data['memory']['percentage_utilized'] = round(
+            response_data['memory']['percentage_utilized_vs_allocatable'] = round(
                 (response_data['memory']['current_request_bytes'] / response_data['memory']['total_allocatable_bytes']) * 100, 1
             )
-            response_data['memory']['overprovision_limit_bytes'] = int(
-                response_data['memory']['total_allocatable_bytes'] * (response_data['memory']['limit_percentage'] / 100.0)
+        if response_data['memory']['total_capacity_bytes'] > 0:
+            response_data['memory']['percentage_utilized_vs_capacity'] = round(
+                (response_data['memory']['current_request_bytes'] / response_data['memory']['total_capacity_bytes']) * 100, 1
             )
 
         if response_data['gpu']['total_allocatable_units'] > 0:

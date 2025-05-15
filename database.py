@@ -55,8 +55,10 @@ class Database:
                         total_node_allocatable_cpu_millicores INTEGER,
                         total_node_allocatable_memory_bytes INTEGER, -- Storing as bytes (BIGINT)
                         total_node_allocatable_gpus INTEGER,
-                        cpu_limit_percentage INTEGER,
-                        memory_limit_percentage INTEGER
+                        total_node_capacity_cpu_millicores INTEGER, -- New
+                        total_node_capacity_memory_bytes INTEGER -- New
+                        -- cpu_limit_percentage INTEGER, -- Removed
+                        -- memory_limit_percentage INTEGER -- Removed
                         -- Add other global environment metrics here if needed in the future
                     )
                 ''')
@@ -186,8 +188,10 @@ class Database:
                         total_node_allocatable_cpu_millicores,
                         total_node_allocatable_memory_bytes,
                         total_node_allocatable_gpus,
-                        cpu_limit_percentage,
-                        memory_limit_percentage
+                        total_node_capacity_cpu_millicores, -- New
+                        total_node_capacity_memory_bytes -- New
+                        -- cpu_limit_percentage, -- Removed
+                        -- memory_limit_percentage -- Removed
                         -- timestamp is DEFAULT CURRENT_TIMESTAMP
                     )
                     VALUES (?, ?, ?, ?, ?, ?)
@@ -196,8 +200,10 @@ class Database:
                     metrics_data.get('total_node_allocatable_cpu_millicores'),
                     metrics_data.get('total_node_allocatable_memory_bytes'),
                     metrics_data.get('total_node_allocatable_gpus'),
-                    metrics_data.get('cpu_limit_percentage'),
-                    metrics_data.get('memory_limit_percentage')
+                    metrics_data.get('total_node_capacity_cpu_millicores'), # New
+                    metrics_data.get('total_node_capacity_memory_bytes')  # New
+                    # metrics_data.get('cpu_limit_percentage'), -- Removed
+                    # metrics_data.get('memory_limit_percentage') -- Removed
                 ))
                 conn.commit()
                 logging.info("Successfully updated environment metrics.")
