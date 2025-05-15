@@ -315,36 +315,36 @@ def run_action():
 
 def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name, exit_event_name, session_type):
     logger.info(f"[{session_type} sid:{sid}] Starting PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
-    max_read_bytes = 1024 * 20 # Read up to 20KB at a time
+    max_read_bytes = 1024 * 20  # Read up to 20KB at a time
     try:
-    while True:
+        while True:
             socketio.sleep(0.01)
             if sid not in active_pty_sessions or active_pty_sessions.get(sid, {}).get('fd') != fd:
                 logger.info(f"[{session_type} sid:{sid}] Session terminated or FD changed, stopping read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
-            break
-            
+                break
+
             # Check if fd is readable without blocking
-            ready_to_read, _, _ = select.select([fd], [], [], 0) # Timeout of 0 makes it non-blocking
-            
+            ready_to_read, _, _ = select.select([fd], [], [], 0)  # Timeout of 0 makes it non-blocking
+
             if ready_to_read:
                 try:
                     output = os.read(fd, max_read_bytes)
-                except OSError as e: # This can happen if the PTY is closed (e.g., shell exits)
+                except OSError as e:  # This can happen if the PTY is closed (e.g., shell exits)
                     logger.info(f"[{session_type} sid:{sid}] OSError on os.read() for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}. Assuming PTY closed.")
-                    break # Exit loop, PTY likely closed
+                    break  # Exit loop, PTY likely closed
 
-        if output:
+                if output:
                     decoded_output = output.decode('utf-8', errors='replace')
                     logger.debug(f"[{session_type} sid:{sid}] PTY Read {len(decoded_output)} chars for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
                     socketio.emit(output_event_name,
                                   {'output': decoded_output,
-                                   'namespace': namespace, 
+                                   'namespace': namespace,
                                    'pod_name': pod_name},
                                   room=sid)
-                else: # EOF, process exited or PTY stream closed
+                else:  # EOF, process exited or PTY stream closed
                     logger.info(f"[{session_type} sid:{sid}] EOF (empty read) received for PTY session {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
-                    break 
-    except Exception as e: # Catch any other unexpected errors in the loop
+                    break
+    except Exception as e:  # Catch any other unexpected errors in the loop
         logger.error(f"[{session_type} sid:{sid}] Exception in PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}", exc_info=True)
         socketio.emit(output_event_name,
                       {'error': f'Backend PTY read error: {str(e)}',
