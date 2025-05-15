@@ -55,10 +55,10 @@ socketio = SocketIO(
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
 
-def run_kubectl_command(command: list, is_json_output: bool = True) -> Optional[Union[dict, str]]:
+def run_kubectl_command(command_list, is_json_output: bool = True) -> Optional[Union[dict, str]]:
     """Runs a kubectl command and returns its output."""
     try:
-        full_command = ['kubectl'] + command
+        full_command = ['kubectl'] + command_list
         logging.info(f"Running kubectl command: {' '.join(full_command)}")
         process = subprocess.Popen(full_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate(timeout=60) # 60-second timeout
@@ -293,19 +293,24 @@ def run_action():
     resource_type = request.form['resource_type']
     resource_name = request.form['resource_name']
     namespace = request.form['namespace']
+    command_list = []
+    # Most actions here produce text output, not JSON
+    is_json = False
 
     if action == 'describe':
-        command = f"kubectl describe {resource_type} {resource_name} -n {namespace}"
+        command_list = ["describe", resource_type, resource_name, "-n", namespace]
     elif action == 'logs':
-        command = f"kubectl logs {resource_name} -n {namespace} --tail=100"
+        # Assuming a fixed tail length as in the original f-string construction
+        command_list = ["logs", resource_name, "-n", namespace, "--tail=100"]
     elif action == 'exec':
-        command = f"kubectl exec {resource_name} -n {namespace} -- ps aux"
+        # Original fixed command was 'ps aux'
+        command_list = ["exec", resource_name, "-n", namespace, "--", "ps", "aux"]
     elif action == 'delete':
-        command = f"kubectl delete {resource_type} {resource_name} -n {namespace}"
+        command_list = ["delete", resource_type, resource_name, "-n", namespace]
     else:
         return jsonify(format='error', message="Invalid action")
 
-    output = run_kubectl_command(command)
+    output = run_kubectl_command(command_list, is_json_output=is_json)
     return jsonify(format='text', output=output)
 
 def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name, exit_event_name, session_type):
@@ -463,34 +468,46 @@ def upload_yaml():
     if file and file.filename.endswith('.yaml'):
         with tempfile.NamedTemporaryFile(delete=False, suffix='.yaml') as temp_file:
             file.save(temp_file.name)
-            command = f"kubectl apply -f {temp_file.name}"
-            output = run_kubectl_command(command)
+            # command = f"kubectl apply -f {temp_file.name}"
+            command_list = ["apply", "-f", temp_file.name]
+            output = run_kubectl_command(command_list, is_json_output=False)
             os.unlink(temp_file.name)
         return jsonify(output=output)
     return jsonify(error="Invalid file type")
 
 @app.route('/get_namespaces', methods=['GET'])
 def get_namespaces():
-    command = "kubectl get namespaces -o json"
-    output = run_kubectl_command(command)
+    # command = "kubectl get namespaces -o json"
+    command_list = ["get", "namespaces", "-o", "json"]
+    output_dict = run_kubectl_command(command_list, is_json_output=True) # Output is already a dict
     
     try:
-        namespaces = json.loads(output)
-        # Extract just the namespace names for simplicity
-        namespace_names = [ns['metadata']['name'] for ns in namespaces.get('items', [])]
-        return jsonify(namespaces=namespace_names)
-    except json.JSONDecodeError:
+        # namespaces = json.loads(output) # No longer needed, output_dict is already parsed
+        if output_dict and 'items' in output_dict:
+            namespace_names = [ns['metadata']['name'] for ns in output_dict.get('items', [])]
+            return jsonify(namespaces=namespace_names)
+        else:
+            logging.error(f"Failed to get namespaces or output format incorrect: {output_dict}")
+            return jsonify(namespaces=[], error="Unable to fetch namespaces or parse them")
+    except Exception as e: # Catch any other potential error during processing
+        logging.error(f"Error processing namespace data: {e}")
         return jsonify(namespaces=[], error="Unable to fetch namespaces")
 
 @app.route('/get_namespace_details', methods=['GET'])
 def get_namespace_details():
     """Get detailed information about all namespaces including resource usage."""
     # Get all namespaces
-    ns_command = "kubectl get namespaces -o json"
-    ns_output = run_kubectl_command(ns_command)
+    # ns_command = "kubectl get namespaces -o json"
+    ns_command_list = ["get", "namespaces", "-o", "json"]
+    ns_output_dict = run_kubectl_command(ns_command_list, is_json_output=True)
     
     try:
-        namespaces_data = json.loads(ns_output)
+        # namespaces_data = json.loads(ns_output) # No longer needed
+        namespaces_data = ns_output_dict
+        if not namespaces_data or 'items' not in namespaces_data:
+             logging.error(f"Failed to fetch namespaces for details or format incorrect: {namespaces_data}")
+             return jsonify(error="Unable to fetch namespace details (empty or malformed response)")
+        
         namespaces = []
         
         # For each namespace, get pod count and resource usage
@@ -498,12 +515,20 @@ def get_namespace_details():
             namespace_name = ns['metadata']['name']
             
             # Get pod count
-            pod_command = f"kubectl get pods -n {namespace_name} -o json"
-            pod_output = run_kubectl_command(pod_command)
+            # pod_command = f"kubectl get pods -n {namespace_name} -o json"
+            pod_command_list = ["get", "pods", "-n", namespace_name, "-o", "json"]
+            pod_output_dict = run_kubectl_command(pod_command_list, is_json_output=True)
             
             try:
-                pods_data = json.loads(pod_output)
-                pod_count = len(pods_data['items'])
+                # pods_data = json.loads(pod_output) # No longer needed
+                pods_data = pod_output_dict
+                if not pods_data or 'items' not in pods_data:
+                    logging.warning(f"Could not retrieve pod data for namespace {namespace_name}, or format incorrect. Assuming 0 pods.")
+                    pod_count = 0
+                    pods_data = {'items': []} # Ensure 'items' exists for loop
+                else:
+                    pod_count = len(pods_data['items'])
+
                 
                 # Calculate resource usage
                 cpu_usage = 0
@@ -566,7 +591,8 @@ def get_namespace_details():
                 
                 namespaces.append(namespace_info)
                 
-            except json.JSONDecodeError:
+            except Exception as pod_processing_error: # Catch errors during pod data processing for a namespace
+                logging.error(f"Error processing pod data for namespace {namespace_name}: {pod_processing_error}")
                 # If we can't get pod data, still include the namespace with zero counts
                 namespaces.append({
                     'name': namespace_name,
@@ -577,7 +603,8 @@ def get_namespace_details():
                 
         return jsonify(namespaces=namespaces)
     
-    except json.JSONDecodeError:
+    except Exception as e: # General error fetching initial namespace list or other unexpected issues
+        logging.error(f"Error fetching namespace details: {e}")
         return jsonify(error="Unable to fetch namespace details")
 
 @app.route('/api/namespace/describe', methods=['POST'])
@@ -587,8 +614,9 @@ def api_namespace_describe():
     if not namespace:
         return jsonify(error="Namespace not specified")
     
-    command = f"kubectl describe namespace {namespace}"
-    output = run_kubectl_command(command)
+    # command = f"kubectl describe namespace {namespace}"
+    command_list = ["describe", "namespace", namespace]
+    output = run_kubectl_command(command_list, is_json_output=False)
     
     return jsonify(output=output)
 
@@ -600,8 +628,9 @@ def api_namespace_edit():
         return jsonify(error="Namespace not specified")
     
     # Get namespace yaml for editing
-    command = f"kubectl get namespace {namespace} -o yaml"
-    output = run_kubectl_command(command)
+    # command = f"kubectl get namespace {namespace} -o yaml"
+    command_list = ["get", "namespace", namespace, "-o", "yaml"]
+    output = run_kubectl_command(command_list, is_json_output=False) # YAML is text
     
     try:
         # Return the raw YAML for now, as the front end will handle displaying it
@@ -625,14 +654,18 @@ def api_namespace_update():
             temp.write(yaml_content.encode('utf-8'))
         
         # Apply the YAML file
-        command = f"kubectl apply -f {temp_path}"
-        output = run_kubectl_command(command)
+        # command = f"kubectl apply -f {temp_path}"
+        command_list = ["apply", "-f", temp_path]
+        output = run_kubectl_command(command_list, is_json_output=False)
         
         # Clean up the temporary file
         os.unlink(temp_path)
         
         return jsonify(output=output)
     except Exception as e:
+        # Clean up temp file in case of error too
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            os.unlink(temp_path)
         return jsonify(error=f"Error updating namespace: {str(e)}")
 
 @app.route('/api/namespace/events', methods=['POST'])
@@ -642,8 +675,9 @@ def api_namespace_events():
     if not namespace:
         return jsonify(error="Namespace not specified")
     
-    command = f"kubectl get events -n {namespace} --sort-by='.lastTimestamp'"
-    output = run_kubectl_command(command)
+    # command = f"kubectl get events -n {namespace} --sort-by='.lastTimestamp'"
+    command_list = ["get", "events", "-n", namespace, "--sort-by=.lastTimestamp"]
+    output = run_kubectl_command(command_list, is_json_output=False) # Events are text by default
     
     return jsonify(output=output)
 
@@ -660,16 +694,18 @@ def api_namespace_delete():
         return jsonify(error=f"Cannot delete critical namespace: {namespace}")
     
     # Execute the delete command
-    command = f"kubectl delete namespace {namespace}"
-    output = run_kubectl_command(command)
+    # command = f"kubectl delete namespace {namespace}"
+    command_list = ["delete", "namespace", namespace]
+    output = run_kubectl_command(command_list, is_json_output=False)
     
     return jsonify(output=output)
 
 @app.route('/get_events', methods=['POST'])
 def get_events():
     namespace = request.form['namespace']
-    command = f"kubectl get events -n {namespace} --sort-by='.lastTimestamp'"
-    output = run_kubectl_command(command)
+    # command = f"kubectl get events -n {namespace} --sort-by='.lastTimestamp'"
+    command_list = ["get", "events", "-n", namespace, "--sort-by=.lastTimestamp"]
+    output = run_kubectl_command(command_list, is_json_output=False) # Events are text
     return jsonify(output=output)
 
 @app.route('/update_from_github', methods=['POST'])
@@ -738,8 +774,9 @@ def api_pod_describe():
         if not namespace or not pod_name:
             return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
             
-        command = f"kubectl describe pod {pod_name} -n {namespace}"
-        output = run_kubectl_command(command)
+        # command = f"kubectl describe pod {pod_name} -n {namespace}"
+        command_list = ["describe", "pod", pod_name, "-n", namespace]
+        output = run_kubectl_command(command_list, is_json_output=False) # Describe is text
         return jsonify({"output": output})
     except Exception as e:
         app.logger.error(f"Error in api_pod_describe: {str(e)}")
@@ -762,8 +799,9 @@ def api_pod_logs():
         if not namespace or not pod_name:
             return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
             
-        command = f"kubectl logs {pod_name} -n {namespace} --tail={tail_lines}"
-        output = run_kubectl_command(command)
+        # command = f"kubectl logs {pod_name} -n {namespace} --tail={tail_lines}"
+        command_list = ["logs", pod_name, "-n", namespace, f"--tail={tail_lines}"]
+        output = run_kubectl_command(command_list, is_json_output=False) # Logs are text
         return jsonify({"output": output})
     except Exception as e:
         app.logger.error(f"Error in api_pod_logs: {str(e)}")
@@ -773,21 +811,25 @@ def api_pod_logs():
 def api_pod_exec():
     try:
         # Handle both JSON and form data
+        inner_command_str = ""
         if request.is_json:
             data = request.get_json()
             namespace = data.get('namespace')
             pod_name = data.get('pod_name')
-            command = data.get('command', 'ps aux')
+            inner_command_str = data.get('command', 'ps aux')
         else:
             namespace = request.form['namespace']
             pod_name = request.form['pod_name']
-            command = request.form.get('command', 'ps aux')
+            inner_command_str = request.form.get('command', 'ps aux')
             
         if not namespace or not pod_name:
             return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
             
-        kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
-        output = run_kubectl_command(kubectl_command)
+        # kubectl_command = f"kubectl exec {pod_name} -n {namespace} -- {command}"
+        # Split the inner command string into a list for the kubectl command arguments
+        inner_command_parts = inner_command_str.split() 
+        command_list = ["exec", pod_name, "-n", namespace, "--"] + inner_command_parts
+        output = run_kubectl_command(command_list, is_json_output=False) # Exec output is text
         return jsonify({"output": output})
     except Exception as e:
         app.logger.error(f"Error in api_pod_exec: {str(e)}")
@@ -818,83 +860,14 @@ def api_pod_details():
             else:
                  return jsonify({"error": "Missing namespace or pod_name in path or query"}), 400
 
-        command = f"kubectl get pod {pod_name} -n {namespace} -o json"
-        output = run_kubectl_command(command)
+        command_list = ["get", "pod", pod_name, "-n", namespace, "-o", "json"]
+        pod_data = run_kubectl_command(command_list, is_json_output=True) # pod_data is dict
         
         try:
-            pod_data = json.loads(output)
-            
-            # Extract the relevant fields
-            pod_details = {
-                'name': pod_data.get('metadata', {}).get('name', ''),
-                'namespace': pod_data.get('metadata', {}).get('namespace', ''),
-                'creation_timestamp': pod_data.get('metadata', {}).get('creationTimestamp', ''),
-                'pod_ip': pod_data.get('status', {}).get('podIP', ''),
-                'node': pod_data.get('spec', {}).get('nodeName', ''),
-                'status': pod_data.get('status', {}).get('phase', ''),
-                'labels': pod_data.get('metadata', {}).get('labels', {}),
-                'annotations': pod_data.get('metadata', {}).get('annotations', {})
-            }
-            
-            # Calculate ready containers count
-            containers = pod_data.get('spec', {}).get('containers', [])
-            total_containers = len(containers)
-            
-            # Check container statuses
-            container_statuses = pod_data.get('status', {}).get('containerStatuses', [])
-            ready_containers = sum(1 for status in container_statuses if status.get('ready', False))
-            pod_details['ready'] = f"{ready_containers}/{total_containers}"
-            
-            # Calculate restarts
-            restart_count = sum(status.get('restartCount', 0) for status in container_statuses)
-            pod_details['restarts'] = str(restart_count)
-            
-            # Calculate age
-            if pod_details['creation_timestamp']:
-                from datetime import datetime, timezone
-                created_time = datetime.fromisoformat(pod_details['creation_timestamp'].replace('Z', '+00:00'))
-                current_time = datetime.now(timezone.utc)
-                delta = current_time - created_time
-                
-                if delta.days > 0:
-                    age = f"{delta.days}d"
-                elif delta.seconds >= 3600:
-                    age = f"{delta.seconds // 3600}h"
-                elif delta.seconds >= 60:
-                    age = f"{delta.seconds // 60}m"
-                else:
-                    age = f"{delta.seconds}s"
-                    
-                pod_details['age'] = age
-            
-            # Extract container information including resource requests and limits
-            pod_details['containers'] = []
-            for container in containers:
-                container_info = {
-                    'name': container.get('name', ''),
-                    'image': container.get('image', ''),
-                    'resources': container.get('resources', {})
-                }
-                pod_details['containers'].append(container_info)
-            
-            return jsonify(pod_details)
-            
-        except json.JSONDecodeError:
-            return jsonify({"error": "Unable to parse pod details"}), 500
-            
-    except Exception as e:
-        app.logger.error(f"Error in api_pod_details: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+            if not pod_data or not isinstance(pod_data, dict): # Check if pod_data is a valid dict
+                app.logger.error(f"Invalid or empty pod data from kubectl for {namespace}/{pod_name}. Output: {pod_data}")
+                return jsonify({"error": "Unable to parse pod details from kubectl output (empty or malformed)"}), 500
 
-@app.route('/api/pod/<namespace>/<pod_name>/details', methods=['GET'])
-def api_get_pod_details_from_path(namespace, pod_name):
-    # This new route directly uses namespace and pod_name from the path
-    try:
-        command = f"kubectl get pod {pod_name} -n {namespace} -o json"
-        output = run_kubectl_command(command)
-        
-        try:
-            pod_data = json.loads(output)
             # ...(same parsing logic as above)... 
             pod_details = {
                 'name': pod_data.get('metadata', {}).get('name', ''),
@@ -931,9 +904,9 @@ def api_get_pod_details_from_path(namespace, pod_name):
                     'resources': container.get('resources', {})
                 })
             return jsonify(pod_details)
-        except json.JSONDecodeError:
-            app.logger.error(f"JSONDecodeError in api_get_pod_details_from_path for {namespace}/{pod_name}. Output: {output}")
-            return jsonify({"error": "Unable to parse pod details from kubectl output"}), 500
+        except Exception as parsing_e: # Catch errors specifically during parsing of the dict
+            app.logger.error(f"Error parsing pod_data dict for {namespace}/{pod_name}: {parsing_e}. Data was: {pod_data}")
+            return jsonify({"error": "Unable to process pod details from kubectl output"}), 500
     except Exception as e:
         app.logger.error(f"Error in api_get_pod_details_from_path for {namespace}/{pod_name}: {str(e)}")
         return jsonify({"error": f"Server error fetching pod details: {str(e)}"}), 500
@@ -944,8 +917,9 @@ def api_get_pod_description_from_path(namespace, pod_name):
         if not namespace or not pod_name:
             return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
             
-        command = f"kubectl describe pod {pod_name} -n {namespace}"
-        output = run_kubectl_command(command)
+        # command = f"kubectl describe pod {pod_name} -n {namespace}"
+        command_list = ["describe", "pod", pod_name, "-n", namespace]
+        output = run_kubectl_command(command_list, is_json_output=False) # Describe is text
         # Assuming output of describe is typically text and not JSON from kubectl
         return jsonify({"describe_output": output}) 
     except Exception as e:
@@ -967,13 +941,14 @@ def api_get_pod_logs_from_path(namespace, pod_name):
         except ValueError:
             tail_lines = 100 # Default if conversion fails
 
-        command = f"kubectl logs {pod_name} -n {namespace} --tail={tail_lines}"
-        output = run_kubectl_command(command)
+        # command = f"kubectl logs {pod_name} -n {namespace} --tail={tail_lines}"
+        command_list = ["logs", pod_name, "-n", namespace, f"--tail={tail_lines}"]
+        output = run_kubectl_command(command_list, is_json_output=False) # Logs are text
 
         if download:
             from flask import Response
             return Response(
-                output,
+                output or "", # Ensure output is not None for Response
                 mimetype="text/plain",
                 headers={"Content-disposition": f"attachment; filename={pod_name}_{namespace}_logs.txt"}
             )
@@ -1067,9 +1042,21 @@ def get_cluster_capacity():
     """
     try:
         # Get nodes information
-        command = "kubectl get nodes -o json"
-        output = run_kubectl_command(command)
-        nodes_data = json.loads(output)
+        # command = "kubectl get nodes -o json"
+        command_list = ["get", "nodes", "-o", "json"]
+        # output = run_kubectl_command(command) # Original, output is string
+        nodes_data = run_kubectl_command(command_list, is_json_output=True) # nodes_data is dict
+        
+        # nodes_data = json.loads(output) # No longer needed
+
+        if not nodes_data or not isinstance(nodes_data, dict) or "items" not in nodes_data:
+            app.logger.error(f"Failed to get node data or invalid format for cluster capacity: {nodes_data}")
+            return jsonify({
+                "cpu": 0, 
+                "memory": 0,
+                "gpu": 0,
+                "error": "Could not retrieve or parse node data"
+            }), 500
         
         total_cpu = 0
         total_memory_ki = 0
@@ -1085,7 +1072,11 @@ def get_cluster_capacity():
                 # Convert millicores to cores
                 total_cpu += int(cpu_str[:-1]) / 1000
             else:
-                total_cpu += int(cpu_str)
+                try: # Add try-except for int conversion
+                    total_cpu += int(cpu_str)
+                except ValueError:
+                    logging.warning(f"Could not parse CPU string for node capacity: {cpu_str}")
+
             
             # Memory - convert from Kubernetes format (usually in Ki)
             memory_str = allocatable.get("memory", "0")
@@ -1095,16 +1086,28 @@ def get_cluster_capacity():
                 total_memory_ki += int(memory_str[:-2]) * 1024
             elif memory_str.endswith('Gi'):
                 total_memory_ki += int(memory_str[:-2]) * 1024 * 1024
+            else: # Try to parse as raw bytes if no known suffix
+                try:
+                    total_memory_ki += int(memory_str) // 1024 # Assume bytes, convert to Ki
+                except ValueError:
+                    logging.warning(f"Could not parse memory string for node capacity: {memory_str}")
+
             
             # GPU - look for NVIDIA GPUs or any custom GPU resource
-            gpu_count = allocatable.get("nvidia.com/gpu", 0)
-            if gpu_count:
-                total_gpu += int(gpu_count)
+            gpu_count_str = allocatable.get("nvidia.com/gpu", "0") # Default to string "0"
+            try:
+                 total_gpu += int(gpu_count_str)
+            except ValueError:
+                 logging.warning(f"Could not parse nvidia.com/gpu string for node capacity: {gpu_count_str}")
             
             # Also check for generic 'gpu' resource
-            generic_gpu = allocatable.get("gpu", 0)
-            if generic_gpu:
-                total_gpu += int(generic_gpu)
+            generic_gpu_str = allocatable.get("gpu", "0") # Default to string "0"
+            if generic_gpu_str != gpu_count_str: # Avoid double counting if "gpu" is an alias for nvidia one
+                try:
+                    total_gpu += int(generic_gpu_str)
+                except ValueError:
+                    logging.warning(f"Could not parse generic gpu string for node capacity: {generic_gpu_str}")
+
         
         # Convert memory to Gi for easier display
         total_memory_gi = round(total_memory_ki / (1024 * 1024), 1)
@@ -1115,10 +1118,10 @@ def get_cluster_capacity():
             "gpu": total_gpu
         })
     except Exception as e:
-        app.logger.error(f"Error getting cluster capacity: {str(e)}")
+        app.logger.error(f"Error getting cluster capacity: {str(e)}", exc_info=True)
         return jsonify({
-            "cpu": 256,  # Default fallback
-            "memory": 1024,
+            "cpu": 0,  # Default fallback on error
+            "memory": 0,
             "gpu": 0,
             "error": str(e)
         }), 500
