@@ -278,6 +278,17 @@ function connectSocketListeners() {
 
 // Function to handle tab navigation and content loading
 function navigateToTab(tabId) {
+    // Check if currently on an explore page and trying to navigate to a main tab
+    if (window.location.pathname.includes('/explore/')) {
+        const mainTabs = ['home', 'resources', 'cli', 'yaml', 'namespaces', 'chart-library', 'settings'];
+        if (mainTabs.includes(tabId)) {
+            console.log(`Navigating from explore page to main tab: ${tabId}`);
+            // For 'home' tab, navigate to root. For others, navigate to root with hash.
+            window.location.href = (tabId === 'home') ? '/' : `/#${tabId}`;
+            return; // Stop further execution as we are redirecting
+        }
+    }
+
     if (window.app.state.navigation.isNavigating) {
         console.warn('Navigation already in progress, ignoring new request for', tabId);
         return;
