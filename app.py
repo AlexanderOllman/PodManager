@@ -835,82 +835,6 @@ def api_pod_exec():
         app.logger.error(f"Error in api_pod_exec: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/pod/details', methods=['GET'])
-def api_pod_details():
-    try:
-        # For GET requests, parameters will be in request.args
-        namespace = request.args.get('namespace')
-        pod_name = request.args.get('pod_name')
-        
-        # The JavaScript sends namespace and pod_name as part of the URL path
-        # So, we need to capture them from the route definition if we change it, or parse from referer/args
-        # For now, let's assume they might be passed as query params if not in path.
-        # If the JS is /api/pod/ns/name/details, we need to adjust route pattern.
-        # Let's adjust the route to match the JS call pattern.
-        
-        # This route definition will be changed below to match the JS fetch URL.
-        # The code below assumes namespace and pod_name are correctly populated.
-            
-        if not namespace or not pod_name:
-             # Fallback or error if not extracted from path by updated route pattern
-             # This part will be simplified once the route pattern is updated.
-            if 'namespace' in request.view_args and 'pod_name' in request.view_args:
-                namespace = request.view_args['namespace']
-                pod_name = request.view_args['pod_name']
-            else:
-                 return jsonify({"error": "Missing namespace or pod_name in path or query"}), 400
-
-        command_list = ["get", "pod", pod_name, "-n", namespace, "-o", "json"]
-        pod_data = run_kubectl_command(command_list, is_json_output=True) # pod_data is dict
-        
-        try:
-            if not pod_data or not isinstance(pod_data, dict): # Check if pod_data is a valid dict
-                app.logger.error(f"Invalid or empty pod data from kubectl for {namespace}/{pod_name}. Output: {pod_data}")
-                return jsonify({"error": "Unable to parse pod details from kubectl output (empty or malformed)"}), 500
-
-            # ...(same parsing logic as above)... 
-            pod_details = {
-                'name': pod_data.get('metadata', {}).get('name', ''),
-                'namespace': pod_data.get('metadata', {}).get('namespace', ''),
-                'creation_timestamp': pod_data.get('metadata', {}).get('creationTimestamp', ''),
-                'pod_ip': pod_data.get('status', {}).get('podIP', ''),
-                'node': pod_data.get('spec', {}).get('nodeName', ''),
-                'status': pod_data.get('status', {}).get('phase', ''),
-                'labels': pod_data.get('metadata', {}).get('labels', {}),
-                'annotations': pod_data.get('metadata', {}).get('annotations', {})
-            }
-            containers = pod_data.get('spec', {}).get('containers', [])
-            total_containers = len(containers)
-            container_statuses = pod_data.get('status', {}).get('containerStatuses', [])
-            ready_containers = sum(1 for status in container_statuses if status.get('ready', False))
-            pod_details['ready'] = f"{ready_containers}/{total_containers}"
-            restart_count = sum(status.get('restartCount', 0) for status in container_statuses)
-            pod_details['restarts'] = str(restart_count)
-            if pod_details['creation_timestamp']:
-                from datetime import datetime, timezone
-                created_time = datetime.fromisoformat(pod_details['creation_timestamp'].replace('Z', '+00:00'))
-                current_time = datetime.now(timezone.utc)
-                delta = current_time - created_time
-                if delta.days > 0: age = f"{delta.days}d"
-                elif delta.seconds >= 3600: age = f"{delta.seconds // 3600}h"
-                elif delta.seconds >= 60: age = f"{delta.seconds // 60}m"
-                else: age = f"{delta.seconds}s"
-                pod_details['age'] = age
-            pod_details['containers'] = []
-            for container in containers:
-                pod_details['containers'].append({
-                    'name': container.get('name', ''),
-                    'image': container.get('image', ''),
-                    'resources': container.get('resources', {})
-                })
-            return jsonify(pod_details)
-        except Exception as parsing_e: # Catch errors specifically during parsing of the dict
-            app.logger.error(f"Error parsing pod_data dict for {namespace}/{pod_name}: {parsing_e}. Data was: {pod_data}")
-            return jsonify({"error": "Unable to process pod details from kubectl output"}), 500
-    except Exception as e:
-        app.logger.error(f"Error in api_get_pod_details_from_path for {namespace}/{pod_name}: {str(e)}")
-        return jsonify({"error": f"Server error fetching pod details: {str(e)}"}), 500
-
 @app.route('/api/pod/<namespace>/<pod_name>/describe', methods=['GET'])
 def api_get_pod_description_from_path(namespace, pod_name):
     try:
@@ -1527,6 +1451,68 @@ def get_environment_metrics_endpoint():
     except Exception as e:
         logging.error(f"Error in /api/environment_metrics endpoint: {str(e)}", exc_info=True)
         return jsonify({"error": "An error occurred while fetching environment metrics."}), 500
+
+@app.route('/api/pod/<namespace>/<pod_name>/details', methods=['GET'])
+def api_pod_details(namespace, pod_name):
+    try:
+        # namespace and pod_name are now directly passed as function arguments
+        # from the URL path, so no need to extract from request.args or request.view_args
+            
+        if not namespace or not pod_name:
+            # This check might be redundant if Flask guarantees these path parameters
+            # but kept for safety, though it should ideally not be hit with the new route.
+            return jsonify({"error": "Missing namespace or pod_name in path"}), 400
+
+        command_list = ["get", "pod", pod_name, "-n", namespace, "-o", "json"]
+        pod_data = run_kubectl_command(command_list, is_json_output=True) # pod_data is dict
+        
+        try:
+            if not pod_data or not isinstance(pod_data, dict): # Check if pod_data is a valid dict
+                app.logger.error(f"Invalid or empty pod data from kubectl for {namespace}/{pod_name}. Output: {pod_data}")
+                return jsonify({"error": "Unable to parse pod details from kubectl output (empty or malformed)"}), 500
+
+            # ...(same parsing logic as above)... 
+            pod_details = {
+                'name': pod_data.get('metadata', {}).get('name', ''),
+                'namespace': pod_data.get('metadata', {}).get('namespace', ''),
+                'creation_timestamp': pod_data.get('metadata', {}).get('creationTimestamp', ''),
+                'pod_ip': pod_data.get('status', {}).get('podIP', ''),
+                'node': pod_data.get('spec', {}).get('nodeName', ''),
+                'status': pod_data.get('status', {}).get('phase', ''),
+                'labels': pod_data.get('metadata', {}).get('labels', {}),
+                'annotations': pod_data.get('metadata', {}).get('annotations', {})
+            }
+            containers = pod_data.get('spec', {}).get('containers', [])
+            total_containers = len(containers)
+            container_statuses = pod_data.get('status', {}).get('containerStatuses', [])
+            ready_containers = sum(1 for status in container_statuses if status.get('ready', False))
+            pod_details['ready'] = f"{ready_containers}/{total_containers}"
+            restart_count = sum(status.get('restartCount', 0) for status in container_statuses)
+            pod_details['restarts'] = str(restart_count)
+            if pod_details['creation_timestamp']:
+                from datetime import datetime, timezone
+                created_time = datetime.fromisoformat(pod_details['creation_timestamp'].replace('Z', '+00:00'))
+                current_time = datetime.now(timezone.utc)
+                delta = current_time - created_time
+                if delta.days > 0: age = f"{delta.days}d"
+                elif delta.seconds >= 3600: age = f"{delta.seconds // 3600}h"
+                elif delta.seconds >= 60: age = f"{delta.seconds // 60}m"
+                else: age = f"{delta.seconds}s"
+                pod_details['age'] = age
+            pod_details['containers'] = []
+            for container in containers:
+                pod_details['containers'].append({
+                    'name': container.get('name', ''),
+                    'image': container.get('image', ''),
+                    'resources': container.get('resources', {})
+                })
+            return jsonify(pod_details)
+        except Exception as parsing_e: # Catch errors specifically during parsing of the dict
+            app.logger.error(f"Error parsing pod_data dict for {namespace}/{pod_name}: {parsing_e}. Data was: {pod_data}")
+            return jsonify({"error": "Unable to process pod details from kubectl output"}), 500
+    except Exception as e:
+        app.logger.error(f"Error in api_get_pod_details_from_path for {namespace}/{pod_name}: {str(e)}")
+        return jsonify({"error": f"Server error fetching pod details: {str(e)}"}), 500
 
 if __name__ == '__main__':
     # This block runs when you execute `python app.py` directly.
