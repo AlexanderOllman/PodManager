@@ -55,51 +55,6 @@ socketio = SocketIO(
 # Get GitHub repo URL from environment variable or use default
 github_repo_url = os.environ.get('GITHUB_REPO_URL', 'https://github.com/AlexanderOllman/PodManager.git')
 
-# Initialize the updater from background_tasks
-# (updater instance is created in background_tasks.py and imported)
-if updater and hasattr(updater, 'set_env_metrics_collector'):
-    updater.set_env_metrics_collector(_collect_and_store_environment_metrics)
-    logging.info("Environment metrics collector has been set for the background updater.")
-else:
-    logging.warning("Updater not available or does not have set_env_metrics_collector method.")
-
-# Start the background updater
-updater.start()
-
-# Register cleanup function
-@atexit.register
-def cleanup():
-    updater.stop()
-
-# Dictionary to store active PTY sessions
-# Structure: {sid: {'pid': child_pid, 'fd': master_fd, 'namespace': ns, 'pod_name': pn, 'type': 'pod_exec' | 'control_plane_cli'}}
-active_pty_sessions = {}
-
-# --- Get App's Pod and Namespace ---
-APP_POD_NAME = os.environ.get('HOSTNAME')
-APP_POD_NAMESPACE = os.environ.get('POD_NAMESPACE')
-
-if not APP_POD_NAMESPACE:
-    logger.info("POD_NAMESPACE environment variable not set, attempting to read from service account file.")
-    try:
-        with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", "r") as f:
-            APP_POD_NAMESPACE = f.read().strip()
-        logger.info(f"Successfully read namespace from service account file: {APP_POD_NAMESPACE}")
-    except FileNotFoundError:
-        logger.warning("Service account namespace file not found.")
-    except Exception as e:
-        logger.error(f"Error reading service account namespace file: {e}")
-
-if APP_POD_NAME and APP_POD_NAMESPACE:
-    logger.info(f"Application Target for Control Plane CLI - Pod: {APP_POD_NAME}, Namespace: {APP_POD_NAMESPACE}")
-else:
-    if not APP_POD_NAME:
-        logger.warning("Could not determine application POD_NAME (tried HOSTNAME env var).")
-    if not APP_POD_NAMESPACE:
-        logger.warning("Could not determine application POD_NAMESPACE (tried POD_NAMESPACE env var and service account file).")
-    logger.warning("Control Plane CLI will show an error if initiated, as it cannot exec into the application's pod.")
-# --- End Get App's Pod and Namespace ---
-
 def run_kubectl_command(command: list, is_json_output: bool = True) -> Optional[Union[dict, str]]:
     """Runs a kubectl command and returns its output."""
     try:
@@ -129,6 +84,7 @@ def run_kubectl_command(command: list, is_json_output: bool = True) -> Optional[
         logging.error(f"An unexpected error occurred running kubectl command {' '.join(full_command)}: {str(e)}")
         return None
 
+# --- Helper functions for metrics collection ---
 def parse_cpu_to_millicores(cpu_string: str) -> int:
     """Converts a CPU string (e.g., '500m', '1', '0.5') to millicores."""
     if not cpu_string:
@@ -234,7 +190,7 @@ def _collect_and_store_environment_metrics():
     describe_nodes_output = run_kubectl_command(["describe", "nodes"], is_json_output=False)
     overcommit_limits = {'cpu_limit_percentage': 100, 'memory_limit_percentage': 100} # Defaults
     if describe_nodes_output:
-        overcommit_limits = _extract_limits_from_describe_nodes(describe_nodes_output)
+        overcommit_limits = _extract_limits_from_describe_nodes(describe_output)
     else:
         logging.warning("Failed to get 'kubectl describe nodes' output for overcommit limits. Using defaults.")
 
@@ -251,7 +207,54 @@ def _collect_and_store_environment_metrics():
         logging.info("Successfully collected and stored environment metrics.")
     else:
         logging.error("Failed to store environment metrics in the database.")
+# --- End Helper functions for metrics collection ---
 
+# Initialize the updater from background_tasks
+# (updater instance is created in background_tasks.py and imported)
+if updater and hasattr(updater, 'set_env_metrics_collector'):
+    updater.set_env_metrics_collector(_collect_and_store_environment_metrics)
+    logging.info("Environment metrics collector has been set for the background updater.")
+else:
+    logging.warning("Updater not available or does not have set_env_metrics_collector method.")
+
+# Start the background updater
+updater.start()
+
+# Register cleanup function
+@atexit.register
+def cleanup():
+    updater.stop()
+
+# Dictionary to store active PTY sessions
+# Structure: {sid: {'pid': child_pid, 'fd': master_fd, 'namespace': ns, 'pod_name': pn, 'type': 'pod_exec' | 'control_plane_cli'}}
+active_pty_sessions = {}
+
+# --- Get App's Pod and Namespace ---
+APP_POD_NAME = os.environ.get('HOSTNAME')
+APP_POD_NAMESPACE = os.environ.get('POD_NAMESPACE')
+
+if not APP_POD_NAMESPACE:
+    logger.info("POD_NAMESPACE environment variable not set, attempting to read from service account file.")
+    try:
+        with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", "r") as f:
+            APP_POD_NAMESPACE = f.read().strip()
+        logger.info(f"Successfully read namespace from service account file: {APP_POD_NAMESPACE}")
+    except FileNotFoundError:
+        logger.warning("Service account namespace file not found.")
+    except Exception as e:
+        logger.error(f"Error reading service account namespace file: {e}")
+
+if APP_POD_NAME and APP_POD_NAMESPACE:
+    logger.info(f"Application Target for Control Plane CLI - Pod: {APP_POD_NAME}, Namespace: {APP_POD_NAMESPACE}")
+else:
+    if not APP_POD_NAME:
+        logger.warning("Could not determine application POD_NAME (tried HOSTNAME env var).")
+    if not APP_POD_NAMESPACE:
+        logger.warning("Could not determine application POD_NAMESPACE (tried POD_NAMESPACE env var and service account file).")
+    logger.warning("Control Plane CLI will show an error if initiated, as it cannot exec into the application's pod.")
+# --- End Get App's Pod and Namespace ---
+
+# Flask routes and other functions start here
 @app.route('/')
 def index():
     return render_template('index.html')
