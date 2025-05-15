@@ -527,7 +527,7 @@ def get_namespace_details():
                     pod_count = 0
                     pods_data = {'items': []} # Ensure 'items' exists for loop
                 else:
-                pod_count = len(pods_data['items'])
+                    pod_count = len(pods_data['items'])
 
                 
                 # Calculate resource usage
