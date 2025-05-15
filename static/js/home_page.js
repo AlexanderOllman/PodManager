@@ -60,7 +60,7 @@ async function fetchAndDisplayDashboardMetrics() {
     updateTextContent('podCardRunningCount', loadingText);
     updateTextContent('podCardTotalCapacity', loadingText);
     updateTextContent('podCardPercentage', loadingText);
-    updateProgress('podUsageBar', 0); // Assuming 'podUsageBar' is the correct ID for the pod progress bar if it exists or will be added
+    // updateProgress('podUsageBar', 0); // Assuming 'podUsageBar' is the correct ID for the pod progress bar if it exists or will be added
                                      // If no progress bar for pods, this line can be removed. index.html snippet didn't show one.
 
     updateTextContent('vcpuCardUtilized', loadingText);
@@ -78,6 +78,7 @@ async function fetchAndDisplayDashboardMetrics() {
     updateTextContent('gpuCardUtilizedUnits', loadingText);
     updateTextContent('gpuCardTotalAllocatableUnits', loadingText);
     updateTextContent('gpuCardPercentageUtilized', loadingText);
+    updateTextContent('gpuCardPendingUnits', loadingText);
     updateProgress('gpuProgressBar', 0);
     
     const lastUpdatedIds = ['metricsLastUpdatedPods', 'metricsLastUpdatedVCPU', 'metricsLastUpdatedRAM', 'metricsLastUpdatedGPU'];
@@ -155,19 +156,22 @@ async function fetchAndDisplayDashboardMetrics() {
 
         // GPU
         if (metrics.gpu) {
-            const utilized = metrics.gpu.current_request_units || 0;
+            const runningUtilized = metrics.gpu.running_gpu_request_units || 0;
+            const pendingUtilized = metrics.gpu.pending_gpu_request_units || 0;
             const allocatable = metrics.gpu.total_allocatable_units || 0;
 
-            updateTextContent('gpuCardUtilizedUnits', formatNumber(utilized, 0));
+            updateTextContent('gpuCardUtilizedUnits', formatNumber(runningUtilized, 0));
             updateTextContent('gpuCardTotalAllocatableUnits', formatNumber(allocatable, 0));
-            // const gpuPercentage = allocatable > 0 ? (utilized / allocatable) * 100 : 0; // API provides this
-            const gpuPercentage = metrics.gpu.percentage_utilized || 0;
-            updateTextContent('gpuCardPercentageUtilized', formatNumber(gpuPercentage, 0));
-            updateProgress('gpuProgressBar', gpuPercentage);
+            updateTextContent('gpuCardPendingUnits', formatNumber(pendingUtilized, 0));
+            
+            const gpuPercentageOfRunning = metrics.gpu.percentage_utilized || 0;
+            updateTextContent('gpuCardPercentageUtilized', formatNumber(gpuPercentageOfRunning, 0));
+            updateProgress('gpuProgressBar', gpuPercentageOfRunning);
         } else {
             updateTextContent('gpuCardUtilizedUnits', naText);
             updateTextContent('gpuCardTotalAllocatableUnits', naText);
             updateTextContent('gpuCardPercentageUtilized', naText);
+            updateTextContent('gpuCardPendingUnits', naText);
             updateProgress('gpuProgressBar', 0);
         }
 
@@ -190,6 +194,7 @@ async function fetchAndDisplayDashboardMetrics() {
         updateTextContent('gpuCardUtilizedUnits', errorText);
         updateTextContent('gpuCardTotalAllocatableUnits', '');
         updateTextContent('gpuCardPercentageUtilized', errorText);
+        updateTextContent('gpuCardPendingUnits', errorText);
         
         lastUpdatedIds.forEach(id => updateTextContent(id, errorText));
 

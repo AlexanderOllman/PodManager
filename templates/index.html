@@ -23,6 +23,12 @@
         text-align: right;
         margin-top: 5px;
     }
+    .pending-gpu-info {
+        font-size: 0.75em;
+        color: #6c757d; /* Same style as overprovision-info for consistency */
+        text-align: left; /* Or right, depending on desired alignment */
+        margin-top: 2px; /* Adjust as needed */
+    }
 </style>
 {% endblock %}
 
@@ -95,6 +101,7 @@
                         <div class="progress mt-2">
                             <div class="progress-bar" id="gpuProgressBar" role="progressbar" style="width: 0%;"></div>
                         </div>
+                        <div class="pending-gpu-info">Pending: <span id="gpuCardPendingUnits">-</span> Units</div>
                         <div class="text-muted small mt-1">Last updated: <span id="metricsLastUpdatedGPU">-</span></div>
                         <!-- GPU overprovisioning not typically specified in the same way, omit for now -->
                     </div>

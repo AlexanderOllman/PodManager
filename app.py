@@ -317,11 +317,11 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
     logger.info(f"[{session_type} sid:{sid}] Starting PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
     max_read_bytes = 1024 * 20 # Read up to 20KB at a time
     try:
-        while True:
+    while True:
             socketio.sleep(0.01)
             if sid not in active_pty_sessions or active_pty_sessions.get(sid, {}).get('fd') != fd:
                 logger.info(f"[{session_type} sid:{sid}] Session terminated or FD changed, stopping read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
-                break
+            break
             
             # Check if fd is readable without blocking
             ready_to_read, _, _ = select.select([fd], [], [], 0) # Timeout of 0 makes it non-blocking
@@ -333,7 +333,7 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
                     logger.info(f"[{session_type} sid:{sid}] OSError on os.read() for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}. Assuming PTY closed.")
                     break # Exit loop, PTY likely closed
 
-                if output:
+        if output:
                     decoded_output = output.decode('utf-8', errors='replace')
                     logger.debug(f"[{session_type} sid:{sid}] PTY Read {len(decoded_output)} chars for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
                     socketio.emit(output_event_name,
@@ -485,7 +485,7 @@ def get_namespaces():
         # namespaces = json.loads(output) # No longer needed, output_dict is already parsed
         if output_dict and 'items' in output_dict:
             namespace_names = [ns['metadata']['name'] for ns in output_dict.get('items', [])]
-            return jsonify(namespaces=namespace_names)
+        return jsonify(namespaces=namespace_names)
         else:
             logging.error(f"Failed to get namespaces or output format incorrect: {output_dict}")
             return jsonify(namespaces=[], error="Unable to fetch namespaces or parse them")
@@ -527,7 +527,7 @@ def get_namespace_details():
                     pod_count = 0
                     pods_data = {'items': []} # Ensure 'items' exists for loop
                 else:
-                    pod_count = len(pods_data['items'])
+                pod_count = len(pods_data['items'])
 
                 
                 # Calculate resource usage
@@ -1073,7 +1073,7 @@ def get_cluster_capacity():
                 total_cpu += int(cpu_str[:-1]) / 1000
             else:
                 try: # Add try-except for int conversion
-                    total_cpu += int(cpu_str)
+                total_cpu += int(cpu_str)
                 except ValueError:
                     logging.warning(f"Could not parse CPU string for node capacity: {cpu_str}")
 
@@ -1178,7 +1178,7 @@ def _cleanup_pty_session(sid, reason_str, session_type_filter=None):
                  logger.info(f"{log_prefix} Sent SIGKILL to PID {pid_to_kill}.")
             except ProcessLookupError:
                  logger.info(f"{log_prefix} Process {pid_to_kill} already gone.")
-            except Exception as e:
+    except Exception as e:
                  logger.error(f"{log_prefix} Error killing process {pid_to_kill}: {e}")
     else:
         logger.info(f"No active PTY session found for SID {sid} during {reason_str} cleanup (filter: {session_type_filter or 'None'}).")
@@ -1284,45 +1284,55 @@ def get_gpu_pods():
     try:
         namespace = request.args.get('namespace')
         
-        # Get pods from database
         if namespace:
             pods = db.get_resources('pods', namespace)
         else:
             pods = db.get_resources('pods')
         
-        # Filter pods that use GPU resources
         gpu_pods = []
         for pod in pods:
-            has_gpu = False
-            gpu_count = 0
+            if not isinstance(pod, dict): # Ensure pod is a dictionary
+                logging.warning(f"Skipping non-dict pod resource in get_gpu_pods: {type(pod)}")
+                continue
+
+            has_gpu_request = False
+            gpu_request_count = 0
             
-            # Check containers for GPU requests
-            for container in pod.get('spec', {}).get('containers', []):
-                resources = container.get('resources', {})
-                limits = resources.get('limits', {})
-                
-                # Look for NVIDIA GPU or generic GPU resources
-                for resource_name, value in limits.items():
-                    if 'nvidia.com' in resource_name or 'gpu' in resource_name:
-                        has_gpu = True
+            # Check containers and initContainers for GPU requests
+            spec = pod.get('spec', {})
+            for container_type in ['containers', 'initContainers']:
+                for container in spec.get(container_type, []):
+                    resources = container.get('resources', {})
+                    requests = resources.get('requests', {}) # Changed from limits to requests
+                    
+                    if requests: # Ensure requests exist
+                        gpu_val_str = requests.get('nvidia.com/gpu', '0') # Check nvidia.com/gpu in requests
+                        # Consider generic 'gpu' as well if that's a convention in your cluster
+                        # if requests.get('gpu', '0') != '0' and gpu_val_str == '0':
+                        #     gpu_val_str = requests.get('gpu', '0')
+                        
                         try:
-                            gpu_count += int(value)
+                            current_container_gpu_request = int(gpu_val_str)
+                            if current_container_gpu_request > 0:
+                                has_gpu_request = True
+                                gpu_request_count += current_container_gpu_request
                         except ValueError:
-                            pass
+                            logging.warning(f"Could not parse GPU request value '{gpu_val_str}' for container {container.get('name')} in pod {pod.get('metadata',{}).get('name')}")
+                            pass # Or handle error as needed
             
-            if has_gpu:
+            if has_gpu_request:
                 gpu_pods.append({
                     'name': pod.get('metadata', {}).get('name', ''),
                     'namespace': pod.get('metadata', {}).get('namespace', ''),
-                    'node': pod.get('spec', {}).get('nodeName', ''),
+                    'node': spec.get('nodeName', ''), # Moved spec.get out of loop
                     'status': pod.get('status', {}).get('phase', ''),
-                    'gpu_count': gpu_count
+                    'gpu_count': gpu_request_count # This now reflects summed requests
                 })
         
         return jsonify(gpu_pods)
     
     except Exception as e:
-        logging.error(f"Error getting GPU pods: {str(e)}")
+        logging.error(f"Error getting GPU pods: {str(e)}", exc_info=True) # Added exc_info
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/namespace-metrics', methods=['GET'])
@@ -1397,49 +1407,64 @@ def get_environment_metrics_endpoint():
     try:
         env_metrics = db.get_latest_environment_metrics()
         if not env_metrics:
-            # Fallback: try to collect them if missing, then try again.
             logging.warning("Environment metrics not found in DB, attempting to collect now.")
-            _collect_and_store_environment_metrics() # Attempt to populate
-            env_metrics = db.get_latest_environment_metrics() # Try fetching again
+            _collect_and_store_environment_metrics()
+            env_metrics = db.get_latest_environment_metrics()
             if not env_metrics:
                 logging.error("Failed to retrieve or collect environment metrics.")
                 return jsonify({"error": "Environment metrics are currently unavailable."}), 503
 
-        all_pods_data = db.get_resources('pods') # This returns a list of dicts (parsed JSON)
+        all_pods_data = db.get_resources('pods')
 
         current_running_pods = 0
         current_cpu_request_millicores = 0
         current_memory_request_bytes = 0
-        current_gpu_request_units = 0
+        running_gpu_request_units = 0 
+        pending_gpu_request_units = 0 
 
+        logging.info("Calculating current GPU requests for /api/environment_metrics (running/pending split):")
         for pod_resource in all_pods_data:
             if not isinstance(pod_resource, dict):
                 logging.warning(f"Skipping pod resource as it is not a dict: {type(pod_resource)}")
                 continue
+
+            pod_name = pod_resource.get('metadata', {}).get('name', 'unknown-pod')
+            pod_namespace = pod_resource.get('metadata', {}).get('namespace', 'unknown-namespace')
+            pod_gpu_requests_for_this_pod = 0 
 
             status_phase = pod_resource.get('status', {}).get('phase', '').lower()
             if status_phase == 'running':
                 current_running_pods += 1
             
             spec = pod_resource.get('spec', {})
-            for container in spec.get('containers', []):
-                resources = container.get('resources', {})
-                requests = resources.get('requests', {})
-                if requests:
-                    current_cpu_request_millicores += parse_cpu_to_millicores(requests.get('cpu', '0'))
-                    current_memory_request_bytes += parse_memory_to_bytes(requests.get('memory', '0'))
-                    current_gpu_request_units += int(requests.get('nvidia.com/gpu', 0))
+            current_pod_gpu_increment = 0 
+
+            for container_type in ['containers', 'initContainers']:
+                for container in spec.get(container_type, []):
+                    resources = container.get('resources', {})
+                    requests = resources.get('requests', {})
+                    if requests:
+                        if container_type == 'containers': # Sum CPU/Mem only for main containers for general metrics
+                            current_cpu_request_millicores += parse_cpu_to_millicores(requests.get('cpu', '0'))
+                            current_memory_request_bytes += parse_memory_to_bytes(requests.get('memory', '0'))
+                        
+                        gpu_req = int(requests.get('nvidia.com/gpu', '0'))
+                        if gpu_req > 0:
+                            logging.info(f"  - Pod: {pod_namespace}/{pod_name} (Status: {status_phase}), Type: {container_type[:-1]}, Name: {container.get('name')}, GPU Request: {gpu_req}")
+                            pod_gpu_requests_for_this_pod += gpu_req
+                            current_pod_gpu_increment += gpu_req
             
-            for init_container in spec.get('initContainers', []):
-                resources = init_container.get('resources', {})
-                requests = resources.get('requests', {})
-                if requests:
-                    current_cpu_request_millicores += parse_cpu_to_millicores(requests.get('cpu', '0'))
-                    current_memory_request_bytes += parse_memory_to_bytes(requests.get('memory', '0'))
-                    current_gpu_request_units += int(requests.get('nvidia.com/gpu', 0))
+            if status_phase == 'running':
+                running_gpu_request_units += current_pod_gpu_increment
+            elif status_phase == 'pending':
+                pending_gpu_request_units += current_pod_gpu_increment
+            # GPUs from pods in other states (Succeeded, Failed, Terminating) are currently not added to these specific counters
 
+            if pod_gpu_requests_for_this_pod > 0:
+                 logging.info(f"  -> Total GPU requests for pod {pod_namespace}/{pod_name} (Status: {status_phase}): {pod_gpu_requests_for_this_pod}")
 
-        # Prepare the response
+        logging.info(f"Finished calculating. Running GPU Requests: {running_gpu_request_units}, Pending GPU Requests: {pending_gpu_request_units}")
+        
         response_data = {
             'pods': {
                 'total_capacity': env_metrics.get('total_node_pod_capacity', 0),
@@ -1462,13 +1487,13 @@ def get_environment_metrics_endpoint():
             },
             'gpu': {
                 'total_allocatable_units': env_metrics.get('total_node_allocatable_gpus', 0),
-                'current_request_units': current_gpu_request_units,
-                'percentage_utilized': 0
+                'running_gpu_request_units': running_gpu_request_units, 
+                'pending_gpu_request_units': pending_gpu_request_units, 
+                'percentage_utilized': 0 
             },
             'last_updated_timestamp': env_metrics.get('timestamp')
         }
 
-        # Calculate percentages
         if response_data['pods']['total_capacity'] > 0:
             response_data['pods']['percentage_running'] = round(
                 (response_data['pods']['current_running'] / response_data['pods']['total_capacity']) * 100, 1
@@ -1494,7 +1519,7 @@ def get_environment_metrics_endpoint():
 
         if response_data['gpu']['total_allocatable_units'] > 0:
             response_data['gpu']['percentage_utilized'] = round(
-                (response_data['gpu']['current_request_units'] / response_data['gpu']['total_allocatable_units']) * 100, 1
+                (response_data['gpu']['running_gpu_request_units'] / response_data['gpu']['total_allocatable_units']) * 100, 1
             )
         
         return jsonify(response_data)
