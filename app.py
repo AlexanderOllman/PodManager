@@ -190,7 +190,7 @@ def _collect_and_store_environment_metrics():
     describe_nodes_output = run_kubectl_command(["describe", "nodes"], is_json_output=False)
     overcommit_limits = {'cpu_limit_percentage': 100, 'memory_limit_percentage': 100} # Defaults
     if describe_nodes_output:
-        overcommit_limits = _extract_limits_from_describe_nodes(describe_output)
+        overcommit_limits = _extract_limits_from_describe_nodes(describe_nodes_output)
     else:
         logging.warning("Failed to get 'kubectl describe nodes' output for overcommit limits. Using defaults.")
 
