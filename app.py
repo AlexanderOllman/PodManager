@@ -327,11 +327,11 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
     logger.info(f"[{session_type} sid:{sid}] Starting PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
     max_read_bytes = 1024 * 20 # Read up to 20KB at a time
     try:
-    while True:
-            socketio.sleep(0.01) # Small sleep to prevent tight loop and allow other greenlets
+        while True:
+            socketio.sleep(0.01)
             if sid not in active_pty_sessions or active_pty_sessions.get(sid, {}).get('fd') != fd:
                 logger.info(f"[{session_type} sid:{sid}] Session terminated or FD changed, stopping read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
-            break
+                break
             
             # Check if fd is readable without blocking
             ready_to_read, _, _ = select.select([fd], [], [], 0) # Timeout of 0 makes it non-blocking
@@ -343,7 +343,7 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
                     logger.info(f"[{session_type} sid:{sid}] OSError on os.read() for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}. Assuming PTY closed.")
                     break # Exit loop, PTY likely closed
 
-        if output:
+                if output:
                     decoded_output = output.decode('utf-8', errors='replace')
                     logger.debug(f"[{session_type} sid:{sid}] PTY Read {len(decoded_output)} chars for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
                     socketio.emit(output_event_name,
