@@ -1073,7 +1073,7 @@ def get_cluster_capacity():
                 total_cpu += int(cpu_str[:-1]) / 1000
             else:
                 try: # Add try-except for int conversion
-                total_cpu += int(cpu_str)
+                    total_cpu += int(cpu_str)
                 except ValueError:
                     logging.warning(f"Could not parse CPU string for node capacity: {cpu_str}")
 
@@ -1178,7 +1178,7 @@ def _cleanup_pty_session(sid, reason_str, session_type_filter=None):
                  logger.info(f"{log_prefix} Sent SIGKILL to PID {pid_to_kill}.")
             except ProcessLookupError:
                  logger.info(f"{log_prefix} Process {pid_to_kill} already gone.")
-    except Exception as e:
+            except Exception as e:
                  logger.error(f"{log_prefix} Error killing process {pid_to_kill}: {e}")
     else:
         logger.info(f"No active PTY session found for SID {sid} during {reason_str} cleanup (filter: {session_type_filter or 'None'}).")
