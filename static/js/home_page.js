@@ -25,7 +25,7 @@ function updateProgress(id, percentage) {
 // Helper to format numbers to a fixed number of decimal places or as integer
 function formatNumber(num, decimals = 1) {
     if (typeof num !== 'number' || isNaN(num)) {
-        return 'N/A';
+        return '-'; // Return a dash for N/A or error, consistent with HTML placeholders
     }
     if (decimals === 0) {
         return num.toFixed(0);
@@ -33,28 +33,55 @@ function formatNumber(num, decimals = 1) {
     return num.toFixed(decimals);
 }
 
+// Helper to format bytes to GB
+function formatBytesToGB(bytes) {
+    if (typeof bytes !== 'number' || isNaN(bytes) || bytes === 0) {
+        return '0';
+    }
+    return (bytes / (1024 * 1024 * 1024)).toFixed(1);
+}
+
+// Helper to format millicores to cores
+function formatMillicoresToCores(millicores) {
+    if (typeof millicores !== 'number' || isNaN(millicores) || millicores === 0) {
+        return '0';
+    }
+    return (millicores / 1000).toFixed(1);
+}
+
 // Fetches and displays the new dashboard metrics from the API
 async function fetchAndDisplayDashboardMetrics() {
     console.log('Fetching dashboard environment metrics...');
-    const loadingText = 'Loading...';
-    // Set initial loading texts
-    updateTextContent('podCapacityUsage', loadingText);
-    updateTextContent('podPercentageRunning', '');
-    updateProgress('podUsageBar', 0);
+    const loadingText = '...'; // Briefer loading text
+    const errorText = 'Error';
+    const naText = '-';
 
-    updateTextContent('vCpuAllocation', loadingText);
-    updateTextContent('vCpuPercentageUtilized', '');
-    updateTextContent('vCpuOverProvisioning', '');
-    updateProgress('vCpuUsageBar', 0);
+    // Set initial loading texts using HTML IDs
+    updateTextContent('podCardRunningCount', loadingText);
+    updateTextContent('podCardTotalCapacity', loadingText);
+    updateTextContent('podCardPercentage', loadingText);
+    updateProgress('podUsageBar', 0); // Assuming 'podUsageBar' is the correct ID for the pod progress bar if it exists or will be added
+                                     // If no progress bar for pods, this line can be removed. index.html snippet didn't show one.
 
-    updateTextContent('ramAllocation', loadingText);
-    updateTextContent('ramPercentageUtilized', '');
-    updateTextContent('ramOverProvisioning', '');
-    updateProgress('ramUsageBar', 0);
+    updateTextContent('vcpuCardUtilized', loadingText);
+    updateTextContent('vcpuCardTotalAllocatable', loadingText);
+    updateTextContent('vcpuCardPercentageUtilized', loadingText);
+    updateTextContent('vcpuCardOverprovisionLimit', loadingText); // This will show total capacity
+    updateProgress('vcpuProgressBar', 0);
 
-    updateTextContent('gpuAllocation', loadingText);
-    updateTextContent('gpuPercentageUtilized', '');
-    updateProgress('gpuUsageBar', 0);
+    updateTextContent('ramCardUtilized', loadingText);
+    updateTextContent('ramCardTotalAllocatable', loadingText);
+    updateTextContent('ramCardPercentageUtilized', loadingText);
+    updateTextContent('ramCardOverprovisionLimit', loadingText); // This will show total capacity
+    updateProgress('ramProgressBar', 0);
+
+    updateTextContent('gpuCardUtilizedUnits', loadingText);
+    updateTextContent('gpuCardTotalAllocatableUnits', loadingText);
+    updateTextContent('gpuCardPercentageUtilized', loadingText);
+    updateProgress('gpuProgressBar', 0);
+    
+    const lastUpdatedIds = ['metricsLastUpdatedPods', 'metricsLastUpdatedVCPU', 'metricsLastUpdatedRAM', 'metricsLastUpdatedGPU'];
+    lastUpdatedIds.forEach(id => updateTextContent(id, loadingText));
 
     try {
         const response = await fetch('/api/environment_metrics');
@@ -64,96 +91,113 @@ async function fetchAndDisplayDashboardMetrics() {
         const metrics = await response.json();
         console.log('Dashboard metrics received:', metrics);
 
+        const timestamp = metrics.last_updated_timestamp ? new Date(metrics.last_updated_timestamp).toLocaleTimeString() : naText;
+        lastUpdatedIds.forEach(id => updateTextContent(id, timestamp));
+
         // Pods
         if (metrics.pods) {
-            const running = metrics.pods.running || 0;
-            const totalPods = metrics.pods.count || 0; // Total actual pods
-            updateTextContent('podCapacityUsage', `${formatNumber(running, 0)} / ${formatNumber(totalPods, 0)} Pods`);
-            const podPercentage = totalPods > 0 ? (running / totalPods) * 100 : 0;
-            updateTextContent('podPercentageRunning', `${formatNumber(podPercentage, 0)}% Running`);
-            updateProgress('podUsageBar', podPercentage);
+            const running = metrics.pods.current_running || 0;
+            const totalCapacity = metrics.pods.total_capacity || 0;
+            updateTextContent('podCardRunningCount', formatNumber(running, 0));
+            updateTextContent('podCardTotalCapacity', formatNumber(totalCapacity, 0));
+            // const podPercentage = totalCapacity > 0 ? (running / totalCapacity) * 100 : 0; // API provides this
+            const podPercentage = metrics.pods.percentage_running || 0;
+            updateTextContent('podCardPercentage', formatNumber(podPercentage, 0));
+            // updateProgress('podUsageBar', podPercentage); // If there's a progress bar for pods
         } else {
-            updateTextContent('podCapacityUsage', 'N/A');
-            updateTextContent('podPercentageRunning', '');
-            updateProgress('podUsageBar', 0);
+            updateTextContent('podCardRunningCount', naText);
+            updateTextContent('podCardTotalCapacity', naText);
+            updateTextContent('podCardPercentage', naText);
+            // updateProgress('podUsageBar', 0);
         }
 
-        // CPU
-        if (metrics.cpu) {
-            const utilized = metrics.cpu.utilized_cores || 0;
-            const allocatable = metrics.cpu.allocatable_cores || 0;
-            const limit = metrics.cpu.over_provisioning_limit_cores;
+        // vCPU
+        if (metrics.vcpu) {
+            const utilized = metrics.vcpu.current_request_millicores || 0;
+            const allocatable = metrics.vcpu.total_allocatable_millicores || 0;
+            const capacity = metrics.vcpu.total_capacity_millicores || 0;
 
-            updateTextContent('vCpuAllocation', `${formatNumber(utilized, 1)} / ${formatNumber(allocatable, 1)} Cores`);
-            const cpuPercentage = allocatable > 0 ? (utilized / allocatable) * 100 : 0;
-            updateTextContent('vCpuPercentageUtilized', `${formatNumber(cpuPercentage, 0)}% Utilized`);
-            updateProgress('vCpuUsageBar', cpuPercentage);
-            if (limit !== undefined && limit !== null) {
-                updateTextContent('vCpuOverProvisioning', `Limit: ${formatNumber(limit, 1)} Cores`);
-            } else {
-                 updateTextContent('vCpuOverProvisioning', 'Limit: N/A');
-            }
+            updateTextContent('vcpuCardUtilized', formatMillicoresToCores(utilized));
+            updateTextContent('vcpuCardTotalAllocatable', formatMillicoresToCores(allocatable));
+            // const cpuPercentageVsAllocatable = allocatable > 0 ? (utilized / allocatable) * 100 : 0; // API provides this
+            const cpuPercentageVsAllocatable = metrics.vcpu.percentage_utilized_vs_allocatable || 0;
+            updateTextContent('vcpuCardPercentageUtilized', formatNumber(cpuPercentageVsAllocatable, 0));
+            updateProgress('vcpuProgressBar', cpuPercentageVsAllocatable);
+            updateTextContent('vcpuCardOverprovisionLimit', formatMillicoresToCores(capacity));
         } else {
-            updateTextContent('vCpuAllocation', 'N/A');
-            updateTextContent('vCpuPercentageUtilized', '');
-            updateTextContent('vCpuOverProvisioning', '');
-            updateProgress('vCpuUsageBar', 0);
+            updateTextContent('vcpuCardUtilized', naText);
+            updateTextContent('vcpuCardTotalAllocatable', naText);
+            updateTextContent('vcpuCardPercentageUtilized', naText);
+            updateTextContent('vcpuCardOverprovisionLimit', naText);
+            updateProgress('vcpuProgressBar', 0);
         }
 
         // RAM
-        if (metrics.ram) {
-            const utilized = metrics.ram.utilized_gb || 0;
-            const allocatable = metrics.ram.allocatable_gb || 0;
-            const limit = metrics.ram.over_provisioning_limit_gb;
+        if (metrics.memory) {
+            const utilized = metrics.memory.current_request_bytes || 0;
+            const allocatable = metrics.memory.total_allocatable_bytes || 0;
+            const capacity = metrics.memory.total_capacity_bytes || 0;
 
-            updateTextContent('ramAllocation', `${formatNumber(utilized, 1)} / ${formatNumber(allocatable, 1)} GB`);
-            const ramPercentage = allocatable > 0 ? (utilized / allocatable) * 100 : 0;
-            updateTextContent('ramPercentageUtilized', `${formatNumber(ramPercentage, 0)}% Utilized`);
-            updateProgress('ramUsageBar', ramPercentage);
-            if (limit !== undefined && limit !== null) {
-                updateTextContent('ramOverProvisioning', `Limit: ${formatNumber(limit, 1)} GB`);
-            } else {
-                updateTextContent('ramOverProvisioning', 'Limit: N/A');
-            }
+            updateTextContent('ramCardUtilized', formatBytesToGB(utilized));
+            updateTextContent('ramCardTotalAllocatable', formatBytesToGB(allocatable));
+            // const ramPercentageVsAllocatable = allocatable > 0 ? (utilized / allocatable) * 100 : 0; // API provides this
+            const ramPercentageVsAllocatable = metrics.memory.percentage_utilized_vs_allocatable || 0;
+            updateTextContent('ramCardPercentageUtilized', formatNumber(ramPercentageVsAllocatable, 0));
+            updateProgress('ramProgressBar', ramPercentageVsAllocatable);
+            updateTextContent('ramCardOverprovisionLimit', formatBytesToGB(capacity));
         } else {
-             updateTextContent('ramAllocation', 'N/A');
-             updateTextContent('ramPercentageUtilized', '');
-             updateTextContent('ramOverProvisioning', '');
-             updateProgress('ramUsageBar', 0);
+            updateTextContent('ramCardUtilized', naText);
+            updateTextContent('ramCardTotalAllocatable', naText);
+            updateTextContent('ramCardPercentageUtilized', naText);
+            updateTextContent('ramCardOverprovisionLimit', naText);
+            updateProgress('ramProgressBar', 0);
         }
 
         // GPU
         if (metrics.gpu) {
-            const utilized = metrics.gpu.utilized_units || 0;
-            const allocatable = metrics.gpu.allocatable_units || 0;
+            const utilized = metrics.gpu.current_request_units || 0;
+            const allocatable = metrics.gpu.total_allocatable_units || 0;
 
-            updateTextContent('gpuAllocation', `${formatNumber(utilized, 0)} / ${formatNumber(allocatable, 0)} Units`);
-            const gpuPercentage = allocatable > 0 ? (utilized / allocatable) * 100 : 0;
-            updateTextContent('gpuPercentageUtilized', `${formatNumber(gpuPercentage, 0)}% Utilized`);
-            updateProgress('gpuUsageBar', gpuPercentage);
+            updateTextContent('gpuCardUtilizedUnits', formatNumber(utilized, 0));
+            updateTextContent('gpuCardTotalAllocatableUnits', formatNumber(allocatable, 0));
+            // const gpuPercentage = allocatable > 0 ? (utilized / allocatable) * 100 : 0; // API provides this
+            const gpuPercentage = metrics.gpu.percentage_utilized || 0;
+            updateTextContent('gpuCardPercentageUtilized', formatNumber(gpuPercentage, 0));
+            updateProgress('gpuProgressBar', gpuPercentage);
         } else {
-            updateTextContent('gpuAllocation', 'N/A');
-            updateTextContent('gpuPercentageUtilized', '');
-            updateProgress('gpuUsageBar', 0);
+            updateTextContent('gpuCardUtilizedUnits', naText);
+            updateTextContent('gpuCardTotalAllocatableUnits', naText);
+            updateTextContent('gpuCardPercentageUtilized', naText);
+            updateProgress('gpuProgressBar', 0);
         }
 
     } catch (error) {
         console.error('Failed to fetch or display dashboard metrics:', error);
-        updateTextContent('podCapacityUsage', 'Error');
-        updateTextContent('podPercentageRunning', '');
-        updateTextContent('vCpuAllocation', 'Error');
-        updateTextContent('vCpuPercentageUtilized', '');
-        updateTextContent('vCpuOverProvisioning', '');
-        updateTextContent('ramAllocation', 'Error');
-        updateTextContent('ramPercentageUtilized', '');
-        updateTextContent('ramOverProvisioning', '');
-        updateTextContent('gpuAllocation', 'Error');
-        updateTextContent('gpuPercentageUtilized', '');
+        updateTextContent('podCardRunningCount', errorText);
+        updateTextContent('podCardTotalCapacity', '');
+        updateTextContent('podCardPercentage', errorText);
+        
+        updateTextContent('vcpuCardUtilized', errorText);
+        updateTextContent('vcpuCardTotalAllocatable', '');
+        updateTextContent('vcpuCardPercentageUtilized', errorText);
+        updateTextContent('vcpuCardOverprovisionLimit', errorText);
+        
+        updateTextContent('ramCardUtilized', errorText);
+        updateTextContent('ramCardTotalAllocatable', '');
+        updateTextContent('ramCardPercentageUtilized', errorText);
+        updateTextContent('ramCardOverprovisionLimit', errorText);
+
+        updateTextContent('gpuCardUtilizedUnits', errorText);
+        updateTextContent('gpuCardTotalAllocatableUnits', '');
+        updateTextContent('gpuCardPercentageUtilized', errorText);
+        
+        lastUpdatedIds.forEach(id => updateTextContent(id, errorText));
+
         // Reset progress bars on error too
-        updateProgress('podUsageBar', 0);
-        updateProgress('vCpuUsageBar', 0);
-        updateProgress('ramUsageBar', 0);
-        updateProgress('gpuUsageBar', 0);
+        // updateProgress('podUsageBar', 0); // If exists
+        updateProgress('vcpuProgressBar', 0);
+        updateProgress('ramProgressBar', 0);
+        updateProgress('gpuProgressBar', 0);
     }
 }
 
