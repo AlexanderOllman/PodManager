@@ -45,7 +45,7 @@ class Database:
                         UNIQUE(metric_type, namespace)
                     )
                 ''')
-
+                
                 # Create environment_metrics table
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS environment_metrics (

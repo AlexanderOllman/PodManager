@@ -21,7 +21,6 @@ import fcntl
 import termios
 import re
 from typing import Optional, Union, Dict
-import requests # Added
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,13 +33,6 @@ try:
     git_available = True
 except ImportError:
     print("Git module could not be imported. GitHub update functionality will be disabled.")
-
-# Configuration
-# Ensure this is set in your environment or a .env file for production
-APP_VERSION = "1.0.0" 
-
-# Assume ChartMuseum is running locally via port-forward or accessible at this URL
-CHARTMUSEUM_URL = os.environ.get('CHARTMUSEUM_URL', 'http://localhost:8080') # Added
 
 app = Flask(__name__)
 # Configure SocketIO with enhanced settings for reliability
@@ -325,11 +317,11 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
     logger.info(f"[{session_type} sid:{sid}] Starting PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
     max_read_bytes = 1024 * 20  # Read up to 20KB at a time
     try:
-        while True:
+    while True:
             socketio.sleep(0.01)
             if sid not in active_pty_sessions or active_pty_sessions.get(sid, {}).get('fd') != fd:
                 logger.info(f"[{session_type} sid:{sid}] Session terminated or FD changed, stopping read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
-                break
+            break
 
             # Check if fd is readable without blocking
             ready_to_read, _, _ = select.select([fd], [], [], 0)  # Timeout of 0 makes it non-blocking
@@ -341,7 +333,7 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
                     logger.info(f"[{session_type} sid:{sid}] OSError on os.read() for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}. Assuming PTY closed.")
                     break  # Exit loop, PTY likely closed
 
-                if output:
+        if output:
                     decoded_output = output.decode('utf-8', errors='replace')
                     logger.debug(f"[{session_type} sid:{sid}] PTY Read {len(decoded_output)} chars for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
                     socketio.emit(output_event_name,
@@ -493,7 +485,7 @@ def get_namespaces():
         # namespaces = json.loads(output) # No longer needed, output_dict is already parsed
         if output_dict and 'items' in output_dict:
             namespace_names = [ns['metadata']['name'] for ns in output_dict.get('items', [])]
-            return jsonify(namespaces=namespace_names)
+        return jsonify(namespaces=namespace_names)
         else:
             logging.error(f"Failed to get namespaces or output format incorrect: {output_dict}")
             return jsonify(namespaces=[], error="Unable to fetch namespaces or parse them")
@@ -535,7 +527,7 @@ def get_namespace_details():
                     pod_count = 0
                     pods_data = {'items': []} # Ensure 'items' exists for loop
                 else:
-                    pod_count = len(pods_data['items'])
+                pod_count = len(pods_data['items'])
 
                 
                 # Calculate resource usage
@@ -848,7 +840,7 @@ def api_get_pod_description_from_path(namespace, pod_name):
     try:
         if not namespace or not pod_name:
             return jsonify({"error": "Missing namespace or pod_name parameter"}), 400
-            
+        
         # command = f"kubectl describe pod {pod_name} -n {namespace}"
         command_list = ["describe", "pod", pod_name, "-n", namespace]
         output = run_kubectl_command(command_list, is_json_output=False) # Describe is text
@@ -884,7 +876,7 @@ def api_get_pod_logs_from_path(namespace, pod_name):
                 mimetype="text/plain",
                 headers={"Content-disposition": f"attachment; filename={pod_name}_{namespace}_logs.txt"}
             )
-        else:
+                else:
             # Assuming logs output is typically text
             return jsonify({"logs": output}) 
     except Exception as e:
@@ -1005,7 +997,7 @@ def get_cluster_capacity():
                 total_cpu += int(cpu_str[:-1]) / 1000
             else:
                 try: # Add try-except for int conversion
-                    total_cpu += int(cpu_str)
+                total_cpu += int(cpu_str)
                 except ValueError:
                     logging.warning(f"Could not parse CPU string for node capacity: {cpu_str}")
 
@@ -1110,7 +1102,7 @@ def _cleanup_pty_session(sid, reason_str, session_type_filter=None):
                  logger.info(f"{log_prefix} Sent SIGKILL to PID {pid_to_kill}.")
             except ProcessLookupError:
                  logger.info(f"{log_prefix} Process {pid_to_kill} already gone.")
-            except Exception as e:
+    except Exception as e:
                  logger.error(f"{log_prefix} Error killing process {pid_to_kill}: {e}")
     else:
         logger.info(f"No active PTY session found for SID {sid} during {reason_str} cleanup (filter: {session_type_filter or 'None'}).")
@@ -1234,7 +1226,7 @@ def get_gpu_pods():
             spec = pod.get('spec', {})
             for container_type in ['containers', 'initContainers']:
                 for container in spec.get(container_type, []):
-                    resources = container.get('resources', {})
+                resources = container.get('resources', {})
                     requests = resources.get('requests', {}) # Changed from limits to requests
                     
                     if requests: # Ensure requests exist
@@ -1335,7 +1327,7 @@ def refresh_database():
         }), 500
 
 @app.route('/api/environment_metrics', methods=['GET'])
-def get_environment_metrics():
+def get_environment_metrics_endpoint():
     try:
         env_metrics = db.get_latest_environment_metrics()
         if not env_metrics:
@@ -1522,92 +1514,193 @@ def api_pod_details(namespace, pod_name):
         app.logger.error(f"Error in api_get_pod_details_from_path for {namespace}/{pod_name}: {str(e)}")
         return jsonify({"error": f"Server error fetching pod details: {str(e)}"}), 500
 
-# CHART RELATED ROUTES - START
 @app.route('/api/charts/list', methods=['GET'])
 def list_charts():
+    """Get list of all charts from ChartMuseum"""
     try:
-        # ChartMuseum's API path for all charts
-        api_url = f"{CHARTMUSEUM_URL}/api/charts"
-        logging.info(f"Fetching charts from: {api_url}")
-        response = requests.get(api_url, timeout=10) # Added timeout
-        response.raise_for_status() 
+        # First check if ChartMuseum is accessible
+        check_command = "curl -s http://127.0.0.1:8855/api/charts"
+        logger.info(f"Executing ChartMuseum check: {check_command}")
+        result = subprocess.run(check_command, shell=True, capture_output=True, text=True, timeout=10)
         
-        charts_data = response.json()
-        # The structure returned by ChartMuseum /api/charts is:
-        # { "chart_name_1": [ { "name": "chart_name_1", "version": "0.1.0", ...}, ... ], ... }
-        # This directly matches what the frontend expects.
-        return jsonify(success=True, charts=charts_data)
+        if result.returncode != 0 or not result.stdout.strip():
+            logger.warning(f"Initial ChartMuseum check failed (Code: {result.returncode}). Stdout empty: {not result.stdout.strip()}. Error: {result.stderr.strip()}. Attempting port-forward setup.")
+            
+            # Get the pod name first - using a more specific command to get the pod name
+            # This assumes ChartMuseum runs in 'ez-chartmuseum-ns' namespace.
+            pod_cmd_list = ["get", "pods", "-n", "ez-chartmuseum-ns", "-l", "app=chartmuseum", "-o", "jsonpath={.items[0].metadata.name}"]
+            
+            # Use the application's run_kubectl_command for this
+            pod_name = run_kubectl_command(pod_cmd_list, is_json_output=False)
+
+            if not pod_name:
+                logger.error(f"Failed to get ChartMuseum pod name using label app=chartmuseum in ez-chartmuseum-ns.")
+                # Fallback: Try the original less specific command if the labeled one fails
+                original_pod_cmd = "kubectl get pods -n ez-chartmuseum-ns -o jsonpath='{.items[0].metadata.name}'"
+                logger.info(f"Fallback: Trying original command to get ChartMuseum pod: {original_pod_cmd}")
+                pod_result_fallback = subprocess.run(original_pod_cmd, shell=True, capture_output=True, text=True)
+                if pod_result_fallback.returncode != 0 or not pod_result_fallback.stdout.strip():
+                    logger.error(f"Fallback command also failed to get ChartMuseum pod name. Stderr: {pod_result_fallback.stderr.strip()}")
+                    return jsonify({
+                        'success': False,
+                        'error': 'ChartMuseum pod not found in ez-chartmuseum-ns namespace. Both labeled and original selectors failed.'
+                    })
+                pod_name = pod_result_fallback.stdout.strip()
+
+            if not pod_name: # Should be caught by previous conditions, but as a safeguard
+                 logger.error("ChartMuseum pod name could not be determined.")
+                 return jsonify({'success': False, 'error': 'ChartMuseum pod name could not be determined after attempts.'})
+
+            logger.info(f"ChartMuseum pod name: {pod_name}")
+            
+            active_port_forward_pid = None
+            try:
+                # Check if port-forward is already running for this pod and port
+                # pgrep -f "kubectl port-forward podname.*8855:8080"
+                pgrep_cmd = f"pgrep -f 'kubectl port-forward {pod_name}.*8855:8080'"
+                logger.info(f"Checking for existing port-forward: {pgrep_cmd}")
+                pgrep_result = subprocess.run(pgrep_cmd, shell=True, capture_output=True, text=True)
+                if pgrep_result.returncode == 0 and pgrep_result.stdout.strip():
+                    active_port_forward_pid = pgrep_result.stdout.strip().split('\n')[0] # Get the first PID
+                    logger.info(f"Existing port-forward process found for {pod_name} on port 8855 (PID: {active_port_forward_pid}). Assuming it's usable.")
+                else:
+                    # Kill any other existing port forwards on 8855 to avoid conflicts, more broadly
+                    logger.info("No specific port-forward found for this pod. Attempting to kill any other port-forwards on local port 8855.")
+                    subprocess.run("pkill -f 'kubectl port-forward.*8855:8080'", shell=True) # Be cautious with pkill
+                    time.sleep(1) # Give pkill a moment
+
+                    # Try to set up port forwarding in a new thread
+                    def setup_port_forward_target():
+                        # Target for the port-forwarding thread
+                        port_forward_cmd_str = f"kubectl port-forward {pod_name} -n ez-chartmuseum-ns 8855:8080"
+                        logger.info(f"Attempting to start port-forward: {port_forward_cmd_str}")
+                        # Using Popen to run in background. The thread will manage this Popen instance.
+                        # No specific cleanup here, relies on daemon thread & pkill or manual cleanup.
+                        pf_process = subprocess.Popen(port_forward_cmd_str.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        logger.info(f"Port-forward process started with PID: {pf_process.pid}. This will run via daemon thread.")
+                        # This process needs to keep running. We don't pf_process.wait() or communicate() here.
+                        # The thread will keep it alive. If thread exits, process might become zombie or orphaned.
+                        # Consider more robust process management if this becomes an issue.
+                        try:
+                            # Keep thread alive while Popen process runs, or a timeout.
+                            # This is a simple way to keep the Popen alive.
+                            # A more robust solution would involve monitoring pf_process.poll().
+                            while pf_process.poll() is None:
+                                time.sleep(1)
+                            logger.info(f"Port-forward process {pf_process.pid} for {pod_name} has terminated with code {pf_process.returncode}.")
+                        except Exception as e_thread:
+                            logger.error(f"Exception in port-forward thread for {pod_name}: {e_thread}")
+
+
+                    port_forward_thread = threading.Thread(target=setup_port_forward_target, daemon=True)
+                    port_forward_thread.start()
+                    
+                    logger.info("Waiting for port-forwarding to establish (3 seconds)...")
+                    time.sleep(3) 
+            except Exception as e_pf_setup:
+                logger.error(f"Error during port-forward setup/check phase: {e_pf_setup}")
+                return jsonify({'success': False, 'error': f'Failed during port-forward setup: {str(e_pf_setup)}'})
+
+            # Try the check again
+            logger.info(f"Retrying ChartMuseum check: {check_command}")
+            result = subprocess.run(check_command, shell=True, capture_output=True, text=True, timeout=10)
+            if result.returncode != 0 or not result.stdout.strip():
+                logger.error(f"ChartMuseum check failed after port-forward attempt. Code: {result.returncode}, Stdout empty: {not result.stdout.strip()}, Error: {result.stderr.strip()}")
+                # If a specific port-forward was started by us and failed, it might be good to log that.
+                # The current structure makes it hard to know if the Popen process is healthy.
+                return jsonify({
+                    'success': False,
+                    'error': 'ChartMuseum is not accessible. Port forwarding was attempted but might have failed or timed out.'
+                })
         
-    except requests.exceptions.ConnectionError:
-        error_msg = f"ConnectionError: Could not connect to ChartMuseum at {CHARTMUSEUM_URL}. Ensure it is running and accessible (e.g., via port-forward)."
-        logging.error(error_msg)
-        # The frontend specifically looks for 'Port forwarding' in the error message for retry logic.
-        # For a more generic connection issue, this detailed message helps.
-        return jsonify(success=False, error=f"Port forwarding or connection issue with ChartMuseum: {error_msg}"), 503
-    except requests.exceptions.Timeout:
-        error_msg = f"Timeout: Request to ChartMuseum at {CHARTMUSEUM_URL} timed out."
-        logging.error(error_msg)
-        return jsonify(success=False, error=error_msg), 504
-    except requests.exceptions.HTTPError as e:
-        error_msg = f"HTTPError: Failed to fetch charts from ChartMuseum. Status: {e.response.status_code}. Response: {e.response.text}"
-        logging.error(error_msg)
-        return jsonify(success=False, error=f"ChartMuseum API error: {e.response.status_code}"), e.response.status_code
-    except requests.exceptions.RequestException as e:
-        error_msg = f"RequestException: An unexpected error occurred while fetching charts: {str(e)}"
-        logging.error(error_msg)
-        return jsonify(success=False, error=error_msg), 500
-    except ValueError as e: # Handles JSON decoding errors
-        error_msg = f"ValueError: Failed to decode JSON response from ChartMuseum: {str(e)}"
-        logging.error(error_msg)
-        return jsonify(success=False, error=error_msg), 500
+        logger.info("ChartMuseum check successful.")
+        charts_data = json.loads(result.stdout)
+        return jsonify({
+            'success': True,
+            'charts': charts_data
+        })
+    except subprocess.TimeoutExpired:
+        logger.error(f"Timeout executing command for ChartMuseum: {check_command}")
+        return jsonify({'success': False, 'error': 'Timeout trying to communicate with ChartMuseum.'})
+    except json.JSONDecodeError as e:
+        response_text = result.stdout if 'result' in locals() and hasattr(result, 'stdout') else "N/A"
+        logger.error(f"JSONDecodeError in list_charts: {str(e)}. Response (first 200 chars): {response_text[:200]}")
+        return jsonify({'success': False, 'error': f'Failed to parse ChartMuseum response: {str(e)}'})
+    except Exception as e:
+        logger.error(f"General exception in list_charts: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'An unexpected error occurred: {str(e)}'
+        })
 
 @app.route('/api/charts/delete', methods=['POST'])
-def delete_chart_version():
-    chart_name = request.form.get('chart_name')
-    version = request.form.get('version')
-
-    if not chart_name or not version:
-        return jsonify(success=False, error="Chart name and version are required for deletion."), 400
-
+def delete_chart():
+    """Delete a chart or specific version from ChartMuseum"""
     try:
-        # ChartMuseum API for delete is DELETE /api/charts/<name>/<version>
-        delete_url = f"{CHARTMUSEUM_URL}/api/charts/{chart_name}/{version}"
-        logging.info(f"Attempting to delete chart: {delete_url}")
-        response = requests.delete(delete_url, timeout=10)
-        response.raise_for_status() 
-
-        # A successful delete in ChartMuseum typically returns 200 OK with a body like:
-        # {"deleted": true, "message": "chart version deleted"} or similar
-        # If response.json() fails or structure is different, adapt as needed.
+        chart_name = request.form.get('chart_name')
+        version = request.form.get('version') # This can be None
+        
+        if not chart_name:
+            logger.warning("Delete chart request failed: Chart name is required.")
+            return jsonify({
+                'success': False,
+                'error': 'Chart name is required'
+            }), 400
+            
+        # The ChartMuseum API expects the port-forwarding to be active.
+        # Assumes list_charts (or manual setup by admin) has established it.
+        if version:
+            command = f"curl -X DELETE http://127.0.0.1:8855/api/charts/{chart_name}/{version}"
+        else:
+            command = f"curl -X DELETE http://127.0.0.1:8855/api/charts/{chart_name}"
+        
+        logger.info(f"Executing ChartMuseum delete: {command}")
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=15)
+        
+        # ChartMuseum often returns a 200 OK with a simple message like {"deleted": true} or even empty on success.
+        # Non-200 status codes from curl usually mean result.returncode != 0.
+        if result.returncode != 0:
+            # Try to parse error from ChartMuseum if possible (often JSON in stdout even on error)
+            error_message = result.stderr.strip() or result.stdout.strip() or "Unknown error from ChartMuseum"
+            try:
+                # ChartMuseum might return JSON error like {"error": "chart not found"}
+                error_json = json.loads(result.stdout)
+                if 'error' in error_json:
+                    error_message = error_json['error']
+            except json.JSONDecodeError:
+                # Not a JSON error, use the raw output
+                pass
+            logger.error(f"Failed to delete chart '{chart_name}' (version: {version or 'all'}). Code: {result.returncode}. Error: {error_message}")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to delete chart: {error_message}'
+            }), 500 # Internal server error or relevant code
+            
+        logger.info(f"Successfully initiated delete for chart '{chart_name}' (version: {version or 'all'}). Response: {result.stdout.strip()}")
+        # Attempt to parse success message if any, otherwise assume success by 0 return code
+        response_data = {'deleted': True}
         try:
-            delete_response_data = response.json()
-            message = delete_response_data.get("message", f"Successfully deleted {chart_name} version {version}.")
-        except ValueError: # If response is not JSON or empty
-            message = f"Successfully deleted {chart_name} version {version}. ChartMuseum returned non-JSON response."
+            if result.stdout.strip():
+                response_data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            # Not JSON, but successful command, so assume ChartMuseum handled it.
+            logger.info("Delete command successful, but response was not JSON. Assuming success.")
+            pass # response_data defaults to {'deleted': True}
 
-        return jsonify(success=True, message=message)
-
-    except requests.exceptions.ConnectionError:
-        error_msg = f"ConnectionError: Could not connect to ChartMuseum at {CHARTMUSEUM_URL} for delete. Ensure it is running and accessible."
-        logging.error(error_msg)
-        return jsonify(success=False, error=f"Port forwarding or connection issue with ChartMuseum: {error_msg}"), 503
-    except requests.exceptions.Timeout:
-        error_msg = f"Timeout: Request to ChartMuseum at {CHARTMUSEUM_URL} for delete timed out."
-        logging.error(error_msg)
-        return jsonify(success=False, error=error_msg), 504
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
-            error_msg = f"HTTPError 404: Chart {chart_name} version {version} not found in ChartMuseum."
-            logging.warning(error_msg)
-            return jsonify(success=False, error=f"Chart {chart_name} version {version} not found."), 404
-        error_msg = f"HTTPError: Failed to delete chart {chart_name} v{version} from ChartMuseum. Status: {e.response.status_code}. Response: {e.response.text}"
-        logging.error(error_msg)
-        return jsonify(success=False, error=f"ChartMuseum API error during delete: {e.response.status_code}"), e.response.status_code
-    except requests.exceptions.RequestException as e:
-        error_msg = f"RequestException: An unexpected error occurred during chart deletion: {str(e)}"
-        logging.error(error_msg)
-        return jsonify(success=False, error=error_msg), 500
-# CHART RELATED ROUTES - END
+        return jsonify({
+            'success': True,
+            'message': f'Successfully deleted chart {chart_name}' + (f' version {version}' if version else ''),
+            'details': response_data
+        })
+    except subprocess.TimeoutExpired:
+        logger.error(f"Timeout executing delete command for chart '{chart_name}'.")
+        return jsonify({'success': False, 'error': f"Timeout trying to delete chart '{chart_name}'."}), 500
+    except Exception as e:
+        logger.error(f"General exception in delete_chart: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'An unexpected error occurred: {str(e)}'
+        }), 500
 
 if __name__ == '__main__':
     # This block runs when you execute `python app.py` directly.

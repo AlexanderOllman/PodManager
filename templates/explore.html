@@ -234,8 +234,8 @@
 {% block page_scripts %}
 <script>
     // Pass Jinja variables to global JavaScript scope for pod_explore_page.js
-    const namespace = "{{ namespace }}";
-    const podName = "{{ pod_name }}";
+const namespace = "{{ namespace }}";
+const podName = "{{ pod_name }}";
 </script>
 <script src="{{ url_for('static', filename='js/pod_explore_page.js') }}"></script>
 {% endblock %} 
