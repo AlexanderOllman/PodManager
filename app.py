@@ -21,6 +21,7 @@ import fcntl
 import termios
 import re
 from typing import Optional, Union, Dict
+import requests # Added
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +34,13 @@ try:
     git_available = True
 except ImportError:
     print("Git module could not be imported. GitHub update functionality will be disabled.")
+
+# Configuration
+# Ensure this is set in your environment or a .env file for production
+APP_VERSION = "1.0.0" 
+
+# Assume ChartMuseum is running locally via port-forward or accessible at this URL
+CHARTMUSEUM_URL = os.environ.get('CHARTMUSEUM_URL', 'http://localhost:8080') # Added
 
 app = Flask(__name__)
 # Configure SocketIO with enhanced settings for reliability
@@ -1327,7 +1335,7 @@ def refresh_database():
         }), 500
 
 @app.route('/api/environment_metrics', methods=['GET'])
-def get_environment_metrics_endpoint():
+def get_environment_metrics():
     try:
         env_metrics = db.get_latest_environment_metrics()
         if not env_metrics:
@@ -1513,6 +1521,93 @@ def api_pod_details(namespace, pod_name):
     except Exception as e:
         app.logger.error(f"Error in api_get_pod_details_from_path for {namespace}/{pod_name}: {str(e)}")
         return jsonify({"error": f"Server error fetching pod details: {str(e)}"}), 500
+
+# CHART RELATED ROUTES - START
+@app.route('/api/charts/list', methods=['GET'])
+def list_charts():
+    try:
+        # ChartMuseum's API path for all charts
+        api_url = f"{CHARTMUSEUM_URL}/api/charts"
+        logging.info(f"Fetching charts from: {api_url}")
+        response = requests.get(api_url, timeout=10) # Added timeout
+        response.raise_for_status() 
+        
+        charts_data = response.json()
+        # The structure returned by ChartMuseum /api/charts is:
+        # { "chart_name_1": [ { "name": "chart_name_1", "version": "0.1.0", ...}, ... ], ... }
+        # This directly matches what the frontend expects.
+        return jsonify(success=True, charts=charts_data)
+        
+    except requests.exceptions.ConnectionError:
+        error_msg = f"ConnectionError: Could not connect to ChartMuseum at {CHARTMUSEUM_URL}. Ensure it is running and accessible (e.g., via port-forward)."
+        logging.error(error_msg)
+        # The frontend specifically looks for 'Port forwarding' in the error message for retry logic.
+        # For a more generic connection issue, this detailed message helps.
+        return jsonify(success=False, error=f"Port forwarding or connection issue with ChartMuseum: {error_msg}"), 503
+    except requests.exceptions.Timeout:
+        error_msg = f"Timeout: Request to ChartMuseum at {CHARTMUSEUM_URL} timed out."
+        logging.error(error_msg)
+        return jsonify(success=False, error=error_msg), 504
+    except requests.exceptions.HTTPError as e:
+        error_msg = f"HTTPError: Failed to fetch charts from ChartMuseum. Status: {e.response.status_code}. Response: {e.response.text}"
+        logging.error(error_msg)
+        return jsonify(success=False, error=f"ChartMuseum API error: {e.response.status_code}"), e.response.status_code
+    except requests.exceptions.RequestException as e:
+        error_msg = f"RequestException: An unexpected error occurred while fetching charts: {str(e)}"
+        logging.error(error_msg)
+        return jsonify(success=False, error=error_msg), 500
+    except ValueError as e: # Handles JSON decoding errors
+        error_msg = f"ValueError: Failed to decode JSON response from ChartMuseum: {str(e)}"
+        logging.error(error_msg)
+        return jsonify(success=False, error=error_msg), 500
+
+@app.route('/api/charts/delete', methods=['POST'])
+def delete_chart_version():
+    chart_name = request.form.get('chart_name')
+    version = request.form.get('version')
+
+    if not chart_name or not version:
+        return jsonify(success=False, error="Chart name and version are required for deletion."), 400
+
+    try:
+        # ChartMuseum API for delete is DELETE /api/charts/<name>/<version>
+        delete_url = f"{CHARTMUSEUM_URL}/api/charts/{chart_name}/{version}"
+        logging.info(f"Attempting to delete chart: {delete_url}")
+        response = requests.delete(delete_url, timeout=10)
+        response.raise_for_status() 
+
+        # A successful delete in ChartMuseum typically returns 200 OK with a body like:
+        # {"deleted": true, "message": "chart version deleted"} or similar
+        # If response.json() fails or structure is different, adapt as needed.
+        try:
+            delete_response_data = response.json()
+            message = delete_response_data.get("message", f"Successfully deleted {chart_name} version {version}.")
+        except ValueError: # If response is not JSON or empty
+            message = f"Successfully deleted {chart_name} version {version}. ChartMuseum returned non-JSON response."
+
+        return jsonify(success=True, message=message)
+
+    except requests.exceptions.ConnectionError:
+        error_msg = f"ConnectionError: Could not connect to ChartMuseum at {CHARTMUSEUM_URL} for delete. Ensure it is running and accessible."
+        logging.error(error_msg)
+        return jsonify(success=False, error=f"Port forwarding or connection issue with ChartMuseum: {error_msg}"), 503
+    except requests.exceptions.Timeout:
+        error_msg = f"Timeout: Request to ChartMuseum at {CHARTMUSEUM_URL} for delete timed out."
+        logging.error(error_msg)
+        return jsonify(success=False, error=error_msg), 504
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            error_msg = f"HTTPError 404: Chart {chart_name} version {version} not found in ChartMuseum."
+            logging.warning(error_msg)
+            return jsonify(success=False, error=f"Chart {chart_name} version {version} not found."), 404
+        error_msg = f"HTTPError: Failed to delete chart {chart_name} v{version} from ChartMuseum. Status: {e.response.status_code}. Response: {e.response.text}"
+        logging.error(error_msg)
+        return jsonify(success=False, error=f"ChartMuseum API error during delete: {e.response.status_code}"), e.response.status_code
+    except requests.exceptions.RequestException as e:
+        error_msg = f"RequestException: An unexpected error occurred during chart deletion: {str(e)}"
+        logging.error(error_msg)
+        return jsonify(success=False, error=error_msg), 500
+# CHART RELATED ROUTES - END
 
 if __name__ == '__main__':
     # This block runs when you execute `python app.py` directly.
