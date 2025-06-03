@@ -301,14 +301,9 @@ function renderGpuPods(pods) {
                 <td class="text-center"><span class="badge bg-success">${pod.gpu_count}</span></td>
                 <td>${pod.memory_usage ? formatMemorySize(pod.memory_usage) : '-'}</td> 
                 <td class="text-center">
-                    <div class="btn-group btn-group-sm">
-                         <button class="btn btn-outline-primary" onclick="viewPodDetails('${pod.namespace}', '${pod.name}')" title="View Details">
-                            <i class="fas fa-search"></i>
-                        </button>
-                        <button class="btn btn-outline-danger" onclick="deletePod('${pod.namespace}', '${pod.name}')" title="Delete Pod">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="viewPodDetails('${pod.namespace}', '${pod.name}')" title="View More">
+                        <i class="fas fa-ellipsis-h"></i>
+                    </button>
                 </td>
             </tr>
         `;
@@ -400,8 +395,8 @@ function viewPodDetails(namespace, name) {
     console.log(`Request to view details for pod: ${namespace}/${name}`);
     // Implementation depends on how details are shown (e.g., navigate to explorer page)
     // Example navigation:
-    // window.location.href = window.app.getRelativeUrl(`/explore/${namespace}/${name}`);
-     alert(`Implement view details for ${namespace}/${name}`);
+    window.location.href = window.app.getRelativeUrl(`/explore/${namespace}/${name}`);
+    // alert(`Implement view details for ${namespace}/${name}`);
 }
 
 // Placeholder/Example: Action to delete a pod (shows confirmation)
