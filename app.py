@@ -317,39 +317,40 @@ def read_and_forward_pty_output(sid, fd, namespace, pod_name, output_event_name,
     logger.info(f"[{session_type} sid:{sid}] Starting PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
     max_read_bytes = 1024 * 20  # Read up to 20KB at a time
     try:
-    while True:
-            socketio.sleep(0.01)
-            if sid not in active_pty_sessions or active_pty_sessions.get(sid, {}).get('fd') != fd:
-                logger.info(f"[{session_type} sid:{sid}] Session terminated or FD changed, stopping read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
-            break
-
-            # Check if fd is readable without blocking
-            ready_to_read, _, _ = select.select([fd], [], [], 0)  # Timeout of 0 makes it non-blocking
-
-            if ready_to_read:
-                try:
-                    output = os.read(fd, max_read_bytes)
-                except OSError as e:  # This can happen if the PTY is closed (e.g., shell exits)
-                    logger.info(f"[{session_type} sid:{sid}] OSError on os.read() for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}. Assuming PTY closed.")
-                    break  # Exit loop, PTY likely closed
-
-        if output:
-                    decoded_output = output.decode('utf-8', errors='replace')
-                    logger.debug(f"[{session_type} sid:{sid}] PTY Read {len(decoded_output)} chars for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
-                    socketio.emit(output_event_name,
-                                  {'output': decoded_output,
-                                   'namespace': namespace,
-                                   'pod_name': pod_name},
-                                  room=sid)
-                else:  # EOF, process exited or PTY stream closed
-                    logger.info(f"[{session_type} sid:{sid}] EOF (empty read) received for PTY session {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
+        while True:
+                socketio.sleep(0.01)
+                if sid not in active_pty_sessions or active_pty_sessions.get(sid, {}).get('fd') != fd:
+                    logger.info(f"[{session_type} sid:{sid}] Session terminated or FD changed, stopping read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
                     break
+
+                # Check if fd is readable without blocking
+                ready_to_read, _, _ = select.select([fd], [], [], 0)  # Timeout of 0 makes it non-blocking
+
+                if ready_to_read:
+                    try:
+                        output = os.read(fd, max_read_bytes)
+                    except OSError as e:  # This can happen if the PTY is closed (e.g., shell exits)
+                        logger.info(f"[{session_type} sid:{sid}] OSError on os.read() for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}. Assuming PTY closed.")
+                        break  # Exit loop, PTY likely closed
+
+                    # This block was previously misaligned. It's now correctly indented under 'if ready_to_read:'.
+                    if output:
+                        decoded_output = output.decode('utf-8', errors='replace')
+                        logger.debug(f"[{session_type} sid:{sid}] PTY Read {len(decoded_output)} chars for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}")
+                        socketio.emit(output_event_name,
+                                    {'output': decoded_output,
+                                    'namespace': namespace,
+                                    'pod_name': pod_name},
+                                    room=sid)
+                    else:  # EOF, process exited or PTY stream closed
+                        logger.info(f"[{session_type} sid:{sid}] EOF (empty read) received for PTY session {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
+                        break
     except Exception as e:  # Catch any other unexpected errors in the loop
         logger.error(f"[{session_type} sid:{sid}] Exception in PTY read loop for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}: {e}", exc_info=True)
         socketio.emit(output_event_name,
-                      {'error': f'Backend PTY read error: {str(e)}',
-                       'namespace': namespace, 'pod_name': pod_name},
-                      room=sid)
+                    {'error': f'Backend PTY read error: {str(e)}',
+                    'namespace': namespace, 'pod_name': pod_name},
+                    room=sid)
     finally:
         logger.info(f"[{session_type} sid:{sid}] Exiting PTY read loop and initiating cleanup for {namespace or 'N/A'}/{pod_name or 'CONTROL_PLANE'}.")
         # Emit exit event to client
@@ -485,7 +486,7 @@ def get_namespaces():
         # namespaces = json.loads(output) # No longer needed, output_dict is already parsed
         if output_dict and 'items' in output_dict:
             namespace_names = [ns['metadata']['name'] for ns in output_dict.get('items', [])]
-        return jsonify(namespaces=namespace_names)
+            return jsonify(namespaces=namespace_names)
         else:
             logging.error(f"Failed to get namespaces or output format incorrect: {output_dict}")
             return jsonify(namespaces=[], error="Unable to fetch namespaces or parse them")
@@ -527,7 +528,7 @@ def get_namespace_details():
                     pod_count = 0
                     pods_data = {'items': []} # Ensure 'items' exists for loop
                 else:
-                pod_count = len(pods_data['items'])
+                    pod_count = len(pods_data['items'])
 
                 
                 # Calculate resource usage
@@ -876,7 +877,7 @@ def api_get_pod_logs_from_path(namespace, pod_name):
                 mimetype="text/plain",
                 headers={"Content-disposition": f"attachment; filename={pod_name}_{namespace}_logs.txt"}
             )
-                else:
+        else:
             # Assuming logs output is typically text
             return jsonify({"logs": output}) 
     except Exception as e:
@@ -997,7 +998,7 @@ def get_cluster_capacity():
                 total_cpu += int(cpu_str[:-1]) / 1000
             else:
                 try: # Add try-except for int conversion
-                total_cpu += int(cpu_str)
+                    total_cpu += int(cpu_str)
                 except ValueError:
                     logging.warning(f"Could not parse CPU string for node capacity: {cpu_str}")
 
@@ -1102,7 +1103,7 @@ def _cleanup_pty_session(sid, reason_str, session_type_filter=None):
                  logger.info(f"{log_prefix} Sent SIGKILL to PID {pid_to_kill}.")
             except ProcessLookupError:
                  logger.info(f"{log_prefix} Process {pid_to_kill} already gone.")
-    except Exception as e:
+            except Exception as e:
                  logger.error(f"{log_prefix} Error killing process {pid_to_kill}: {e}")
     else:
         logger.info(f"No active PTY session found for SID {sid} during {reason_str} cleanup (filter: {session_type_filter or 'None'}).")
@@ -1226,7 +1227,7 @@ def get_gpu_pods():
             spec = pod.get('spec', {})
             for container_type in ['containers', 'initContainers']:
                 for container in spec.get(container_type, []):
-                resources = container.get('resources', {})
+                    resources = container.get('resources', {})
                     requests = resources.get('requests', {}) # Changed from limits to requests
                     
                     if requests: # Ensure requests exist
