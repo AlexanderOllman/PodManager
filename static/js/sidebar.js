@@ -8,14 +8,9 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
     }
 
-    const brandText = document.querySelector('.sidebar-brand .brand-text');
-    const sidebarBrand = document.querySelector('.sidebar-brand');
-
     // Function to toggle sidebar
     function toggleSidebar(isInitialization = false) {
-        const isCollapsed = sidebar.classList.contains('collapsed');
-
-        // If it's not initialization, toggle the class
+        // If it's not initialization, toggle the class for animation
         if (!isInitialization) {
             sidebar.classList.toggle('collapsed');
             mainContent.classList.toggle('collapsed');
@@ -27,14 +22,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (currentlyCollapsed) {
             icon.classList.remove('fa-times');
             icon.classList.add('fa-bars');
-            if (brandText) brandText.style.opacity = '0';
-            if (sidebarBrand) sidebarBrand.style.pointerEvents = 'none';
             if (!isInitialization) localStorage.setItem('sidebarState', 'collapsed');
         } else {
             icon.classList.remove('fa-bars');
             icon.classList.add('fa-times');
-            if (brandText) brandText.style.opacity = '1';
-            if (sidebarBrand) sidebarBrand.style.pointerEvents = 'auto';
             if (!isInitialization) localStorage.setItem('sidebarState', 'expanded');
         }
     }
@@ -42,22 +33,13 @@ document.addEventListener('DOMContentLoaded', function () {
     // Event listener for the toggler
     sidebarToggler.addEventListener('click', () => toggleSidebar(false));
 
-    // Check for saved state in localStorage and apply it
+    // Check for saved state in localStorage and apply it on load
     const savedState = localStorage.getItem('sidebarState');
     if (savedState === 'collapsed') {
         sidebar.classList.add('collapsed');
         mainContent.classList.add('collapsed');
     }
     
-    // Set initial state without toggling
+    // Set initial state for icon and localStorage without triggering animation
     toggleSidebar(true);
-
-    // Ensure the sidebar state is correct on resize, especially for smaller screens
-    window.addEventListener('resize', () => {
-        if (window.innerWidth <= 768 && !sidebar.classList.contains('collapsed')) {
-            sidebar.classList.add('collapsed');
-            mainContent.classList.add('collapsed');
-            toggleSidebar(true); // Update icon and state
-        }
-    });
 }); 

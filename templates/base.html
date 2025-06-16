@@ -23,65 +23,65 @@
     {% block additional_styles %}{% endblock %}
 </head>
 <body>
-    <div class="container-fluid p-0">
-        <div class="d-flex">
-            <!-- Sidebar -->
-            <nav class="sidebar" id="sidebar">
-                <div class="sidebar-header">
-                    <a class="sidebar-brand" href="#">
-                        <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
-                        <span class="brand-text">HPE Private Cloud AI Resource Manager</span>
-                    </a>
-                    <button class="sidebar-toggle-btn" id="sidebarToggler">
-                        <i class="fas fa-bars"></i>
-                    </button>
-                </div>
-                <div class="sidebar-nav-container">
-                    <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a class="nav-link active" href="/" data-bs-toggle="tab" data-bs-target="#home" onclick="event.preventDefault(); navigateToTab('home'); return false;">
-                                <i class="fas fa-home"></i> <span class="menu-text">Home</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#resources" onclick="event.preventDefault(); navigateToTab('resources'); return false;">
-                                <i class="fas fa-cubes"></i> <span class="menu-text">Resources</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#cli" onclick="event.preventDefault(); navigateToTab('cli'); return false;">
-                                <i class="fas fa-terminal"></i> <span class="menu-text">Control Plane</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#yaml" onclick="event.preventDefault(); navigateToTab('yaml'); return false;">
-                                <i class="fas fa-file-upload"></i> <span class="menu-text"> Apply Manifests</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#namespaces" onclick="event.preventDefault(); navigateToTab('namespaces'); return false;">
-                                <i class="fas fa-project-diagram"></i> <span class="menu-text">Namespaces</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#charts" onclick="event.preventDefault(); navigateToTab('charts'); return false;">
-                                <i class="fas fa-layer-group"></i> <span class="menu-text">Chart Library</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#settings" onclick="event.preventDefault(); navigateToTab('settings'); return false;">
-                                <i class="fas fa-cog"></i> <span class="menu-text">Settings</span>
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
-
-            <!-- Main content -->
-            <main class="col px-md-4" id="main-content">
-                {% block content %}{% endblock %}
-            </main>
+    <nav class="navbar top-navbar" id="top-navbar">
+        <div class="container-fluid">
+            <div class="d-flex align-items-center">
+                <button class="sidebar-toggle-btn" id="sidebarToggler">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <a class="navbar-brand" href="#">
+                    <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo" class="hpe-logo">
+                    <span class="brand-text">HPE Private Cloud AI Resource Manager</span>
+                </a>
+            </div>
         </div>
+    </nav>
+
+    <div class="page-container">
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-nav-container">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/" data-bs-toggle="tab" data-bs-target="#home" onclick="event.preventDefault(); navigateToTab('home'); return false;">
+                            <i class="fas fa-home"></i> <span class="menu-text">Home</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#resources" onclick="event.preventDefault(); navigateToTab('resources'); return false;">
+                            <i class="fas fa-cubes"></i> <span class="menu-text">Resources</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#cli" onclick="event.preventDefault(); navigateToTab('cli'); return false;">
+                            <i class="fas fa-terminal"></i> <span class="menu-text">Control Plane</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#yaml" onclick="event.preventDefault(); navigateToTab('yaml'); return false;">
+                            <i class="fas fa-file-upload"></i> <span class="menu-text"> Apply Manifests</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#namespaces" onclick="event.preventDefault(); navigateToTab('namespaces'); return false;">
+                            <i class="fas fa-project-diagram"></i> <span class="menu-text">Namespaces</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#charts" onclick="event.preventDefault(); navigateToTab('charts'); return false;">
+                            <i class="fas fa-layer-group"></i> <span class="menu-text">Chart Library</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/" data-bs-toggle="tab" data-bs-target="#settings" onclick="event.preventDefault(); navigateToTab('settings'); return false;">
+                            <i class="fas fa-cog"></i> <span class="menu-text">Settings</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+        <main id="main-content">
+            {% block content %}{% endblock %}
+        </main>
     </div>
 
     <!-- Modal for displaying action results -->
