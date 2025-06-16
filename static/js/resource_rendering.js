@@ -114,6 +114,41 @@ function renderLoadMorePage(resourceType, resourceData) {
     setTimeout(initializeAllDropdowns, 100);
 }
 
+// Helper to get an icon for a resource kind
+function getResourceIcon(kind) {
+    const kindLower = kind.toLowerCase();
+    const iconMap = {
+        'pod': 'fas fa-box-open',
+        'pods': 'fas fa-box-open',
+        'deployment': 'fas fa-layer-group',
+        'deployments': 'fas fa-layer-group',
+        'service': 'fas fa-network-wired',
+        'services': 'fas fa-network-wired',
+        'node': 'fas fa-server',
+        'nodes': 'fas fa-server',
+        'namespace': 'fas fa-project-diagram',
+        'namespaces': 'fas fa-project-diagram',
+        'job': 'fas fa-tasks',
+        'jobs': 'fas fa-tasks',
+        'statefulset': 'fas fa-database',
+        'statefulsets': 'fas fa-database',
+        'daemonset': 'fas fa-cogs',
+        'daemonsets': 'fas fa-cogs',
+        'replicaset': 'fas fa-copy',
+        'replicasets': 'fas fa-copy',
+        'persistentvolumeclaim': 'fas fa-hdd',
+        'persistentvolumeclaims': 'fas fa-hdd',
+        'configmap': 'fas fa-file-alt',
+        'configmaps': 'fas fa-file-alt',
+        'secret': 'fas fa-key',
+        'secrets': 'fas fa-key',
+        'inferenceservice': 'fas fa-bolt',
+        'inferenceservices': 'fas fa-bolt',
+        'default': 'fas fa-cube'
+    };
+    return iconMap[kindLower] || iconMap['default'];
+}
+
 // Creates a single table row for a given resource item
 function createResourceRow(resourceType, item) {
     const row = document.createElement('tr');
@@ -122,7 +157,16 @@ function createResourceRow(resourceType, item) {
     // Common metadata
     const namespace = item.metadata?.namespace || '-';
     const name = item.metadata?.name || '-';
+    const iconClass = getResourceIcon(item.kind || resourceType);
     const actionButton = typeof createActionButton === 'function' ? createActionButton(resourceType, namespace, name) : '-';
+
+    // Icon and Name cell
+    const nameCell = `
+        <td class="resource-name-cell">
+            <i class="${iconClass} resource-icon"></i>
+            <span>${name}</span>
+        </td>
+    `;
 
     switch (resourceType) {
         case 'pods':
@@ -130,12 +174,12 @@ function createResourceRow(resourceType, item) {
             const podStatusPhase = item.status?.phase || 'Unknown';
             const podStatusIcon = typeof getStatusIcon === 'function' ? getStatusIcon(podStatusPhase) : '';
             content = `
+                ${nameCell}
                 <td>${namespace}</td>
-                <td>${name}</td>
                 <td>${podStatusIcon}${podStatusPhase}</td>
-                <td class="resource-cell cpu-cell"><i class="fas fa-microchip me-1"></i>${podResources.cpu}</td>
-                <td class="resource-cell gpu-cell"><i class="fas fa-tachometer-alt me-1"></i>${podResources.gpu}</td>
-                <td class="resource-cell memory-cell"><i class="fas fa-memory me-1"></i>${podResources.memory}</td>
+                <td class="resource-cell cpu-cell">${podResources.cpu}</td>
+                <td class="resource-cell gpu-cell">${podResources.gpu}</td>
+                <td class="resource-cell memory-cell">${podResources.memory}</td>
                 <td>${actionButton}</td>
             `;
             break;
@@ -149,8 +193,8 @@ function createResourceRow(resourceType, item) {
             }
             const age = typeof getAge === 'function' ? getAge(item.metadata?.creationTimestamp) : '-';
             content = `
+                ${nameCell}
                 <td>${namespace}</td>
-                <td>${name}</td>
                 <td>${serviceType}</td>
                 <td>${clusterIP}</td>
                 <td>${externalIP}</td>
@@ -168,8 +212,8 @@ function createResourceRow(resourceType, item) {
             }
             const isvcResources = typeof getResourceUsage === 'function' ? getResourceUsage(item) : { cpu: '-', gpu: '-', memory: '-' };
             content = `
+                ${nameCell}
                 <td>${namespace}</td>
-                <td>${name}</td>
                 <td>${url}</td>
                 <td>${isvcStatusIcon}${isvcStatus}</td>
                 <td>${isvcResources.cpu}</td>
@@ -185,8 +229,8 @@ function createResourceRow(resourceType, item) {
             const deploymentStatusIcon = typeof getStatusIcon === 'function' ? getStatusIcon(deploymentStatus) : '';
             const depResources = typeof getResourceUsage === 'function' ? getResourceUsage(item) : { cpu: '-', memory: '-' }; // No GPU for deployments typically
             content = `
+                ${nameCell}
                 <td>${namespace}</td>
-                <td>${name}</td>
                 <td>${readyReplicas}/${totalReplicas}</td>
                 <td>${deploymentStatusIcon}${deploymentStatus}</td>
                 <td>${depResources.cpu}</td>
@@ -197,8 +241,8 @@ function createResourceRow(resourceType, item) {
         case 'configmaps':
             const dataCount = Object.keys(item.data || {}).length;
             content = `
+                ${nameCell}
                 <td>${namespace}</td>
-                <td>${name}</td>
                 <td>${dataCount} items</td>
                 <td>${actionButton}</td>
             `;
@@ -207,8 +251,8 @@ function createResourceRow(resourceType, item) {
             const secretType = item.type || 'Opaque';
             const secretDataCount = Object.keys(item.data || {}).length;
             content = `
+                ${nameCell}
                 <td>${namespace}</td>
-                <td>${name}</td>
                 <td>${secretType}</td>
                 <td>${secretDataCount} items</td>
                 <td>${actionButton}</td>
@@ -217,8 +261,8 @@ function createResourceRow(resourceType, item) {
         default:
             console.warn(`Unhandled resource type for row creation: ${resourceType}`);
             content = `
+                ${nameCell}
                 <td>${namespace}</td>
-                <td>${name}</td>
                 <td colspan="5">Details not available for this resource type.</td>
                 <td>${actionButton}</td>
             `;
