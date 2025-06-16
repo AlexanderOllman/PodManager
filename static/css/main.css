@@ -74,10 +74,10 @@
   --hpe-gradient: linear-gradient(135deg, var(--hpe-primary), var(--hpe-secondary));
 
   /* New navigation colors */
-  --nav-bg: #F5F7FA;
-  --nav-text: #333333;
-  --nav-hover: #E5E8ED;
-  --nav-active: #D8DCE3;
+  --nav-bg: rgb(28, 28, 28);
+  --nav-text: rgba(255, 255, 255, 0.96);
+  --nav-hover: rgba(255, 255, 255, 0.06);
+  --nav-active: #ffffff26;
 }
 
 /* Global Styles */
