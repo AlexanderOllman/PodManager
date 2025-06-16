@@ -24,7 +24,7 @@
 </head>
 <body>
     <div class="d-flex">
-        <!-- Sidebar -->
+        <!-- Collapsible Sidebar -->
         <nav class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <button class="sidebar-toggle-btn" id="sidebarToggler">
@@ -72,18 +72,21 @@
             </div>
         </nav>
 
-        <div class="content-wrapper flex-grow-1 d-flex flex-column">
-            <!-- Top Navigation Bar -->
-            <nav class="navbar top-navbar">
-                <div class="container-fluid">
-                    <a class="navbar-brand" href="#">
-                        <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
-                        <span>HPE Private Cloud AI Resource Manager</span>
-                    </a>
+        <!-- Content Wrapper -->
+        <div class="content-wrapper" id="content-wrapper">
+            <!-- Top Navbar -->
+            <nav class="top-navbar">
+                <a class="navbar-brand" href="#">
+                    <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
+                    <span class="brand-text">HPE Private Cloud AI Resource Manager</span>
+                </a>
+                <div class="d-flex align-items-center">
+                    <span class="text-dark me-2"><i class="fas fa-user-circle me-1"></i> Admin</span>
                 </div>
             </nav>
+
             <!-- Main content -->
-            <main class="main-content-area" id="main-content">
+            <main class="main-content" id="main-content">
                 {% block content %}{% endblock %}
             </main>
         </div>

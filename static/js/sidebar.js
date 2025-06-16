@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', function () {
     const sidebar = document.getElementById('sidebar');
-    const contentWrapper = document.querySelector('.content-wrapper');
+    const contentWrapper = document.getElementById('content-wrapper');
     const sidebarToggler = document.getElementById('sidebarToggler');
 
     if (!sidebar || !contentWrapper || !sidebarToggler) {
@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // If it's not initialization, toggle the class
         if (!isInitialization) {
             sidebar.classList.toggle('collapsed');
+            contentWrapper.classList.toggle('collapsed');
         }
 
         const currentlyCollapsed = sidebar.classList.contains('collapsed');
@@ -36,6 +37,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const savedState = localStorage.getItem('sidebarState');
     if (savedState === 'collapsed') {
         sidebar.classList.add('collapsed');
+        contentWrapper.classList.add('collapsed');
     }
     
     // Set initial state without toggling
@@ -45,6 +47,7 @@ document.addEventListener('DOMContentLoaded', function () {
     window.addEventListener('resize', () => {
         if (window.innerWidth <= 768 && !sidebar.classList.contains('collapsed')) {
             sidebar.classList.add('collapsed');
+            contentWrapper.classList.add('collapsed');
             toggleSidebar(true); // Update icon and state
         }
     });
