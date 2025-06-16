@@ -23,27 +23,20 @@
     {% block additional_styles %}{% endblock %}
 </head>
 <body>
-    <!-- Top Navigation Bar -->
-    <nav class="navbar top-navbar">
-        <div class="container-fluid">
-            <!-- <button class="sidebar-toggle" id="sidebarToggle">
-                <i class="fas fa-bars"></i>
-            </button> -->
-            <a class="navbar-brand" href="#">
-                <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
-                HPE Private Cloud AI Resource Manager
-            </a>
-            <div class="d-flex">
-                <span class="text-dark me-2"><i class="fas fa-user-circle me-1"></i> Admin</span>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container-fluid">
-        <div class="row">
+    <div class="container-fluid p-0">
+        <div class="d-flex">
             <!-- Sidebar -->
             <nav class="sidebar" id="sidebar">
-                <div class="position-sticky pt-3">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="#">
+                        <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
+                        <span class="brand-text">HPE Private Cloud AI Resource Manager</span>
+                    </a>
+                    <button class="sidebar-toggle-btn" id="sidebarToggler">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                </div>
+                <div class="sidebar-nav-container">
                     <ul class="nav flex-column">
                         <li class="nav-item">
                             <a class="nav-link active" href="/" data-bs-toggle="tab" data-bs-target="#home" onclick="event.preventDefault(); navigateToTab('home'); return false;">
@@ -121,6 +114,7 @@
     <script src="{{ url_for('static', filename='js/resource_controls.js') }}"></script>
     <script src="{{ url_for('static', filename='js/api_service.js') }}"></script>
     <script src="{{ url_for('static', filename='js/navigation_listeners.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
     <!-- GPU Dashboard scripts are often needed on pages derived from base, including home -->
     <script src="{{ url_for('static', filename='js/gpu_dashboard.js') }}"></script>
 
