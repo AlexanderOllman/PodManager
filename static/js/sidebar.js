@@ -1,10 +1,10 @@
 document.addEventListener('DOMContentLoaded', function () {
     const sidebar = document.getElementById('sidebar');
-    const mainContent = document.getElementById('main-content');
+    const contentWrapper = document.querySelector('.content-wrapper');
     const sidebarToggler = document.getElementById('sidebarToggler');
 
-    if (!sidebar || !mainContent || !sidebarToggler) {
-        console.error('Sidebar, main content, or toggler not found');
+    if (!sidebar || !contentWrapper || !sidebarToggler) {
+        console.error('Sidebar, content wrapper, or toggler not found');
         return;
     }
 
@@ -13,7 +13,6 @@ document.addEventListener('DOMContentLoaded', function () {
         // If it's not initialization, toggle the class
         if (!isInitialization) {
             sidebar.classList.toggle('collapsed');
-            mainContent.classList.toggle('collapsed');
         }
 
         const currentlyCollapsed = sidebar.classList.contains('collapsed');
@@ -37,21 +36,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const savedState = localStorage.getItem('sidebarState');
     if (savedState === 'collapsed') {
         sidebar.classList.add('collapsed');
-        mainContent.classList.add('collapsed');
-    } else {
-        // Default to expanded if no state is saved
-        sidebar.classList.remove('collapsed');
-        mainContent.classList.remove('collapsed');
     }
     
     // Set initial state without toggling
     toggleSidebar(true);
 
-    // Ensure the sidebar state is correct on resize
+    // Ensure the sidebar state is correct on resize, especially for smaller screens
     window.addEventListener('resize', () => {
         if (window.innerWidth <= 768 && !sidebar.classList.contains('collapsed')) {
             sidebar.classList.add('collapsed');
-            mainContent.classList.add('collapsed');
             toggleSidebar(true); // Update icon and state
         }
     });
