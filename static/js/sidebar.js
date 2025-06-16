@@ -19,13 +19,19 @@ document.addEventListener('DOMContentLoaded', function () {
         const currentlyCollapsed = sidebar.classList.contains('collapsed');
         const icon = sidebarToggler.querySelector('i');
 
+        if (icon) {
+            if (currentlyCollapsed) {
+                icon.classList.remove('fa-times');
+                icon.classList.add('fa-bars');
+            } else {
+                icon.classList.remove('fa-bars');
+                icon.classList.add('fa-times');
+            }
+        }
+
         if (currentlyCollapsed) {
-            icon.classList.remove('fa-times');
-            icon.classList.add('fa-bars');
             if (!isInitialization) localStorage.setItem('sidebarState', 'collapsed');
         } else {
-            icon.classList.remove('fa-bars');
-            icon.classList.add('fa-times');
             if (!isInitialization) localStorage.setItem('sidebarState', 'expanded');
         }
     }

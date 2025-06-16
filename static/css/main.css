@@ -199,14 +199,18 @@ body {
 
 .sidebar .nav-link .menu-text {
     font-size: 1rem;
+    flex-basis: 80%;
+    flex-shrink: 0;
 }
 
 .sidebar .nav-link i {
-  margin-right: 20px;
   color: var(--hpe-primary);
-  width: 20px;
   text-align: center;
   font-size: 22px;
+  flex-basis: 20%;
+  flex-shrink: 0;
+  margin-right: 0;
+  padding-right: 15px; /* Add some padding for visual spacing */
 }
 
 .sidebar-toggle-btn {
