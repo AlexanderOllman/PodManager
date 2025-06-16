@@ -10,17 +10,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Function to toggle sidebar
     function toggleSidebar(isInitialization = false) {
-        // If it's not initialization, toggle the class
+        // If it's a user click, toggle the classes
         if (!isInitialization) {
             sidebar.classList.toggle('collapsed');
             contentWrapper.classList.toggle('collapsed');
         }
 
-        const currentlyCollapsed = sidebar.classList.contains('collapsed');
+        const isCollapsed = sidebar.classList.contains('collapsed');
         const icon = sidebarToggler.querySelector('i');
 
+        // Only try to change the icon if it exists
         if (icon) {
-            if (currentlyCollapsed) {
+            if (isCollapsed) {
                 icon.classList.remove('fa-times');
                 icon.classList.add('fa-bars');
             } else {
@@ -28,11 +29,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 icon.classList.add('fa-times');
             }
         }
-
-        if (currentlyCollapsed) {
-            if (!isInitialization) localStorage.setItem('sidebarState', 'collapsed');
-        } else {
-            if (!isInitialization) localStorage.setItem('sidebarState', 'expanded');
+        
+        // Save state only on user interaction
+        if (!isInitialization) {
+            localStorage.setItem('sidebarState', isCollapsed ? 'collapsed' : 'expanded');
         }
     }
 
@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', function () {
         contentWrapper.classList.add('collapsed');
     }
     
-    // Set initial state without toggling
+    // Set initial icon state without toggling classes again
     toggleSidebar(true);
 
     // Ensure the sidebar state is correct on resize, especially for smaller screens

@@ -199,17 +199,14 @@ body {
 
 .sidebar .nav-link .menu-text {
     font-size: 1rem;
-    flex-grow: 1;
 }
 
 .sidebar .nav-link i {
   color: var(--hpe-primary);
+  width: 25px; /* Fixed width for the icon container */
+  margin-right: 15px; /* Space between icon and text */
   text-align: center;
   font-size: 22px;
-  
-  width: 35px; 
-  margin-right: 15px;
-  flex-shrink: 0;
 }
 
 .sidebar-toggle-btn {
