@@ -202,11 +202,12 @@ body {
 }
 
 .sidebar .nav-link i {
-  color: var(--hpe-primary);
+  color: var(--hpe-white);
   width: 25px; /* Fixed width for the icon container */
   margin-right: 15px; /* Space between icon and text */
   text-align: center;
   font-size: 22px;
+  font-weight: 400;
 }
 
 .sidebar-toggle-btn {
@@ -242,26 +243,37 @@ body {
 
 /* NEW DASHBOARD CARD STYLES */
 .dashboard-metric-card {
-  background-color: var(--hpe-white);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 5px 20px rgba(0,0,0,0.05);
-  transition: all 0.3s ease;
-  margin-bottom: 1.5rem;
-  position: relative;
-  border: none;
-  height: 100%;
+    display: flex;
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 0px;
+    background-color: rgb(255, 255, 255);
+    color: rgb(68, 68, 68);
+    min-width: 0px;
+    min-height: 0px;
+    flex-direction: column;
+    padding: 24px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: rgba(0, 0, 0, 0.12) 0px 6px 12px;
+    row-gap: 24px;
+    transition: 0.3s ease-in-out;
+    border: none;
+    height: 100%;
+    position: relative;
+    margin-bottom: 1.5rem;
 }
 
 .dashboard-metric-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 12px 30px rgba(0,0,0,0.12);
+  transform: translateY(-5px);
+  box-shadow: rgba(0, 0, 0, 0.15) 0px 8px 16px;
 }
 
 .dashboard-metric-card .card-body {
-  padding: 1.75rem;
+  padding: 0;
   position: relative;
   z-index: 1;
+  width: 100%;
 }
 
 .dashboard-metric-card .card-icon {
@@ -401,12 +413,23 @@ body {
 
 /* Card Styles - Keep for backward compatibility */
 .card {
-  transition: all 0.3s ease;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid rgba(0,0,0,0.1);
-  margin-bottom: 1.5rem;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    display: flex;
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 0px;
+    background-color: rgb(255, 255, 255);
+    color: rgb(68, 68, 68);
+    min-width: 0px;
+    min-height: 0px;
+    flex-direction: column;
+    padding: 24px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: rgba(0, 0, 0, 0.12) 0px 6px 12px;
+    row-gap: 24px;
+    transition: 0.3s ease-in-out;
+    border: none;
+    margin-bottom: 1.5rem;
 }
 
 .card:hover {
@@ -415,20 +438,20 @@ body {
 }
 
 .card-header {
-  background-color: var(--hpe-white);
+  background-color: transparent;
   border-bottom: 1px solid rgba(0,0,0,0.05);
-  padding: 1.25rem;
+  padding: 0 0 1.25rem 0;
   font-weight: 600;
 }
 
 .card-body {
-  padding: 1.25rem;
+  padding: 1.25rem 0 0 0;
 }
 
 .card-footer {
-  background-color: var(--hpe-white);
+  background-color: transparent;
   border-top: 1px solid rgba(0,0,0,0.05);
-  padding: 1.25rem;
+  padding: 1.25rem 0 0 0;
 }
 
 /* Dashboard Statistics Cards */
