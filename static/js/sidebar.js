@@ -33,9 +33,12 @@ document.addEventListener('DOMContentLoaded', function () {
     // Event listener for the toggler
     sidebarToggler.addEventListener('click', () => toggleSidebar(false));
 
-    // Check for saved state in localStorage and apply it
+    // Check for saved state in localStorage and apply it. Default to collapsed.
     const savedState = localStorage.getItem('sidebarState');
-    if (savedState === 'collapsed') {
+    if (savedState === 'expanded') {
+        sidebar.classList.remove('collapsed');
+        contentWrapper.classList.remove('collapsed');
+    } else {
         sidebar.classList.add('collapsed');
         contentWrapper.classList.add('collapsed');
     }
