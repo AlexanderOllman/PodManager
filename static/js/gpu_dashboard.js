@@ -439,4 +439,106 @@ function deletePod(namespace, name) {
             });
         }
     });
+}
+
+// Store chart instances
+window.app.charts = {};
+
+function updateDashboardMetrics(data) {
+    if (!data || !data.cluster_metrics) {
+        console.error("Invalid data received for dashboard metrics update");
+        return;
+    }
+
+    const metrics = data.cluster_metrics;
+    const now = new Date();
+    const lastUpdated = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    document.getElementById('last-updated-time').textContent = lastUpdated;
+
+    // --- Helper to create or update chart ---
+    const createOrUpdateChart = (chartId, percentage, centerText, label, color) => {
+        const ctx = document.getElementById(chartId).getContext('2d');
+        const chartData = {
+            datasets: [{
+                data: [percentage, 100 - percentage],
+                backgroundColor: [color, 'rgba(0, 0, 0, 0.05)'],
+                borderWidth: 0,
+                cutout: '80%',
+            }],
+        };
+        const options = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 500
+            },
+            tooltips: { enabled: false },
+            hover: { mode: null },
+            events: [],
+        };
+
+        if (window.app.charts[chartId]) {
+            window.app.charts[chartId].data.datasets[0].data = [percentage, 100 - percentage];
+            window.app.charts[chartId].data.datasets[0].backgroundColor = [color, 'rgba(0, 0, 0, 0.05)'];
+            window.app.charts[chartId].update();
+        } else {
+            window.app.charts[chartId] = new Chart(ctx, { type: 'doughnut', data: chartData, options: options });
+        }
+        
+        const centerTextEl = document.getElementById(`${chartId}-text`);
+        if(centerTextEl) {
+            centerTextEl.innerHTML = `<span class="percentage">${centerText}%</span><span class="label">${label}</span>`;
+        }
+    };
+    
+    // --- Helper to get color based on percentage ---
+    const getColorForPercentage = (percentage) => {
+        if (percentage > 90) return '#FF5A5A'; // hpe-error
+        if (percentage > 75) return '#FFB800'; // hpe-warning
+        return '#01A982'; // hpe-success
+    };
+
+    // --- Pods Card ---
+    const runningPods = metrics.pods?.running ?? 0;
+    const totalPods = metrics.pods?.capacity ?? 0;
+    const podPercentage = totalPods > 0 ? Math.round((runningPods / totalPods) * 100) : 0;
+    createOrUpdateChart('pods-chart', podPercentage, podPercentage, 'Running', getColorForPercentage(podPercentage));
+    document.getElementById('pods-details').textContent = `${runningPods} / ${totalPods}`;
+    
+    const podFooter = document.getElementById('pods-footer-info');
+    if (podFooter) {
+        podFooter.innerHTML = `
+            <div class="status-breakdown">
+                <div class="status-item"><span class="status-indicator" style="background-color: #01A982;"></span>Running: ${metrics.pods?.running ?? 0}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #FFB800;"></span>Pending: ${metrics.pods?.pending ?? 0}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #FF5A5A;"></span>Failed: ${metrics.pods?.failed ?? 0}</div>
+            </div>`;
+    }
+
+    // --- CPU Card ---
+    const usedCpu = Math.ceil(metrics.cpu?.used ?? 0);
+    const requestedCpu = Math.ceil(metrics.cpu?.requested ?? 0);
+    const capacityCpu = Math.floor(metrics.cpu?.capacity ?? 0);
+    const cpuPercentage = requestedCpu > 0 ? Math.round((usedCpu / requestedCpu) * 100) : 0;
+    createOrUpdateChart('cpu-chart', cpuPercentage, cpuPercentage, 'Utilized', getColorForPercentage(cpuPercentage));
+    document.getElementById('cpu-details').textContent = `${usedCpu} / ${requestedCpu} Cores`;
+    document.getElementById('cpu-capacity').textContent = `${capacityCpu} Cores`;
+
+    // --- RAM Card ---
+    const usedRam = Math.ceil(metrics.ram?.used ?? 0);
+    const requestedRam = Math.ceil(metrics.ram?.requested ?? 0);
+    const capacityRam = Math.floor(metrics.ram?.capacity ?? 0);
+    const ramPercentage = requestedRam > 0 ? Math.round((usedRam / requestedRam) * 100) : 0;
+    createOrUpdateChart('ram-chart', ramPercentage, ramPercentage, 'Utilized', getColorForPercentage(ramPercentage));
+    document.getElementById('ram-details').textContent = `${usedRam} / ${requestedRam} GB`;
+    document.getElementById('ram-capacity').textContent = `${capacityRam} GB`;
+
+    // --- GPU Card ---
+    const usedGpu = metrics.gpu?.used ?? 0;
+    const totalGpu = metrics.gpu?.capacity ?? 0;
+    const pendingGpu = metrics.gpu?.pending ?? 0;
+    const gpuPercentage = totalGpu > 0 ? Math.round((usedGpu / totalGpu) * 100) : 0;
+    createOrUpdateChart('gpu-chart', gpuPercentage, gpuPercentage, 'Utilized', getColorForPercentage(gpuPercentage));
+    document.getElementById('gpu-details').textContent = `${usedGpu} / ${totalGpu} Units`;
+    document.getElementById('gpu-pending').textContent = `${pendingGpu} Units`;
 } 

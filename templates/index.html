@@ -35,75 +35,96 @@
 {% block content %}
 <div class="tab-content" id="mainContent">
     <div class="tab-pane fade show active" id="home" role="tabpanel" aria-labelledby="home-tab">
-        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-            <h1 class="h2">Resources Dashboard</h1>
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h1 class="h2">Resources Dashboard</h1>
+                    <div id="last-updated-container" class="text-muted small">
+                        <i class="fas fa-sync-alt me-1"></i>
+                        Last updated: <span id="last-updated-time">never</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <!-- Metric Cards -->
-        <div class="row mb-4">
+        <!-- Dashboard Metrics -->
+        <div class="row">
             <!-- Pods Card -->
-            <div class="col-md-3">
-                <div class="dashboard-metric-card pods-card">
-                    <div class="card-body">
-                        <i class="fas fa-cubes card-icon"></i>
-                        <h5 class="card-title">Pod Capacity & Usage</h5>
-                        <h3 class="counter-value"><span id="podCardRunningCount">-</span> / <span id="podCardTotalCapacity">-</span></h3>
-                        <div class="metric-details">
-                            <span id="podCardPercentage">-</span>% Running
-                                    </div>
-                        <div class="text-muted small mt-1">Last updated: <span id="metricsLastUpdatedPods">-</span></div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="dashboard-metric-card" id="pods-card">
+                    <div class="card-title-container">
+                        <i class="fas fa-box-open card-header-icon"></i>
+                        <h5 class="card-title">Pod Allocation</h5>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="pods-chart"></canvas>
+                        <div class="chart-center-text" id="pods-chart-text"></div>
+                    </div>
+                    <div class="card-metric-details">
+                        <span id="pods-details">0 / 0</span>
+                    </div>
+                    <div class="card-footer-info" id="pods-footer-info">
+                        <!-- Pod status breakdown will be injected here -->
                     </div>
                 </div>
             </div>
 
-            <!-- vCPU Card -->
-            <div class="col-md-3">
-                <div class="dashboard-metric-card cpu-card">
-                    <div class="card-body">
-                        <i class="fas fa-microchip card-icon"></i>
-                        <h5 class="card-title">vCPU Allocation</h5>
-                        <h3 class="counter-value"><span id="vcpuCardUtilized">-</span> / <span id="vcpuCardTotalAllocatable">-</span> <small>Cores</small></h3>
-                        <span class="counter-info"><span id="vcpuCardPercentageUtilized">-</span>% Utilized</span>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" id="vcpuProgressBar" role="progressbar" style="width: 0%;"></div>
-                        </div>
-                        <div class="overprovision-info">Limit: <span id="vcpuCardOverprovisionLimit">-</span> Cores</div>
-                        <div class="text-muted small mt-1">Last updated: <span id="metricsLastUpdatedVCPU">-</span></div>
+            <!-- CPU Card -->
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="dashboard-metric-card" id="cpu-card">
+                    <div class="card-title-container">
+                        <i class="fas fa-microchip card-header-icon"></i>
+                        <h5 class="card-title">CPU Usage</h5>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="cpu-chart"></canvas>
+                        <div class="chart-center-text" id="cpu-chart-text"></div>
+                    </div>
+                    <div class="card-metric-details">
+                        <span id="cpu-details">0 / 0 Cores</span>
+                    </div>
+                    <div class="card-footer-info">
+                        <span>Cluster Capacity: <span id="cpu-capacity">0 Cores</span></span>
                     </div>
                 </div>
             </div>
 
-            <!-- RAM Card (Replaces GPU Card for now, GPU will be next) -->
-            <div class="col-md-3">
-                <div class="dashboard-metric-card memory-card">
-                    <div class="card-body">
-                        <i class="fas fa-memory card-icon"></i>
-                        <h5 class="card-title">RAM Allocation</h5>
-                        <h3 class="counter-value"><span id="ramCardUtilized">-</span> / <span id="ramCardTotalAllocatable">-</span> <small>GB</small></h3>
-                        <span class="counter-info"><span id="ramCardPercentageUtilized">-</span>% Utilized</span>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" id="ramProgressBar" role="progressbar" style="width: 0%;"></div>
-                        </div>
-                        <div class="overprovision-info">Limit: <span id="ramCardOverprovisionLimit">-</span> GB</div>
-                        <div class="text-muted small mt-1">Last updated: <span id="metricsLastUpdatedRAM">-</span></div>
+            <!-- RAM Card -->
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="dashboard-metric-card" id="ram-card">
+                    <div class="card-title-container">
+                        <i class="fas fa-memory card-header-icon"></i>
+                        <h5 class="card-title">RAM Usage</h5>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="ram-chart"></canvas>
+                        <div class="chart-center-text" id="ram-chart-text"></div>
+                    </div>
+                    <div class="card-metric-details">
+                        <span id="ram-details">0 / 0 GB</span>
+                    </div>
+                    <div class="card-footer-info">
+                        <span>Cluster Capacity: <span id="ram-capacity">0 GB</span></span>
                     </div>
                 </div>
             </div>
 
-            <!-- GPU Card (Replaces "Future Metric Card") -->
-            <div class="col-md-3">
-                <div class="dashboard-metric-card gpu-card">
-                    <div class="card-body">
-                        <i class="fas fa-tachometer-alt card-icon"></i>
-                        <h5 class="card-title">GPU Allocation</h5>
-                        <h3 class="counter-value"><span id="gpuCardUtilizedUnits">-</span> / <span id="gpuCardTotalAllocatableUnits">-</span> <small>Units</small></h3>
-                        <span class="counter-info"><span id="gpuCardPercentageUtilized">-</span>% Utilized</span>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" id="gpuProgressBar" role="progressbar" style="width: 0%;"></div>
-                        </div>
-                        <div class="pending-gpu-info">Pending: <span id="gpuCardPendingUnits">-</span> Units</div>
-                        <div class="text-muted small mt-1">Last updated: <span id="metricsLastUpdatedGPU">-</span></div>
-                        <!-- GPU overprovisioning not typically specified in the same way, omit for now -->
+            <!-- GPU Card -->
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="dashboard-metric-card" id="gpu-card">
+                    <div class="card-title-container">
+                        <i class="fas fa-tachometer-alt card-header-icon"></i>
+                        <h5 class="card-title">GPU Usage</h5>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="gpu-chart"></canvas>
+                        <div class="chart-center-text" id="gpu-chart-text"></div>
+                    </div>
+                    <div class="card-metric-details">
+                        <span id="gpu-details">0 / 0 Units</span>
+                    </div>
+                    <div class="card-footer-info">
+                        <span>Pending Allocation: <span id="gpu-pending">0 Units</span></span>
                     </div>
                 </div>
             </div>

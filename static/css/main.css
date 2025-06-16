@@ -244,122 +244,109 @@ body {
 /* NEW DASHBOARD CARD STYLES */
 .dashboard-metric-card {
     display: flex;
+    flex-direction: column;
     box-sizing: border-box;
-    max-width: 100%;
-    margin: 0px;
     background-color: rgb(255, 255, 255);
     color: rgb(68, 68, 68);
-    min-width: 0px;
-    min-height: 0px;
-    flex-direction: column;
     padding: 24px;
     border-radius: 12px;
-    overflow: hidden;
-    box-shadow: rgba(0, 0, 0, 0.12) 0px 6px 12px;
-    row-gap: 24px;
-    transition: 0.3s ease-in-out;
-    border: none;
+    box-shadow: rgba(0, 0, 0, 0.08) 0px 4px 12px;
+    transition: all 0.3s ease-in-out;
+    border: 1px solid transparent;
     height: 100%;
     position: relative;
-    margin-bottom: 1.5rem;
 }
 
 .dashboard-metric-card:hover {
   transform: translateY(-5px);
-  box-shadow: rgba(0, 0, 0, 0.15) 0px 8px 16px;
+  box-shadow: rgba(0, 0, 0, 0.12) 0px 8px 16px;
+  border-color: var(--hpe-primary);
 }
 
-.dashboard-metric-card .card-body {
-  padding: 0;
-  position: relative;
-  z-index: 1;
-  width: 100%;
+.card-title-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.5rem;
 }
 
-.dashboard-metric-card .card-icon {
-  position: absolute;
-  top: -15px;
-  right: -15px;
-  width: 110px;
-  height: 110px;
-  opacity: 0.08;
-  z-index: 0;
-  transform: rotate(25deg);
+.card-header-icon {
+    font-size: 1.2rem;
+    color: var(--hpe-dark);
+    margin-right: 0.75rem;
+    width: 24px;
+    text-align: center;
 }
 
 .dashboard-metric-card .card-title {
-  font-size: 0.9rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 600;
-  color: var(--hpe-gray);
-  margin-bottom: 0.75rem;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0;
 }
 
-.dashboard-metric-card .counter-value {
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: var(--hpe-dark);
-  margin-bottom: 0.5rem;
-  line-height: 1;
+.chart-container {
+    position: relative;
+    width: 70%;
+    max-width: 180px;
+    margin: 0 auto 1.5rem auto;
 }
 
-.dashboard-metric-card .counter-info {
-  color: var(--hpe-gray);
-  font-size: 0.825rem;
-  margin-bottom: 1.25rem;
-  display: block;
+.chart-center-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
 }
 
-.dashboard-metric-card .metric-details {
-  display: flex;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(0,0,0,0.05);
+.chart-center-text .percentage {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--hpe-dark);
+    display: block;
+    line-height: 1;
 }
 
-.dashboard-metric-card .metric-item {
-  flex: 1;
-  text-align: center;
-  padding: 0.5rem 0.25rem;
-  position: relative;
+.chart-center-text .label {
+    font-size: 0.8rem;
+    color: var(--hpe-gray);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.dashboard-metric-card .metric-item:not(:last-child):after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: 20%;
-  height: 60%;
-  width: 1px;
-  background-color: rgba(0,0,0,0.05);
+.card-metric-details {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
 }
 
-.dashboard-metric-card .metric-item i {
-  font-size: 1.25rem;
-  margin-bottom: 0.5rem;
+.card-footer-info {
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--hpe-gray);
+    margin-top: auto;
 }
 
-.dashboard-metric-card .metric-item .value {
-  font-size: 1.25rem;
-  font-weight: 700;
-  line-height: 1;
-  margin-bottom: 0.25rem;
+.card-footer-info .status-breakdown {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 0.5rem;
 }
 
-.dashboard-metric-card .metric-item .label {
-  font-size: 0.7rem;
-  color: var(--hpe-gray);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.card-footer-info .status-item {
+    display: flex;
+    align-items: center;
+    font-size: 0.8rem;
 }
 
-.dashboard-metric-card .indicator {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  margin-right: 6px;
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
 }
 
 /* Card color variations */
