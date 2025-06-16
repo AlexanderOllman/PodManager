@@ -23,21 +23,23 @@
     {% block additional_styles %}{% endblock %}
 </head>
 <body>
-    <nav class="navbar top-navbar" id="top-navbar">
+    <!-- Top Navigation Bar -->
+    <nav class="navbar top-navbar">
         <div class="container-fluid">
             <div class="d-flex align-items-center">
                 <button class="sidebar-toggle-btn" id="sidebarToggler">
                     <i class="fas fa-bars"></i>
                 </button>
                 <a class="navbar-brand" href="#">
-                    <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo" class="hpe-logo">
-                    <span class="brand-text">HPE Private Cloud AI Resource Manager</span>
+                    <img src="{{ url_for('static', filename='img/element.png') }}" alt="HPE Logo">
+                    <span class="brand-text">HPE MLIS</span>
                 </a>
             </div>
         </div>
     </nav>
 
-    <div class="page-container">
+    <div class="wrapper">
+        <!-- Sidebar -->
         <nav class="sidebar" id="sidebar">
             <div class="sidebar-nav-container">
                 <ul class="nav flex-column">
@@ -79,7 +81,9 @@
                 </ul>
             </div>
         </nav>
-        <main id="main-content">
+
+        <!-- Main content -->
+        <main class="main-content" id="main-content">
             {% block content %}{% endblock %}
         </main>
     </div>
