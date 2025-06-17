@@ -1342,112 +1342,81 @@ def get_environment_metrics_endpoint():
         all_pods_data = db.get_resources('pods')
 
         current_running_pods = 0
+        current_pending_pods = 0
+        current_failed_pods = 0
         current_cpu_request_millicores = 0
         current_memory_request_bytes = 0
-        running_gpu_request_units = 0 
-        pending_gpu_request_units = 0 
+        running_gpu_request_units = 0
+        pending_gpu_request_units = 0
+        failed_gpu_request_units = 0
 
-        logging.info("Calculating current GPU requests for /api/environment_metrics (running/pending split):")
-        for pod_resource in all_pods_data:
-            if not isinstance(pod_resource, dict):
-                logging.warning(f"Skipping pod resource as it is not a dict: {type(pod_resource)}")
-                continue
-
-            pod_name = pod_resource.get('metadata', {}).get('name', 'unknown-pod')
-            pod_namespace = pod_resource.get('metadata', {}).get('namespace', 'unknown-namespace')
-            pod_gpu_requests_for_this_pod = 0 
-
-            status_phase = pod_resource.get('status', {}).get('phase', '').lower()
-            if status_phase == 'running':
+        # Sum up current requests from all pods
+        for pod in all_pods_data:
+            phase = pod.get('status', {}).get('phase')
+            if phase == 'Running':
                 current_running_pods += 1
-            
-            spec = pod_resource.get('spec', {})
-            current_pod_gpu_increment = 0 
+            elif phase == 'Pending':
+                current_pending_pods += 1
+            elif phase == 'Failed':
+                current_failed_pods += 1
 
-            for container_type in ['containers', 'initContainers']:
-                for container in spec.get(container_type, []):
-                    resources = container.get('resources', {})
-                    requests = resources.get('requests', {})
-                    if requests:
-                        if container_type == 'containers': # Sum CPU/Mem only for main containers for general metrics
-                            current_cpu_request_millicores += parse_cpu_to_millicores(requests.get('cpu', '0'))
-                            current_memory_request_bytes += parse_memory_to_bytes(requests.get('memory', '0'))
-                        
-                        gpu_req = int(requests.get('nvidia.com/gpu', '0'))
-                        if gpu_req > 0:
-                            logging.info(f"  - Pod: {pod_namespace}/{pod_name} (Status: {status_phase}), Type: {container_type[:-1]}, Name: {container.get('name')}, GPU Request: {gpu_req}")
-                            pod_gpu_requests_for_this_pod += gpu_req
-                            current_pod_gpu_increment += gpu_req
-            
-            if status_phase == 'running':
-                running_gpu_request_units += current_pod_gpu_increment
-            elif status_phase == 'pending':
-                pending_gpu_request_units += current_pod_gpu_increment
-            # GPUs from pods in other states (Succeeded, Failed, Terminating) are currently not added to these specific counters
+            for container in pod.get('spec', {}).get('containers', []):
+                requests = container.get('resources', {}).get('requests', {})
+                if requests:
+                    current_cpu_request_millicores += parse_cpu_to_millicores(requests.get('cpu', '0'))
+                    current_memory_request_bytes += parse_memory_to_bytes(requests.get('memory', '0'))
+                    gpus = int(requests.get('nvidia.com/gpu', 0))
+                    if gpus > 0:
+                        if phase == 'Running':
+                            running_gpu_request_units += gpus
+                        elif phase == 'Pending':
+                            pending_gpu_request_units += gpus
+                        elif phase == 'Failed':
+                            failed_gpu_request_units += gpus
 
-            if pod_gpu_requests_for_this_pod > 0:
-                 logging.info(f"  -> Total GPU requests for pod {pod_namespace}/{pod_name} (Status: {status_phase}): {pod_gpu_requests_for_this_pod}")
-
-        logging.info(f"Finished calculating. Running GPU Requests: {running_gpu_request_units}, Pending GPU Requests: {pending_gpu_request_units}")
-        
-        response_data = {
-            'pods': {
-                'total_capacity': env_metrics.get('total_node_pod_capacity', 0),
-                'current_running': current_running_pods,
-                'percentage_running': 0
-            },
-            'vcpu': {
-                'total_capacity_millicores': env_metrics.get('total_node_capacity_cpu_millicores', 0),
-                'total_allocatable_millicores': env_metrics.get('total_node_allocatable_cpu_millicores', 0),
-                'current_request_millicores': current_cpu_request_millicores,
-                'percentage_utilized_vs_allocatable': 0,
-                'percentage_utilized_vs_capacity': 0
-            },
-            'memory': {
-                'total_capacity_bytes': env_metrics.get('total_node_capacity_memory_bytes', 0),
-                'total_allocatable_bytes': env_metrics.get('total_node_allocatable_memory_bytes', 0),
-                'current_request_bytes': current_memory_request_bytes,
-                'percentage_utilized_vs_allocatable': 0,
-                'percentage_utilized_vs_capacity': 0
-            },
-            'gpu': {
-                'total_allocatable_units': env_metrics.get('total_node_allocatable_gpus', 0),
-                'running_gpu_request_units': running_gpu_request_units, 
-                'pending_gpu_request_units': pending_gpu_request_units, 
-                'percentage_utilized': 0 
-            },
-            'last_updated_timestamp': env_metrics.get('timestamp')
+        # Consolidate metrics
+        env_metrics['pods'] = {
+            'current_running': current_running_pods,
+            'current_pending': current_pending_pods,
+            'current_failed': current_failed_pods,
+            'total_capacity': env_metrics.get('total_node_pod_capacity', 0)
         }
+        env_metrics['vcpu']['current_request_millicores'] = current_cpu_request_millicores
+        env_metrics['memory']['current_request_bytes'] = current_memory_request_bytes
+        env_metrics['gpu']['running_gpu_request_units'] = running_gpu_request_units
+        env_metrics['gpu']['pending_gpu_request_units'] = pending_gpu_request_units
+        env_metrics['gpu']['failed_gpu_request_units'] = failed_gpu_request_units
 
-        if response_data['pods']['total_capacity'] > 0:
-            response_data['pods']['percentage_running'] = round(
-                (response_data['pods']['current_running'] / response_data['pods']['total_capacity']) * 100, 1
-            )
-
-        if response_data['vcpu']['total_allocatable_millicores'] > 0:
-            response_data['vcpu']['percentage_utilized_vs_allocatable'] = round(
-                (response_data['vcpu']['current_request_millicores'] / response_data['vcpu']['total_allocatable_millicores']) * 100, 1
-            )
-        if response_data['vcpu']['total_capacity_millicores'] > 0:
-            response_data['vcpu']['percentage_utilized_vs_capacity'] = round(
-                (response_data['vcpu']['current_request_millicores'] / response_data['vcpu']['total_capacity_millicores']) * 100, 1
+        # Calculate percentages
+        if env_metrics['pods']['total_capacity'] > 0:
+            env_metrics['pods']['percentage_running'] = round(
+                (env_metrics['pods']['current_running'] / env_metrics['pods']['total_capacity']) * 100, 1
             )
 
-        if response_data['memory']['total_allocatable_bytes'] > 0:
-            response_data['memory']['percentage_utilized_vs_allocatable'] = round(
-                (response_data['memory']['current_request_bytes'] / response_data['memory']['total_allocatable_bytes']) * 100, 1
+        if env_metrics['vcpu']['total_allocatable_millicores'] > 0:
+            env_metrics['vcpu']['percentage_utilized_vs_allocatable'] = round(
+                (env_metrics['vcpu']['current_request_millicores'] / env_metrics['vcpu']['total_allocatable_millicores']) * 100, 1
             )
-        if response_data['memory']['total_capacity_bytes'] > 0:
-            response_data['memory']['percentage_utilized_vs_capacity'] = round(
-                (response_data['memory']['current_request_bytes'] / response_data['memory']['total_capacity_bytes']) * 100, 1
+        if env_metrics['vcpu']['total_capacity_millicores'] > 0:
+            env_metrics['vcpu']['percentage_utilized_vs_capacity'] = round(
+                (env_metrics['vcpu']['current_request_millicores'] / env_metrics['vcpu']['total_capacity_millicores']) * 100, 1
             )
 
-        if response_data['gpu']['total_allocatable_units'] > 0:
-            response_data['gpu']['percentage_utilized'] = round(
-                (response_data['gpu']['running_gpu_request_units'] / response_data['gpu']['total_allocatable_units']) * 100, 1
+        if env_metrics['memory']['total_allocatable_bytes'] > 0:
+            env_metrics['memory']['percentage_utilized_vs_allocatable'] = round(
+                (env_metrics['memory']['current_request_bytes'] / env_metrics['memory']['total_allocatable_bytes']) * 100, 1
+            )
+        if env_metrics['memory']['total_capacity_bytes'] > 0:
+            env_metrics['memory']['percentage_utilized_vs_capacity'] = round(
+                (env_metrics['memory']['current_request_bytes'] / env_metrics['memory']['total_capacity_bytes']) * 100, 1
+            )
+
+        if env_metrics['gpu']['total_allocatable_units'] > 0:
+            env_metrics['gpu']['percentage_utilized'] = round(
+                (env_metrics['gpu']['running_gpu_request_units'] / env_metrics['gpu']['total_allocatable_units']) * 100, 1
             )
         
-        return jsonify(response_data)
+        return jsonify(env_metrics)
 
     except Exception as e:
         logging.error(f"Error in /api/environment_metrics endpoint: {str(e)}", exc_info=True)

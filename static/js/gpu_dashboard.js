@@ -540,32 +540,25 @@ function updateDashboardMetrics(data) {
     document.getElementById('ram-capacity').textContent = `${capacityRam} GB`;
 
     // --- GPU Card ---
-    const runningGpuUnits = metrics.gpu?.running_gpu_request_units ?? 0;
-    const totalGpuUnits = metrics.gpu?.total_allocatable_units ?? 0;
-    const pendingGpuUnits = metrics.gpu?.pending_gpu_request_units ?? 0;
-    const failedGpuUnits = metrics.gpu?.failed_gpu_request_units ?? 0;
-
-    // Real allocation percentage can exceed 100%
-    const realPercentage = totalGpuUnits > 0 ? Math.round((runningGpuUnits / totalGpuUnits) * 100) : 0;
+    const runningGpuRequests = metrics.gpu?.running_gpu_request_units ?? 0;
+    const totalGpu = metrics.gpu?.total_allocatable_units ?? 0;
+    const pendingGpuRequests = metrics.gpu?.pending_gpu_request_units ?? 0;
     
-    // The chart visual should be capped at 100% to represent a full physical pool
-    const displayPercentage = Math.min(realPercentage, 100);
+    // Cap the assigned GPUs at the total available for the main display
+    const assignedGpu = Math.min(runningGpuRequests, totalGpu);
+    const gpuPercentage = totalGpu > 0 ? Math.round((assignedGpu / totalGpu) * 100) : 0;
 
-    // The 'used' count in the main details is also capped by the physical total
-    const displayUsedGpu = Math.min(runningGpuUnits, totalGpuUnits);
-
-    createOrUpdateChart('gpu-chart', displayPercentage, realPercentage, 'Utilized', getColorForPercentage(realPercentage));
-    document.getElementById('gpu-details').textContent = `${displayUsedGpu} / ${totalGpuUnits} Units`;
+    createOrUpdateChart('gpu-chart', gpuPercentage, gpuPercentage, 'Allocated', getColorForPercentage(gpuPercentage));
+    document.getElementById('gpu-details').textContent = `${assignedGpu} / ${totalGpu} Units`;
     
     const gpuFooter = document.getElementById('gpu-footer-info');
     if (gpuFooter) {
-        // This breakdown shows the state of requested GPU units.
-        // A future enhancement would be for the API to provide pod *counts* for each state.
+        const failedGpuRequests = metrics.gpu?.failed_gpu_request_units ?? 0;
         gpuFooter.innerHTML = `
             <div class="status-breakdown">
-                <div class="status-item"><span class="status-indicator" style="background-color: #01A982;"></span>Running Units: ${runningGpuUnits}</div>
-                <div class="status-item"><span class="status-indicator" style="background-color: #FFB800;"></span>Pending Units: ${pendingGpuUnits}</div>
-                <div class="status-item"><span class="status-indicator" style="background-color: #FF5A5A;"></span>Failed Units: ${failedGpuUnits}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #01A982;"></span>Running Requests: ${runningGpuRequests}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #FFB800;"></span>Pending Requests: ${pendingGpuRequests}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #FF5A5A;"></span>Failed Requests: ${failedGpuRequests}</div>
             </div>`;
     }
 } 
