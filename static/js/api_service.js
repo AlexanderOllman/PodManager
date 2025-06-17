@@ -303,11 +303,6 @@ function processResourcePageData(resourceType, data, page, pageSize = 50) {
     state.totalPages = isFetchAll ? 1 : Math.ceil(state.totalCount / state.pageSize); // Only 1 page if fetchAll
     state.currentPage = isFetchAll ? 1 : page;
 
-    if (page === 1 && resourceType === 'pods' && typeof updateDashboardMetrics === 'function') {
-        console.log('Updating dashboard metrics with data from', newItems.length, 'pods on page 1');
-        updateDashboardMetrics(state.items); 
-    }
-
     if (page === 1 && typeof addSortingToResourceTable === 'function') {
         setTimeout(() => addSortingToResourceTable(resourceType), 100); 
     }
