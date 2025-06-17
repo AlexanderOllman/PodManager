@@ -1374,49 +1374,69 @@ def get_environment_metrics_endpoint():
                         elif phase == 'Failed':
                             failed_gpu_request_units += gpus
 
-        # Consolidate metrics
-        env_metrics['pods'] = {
-            'current_running': current_running_pods,
-            'current_pending': current_pending_pods,
-            'current_failed': current_failed_pods,
-            'total_capacity': env_metrics.get('total_node_pod_capacity', 0)
+        # Construct the response object from scratch to ensure correct structure
+        response_data = {
+            'pods': {
+                'total_capacity': env_metrics.get('total_node_pod_capacity', 0),
+                'current_running': current_running_pods,
+                'current_pending': current_pending_pods,
+                'current_failed': current_failed_pods,
+                'percentage_running': 0
+            },
+            'vcpu': {
+                'total_capacity_millicores': env_metrics.get('total_node_capacity_cpu_millicores', 0),
+                'total_allocatable_millicores': env_metrics.get('total_node_allocatable_cpu_millicores', 0),
+                'current_request_millicores': current_cpu_request_millicores,
+                'percentage_utilized_vs_allocatable': 0,
+                'percentage_utilized_vs_capacity': 0
+            },
+            'memory': {
+                'total_capacity_bytes': env_metrics.get('total_node_capacity_memory_bytes', 0),
+                'total_allocatable_bytes': env_metrics.get('total_node_allocatable_memory_bytes', 0),
+                'current_request_bytes': current_memory_request_bytes,
+                'percentage_utilized_vs_allocatable': 0,
+                'percentage_utilized_vs_capacity': 0
+            },
+            'gpu': {
+                'total_allocatable_units': env_metrics.get('total_node_allocatable_gpus', 0),
+                'running_gpu_request_units': running_gpu_request_units,
+                'pending_gpu_request_units': pending_gpu_request_units,
+                'failed_gpu_request_units': failed_gpu_request_units,
+                'percentage_utilized': 0
+            },
+            'last_updated_timestamp': env_metrics.get('timestamp')
         }
-        env_metrics['vcpu']['current_request_millicores'] = current_cpu_request_millicores
-        env_metrics['memory']['current_request_bytes'] = current_memory_request_bytes
-        env_metrics['gpu']['running_gpu_request_units'] = running_gpu_request_units
-        env_metrics['gpu']['pending_gpu_request_units'] = pending_gpu_request_units
-        env_metrics['gpu']['failed_gpu_request_units'] = failed_gpu_request_units
 
         # Calculate percentages
-        if env_metrics['pods']['total_capacity'] > 0:
-            env_metrics['pods']['percentage_running'] = round(
-                (env_metrics['pods']['current_running'] / env_metrics['pods']['total_capacity']) * 100, 1
+        if response_data['pods']['total_capacity'] > 0:
+            response_data['pods']['percentage_running'] = round(
+                (response_data['pods']['current_running'] / response_data['pods']['total_capacity']) * 100, 1
             )
 
-        if env_metrics['vcpu']['total_allocatable_millicores'] > 0:
-            env_metrics['vcpu']['percentage_utilized_vs_allocatable'] = round(
-                (env_metrics['vcpu']['current_request_millicores'] / env_metrics['vcpu']['total_allocatable_millicores']) * 100, 1
+        if response_data['vcpu']['total_allocatable_millicores'] > 0:
+            response_data['vcpu']['percentage_utilized_vs_allocatable'] = round(
+                (response_data['vcpu']['current_request_millicores'] / response_data['vcpu']['total_allocatable_millicores']) * 100, 1
             )
-        if env_metrics['vcpu']['total_capacity_millicores'] > 0:
-            env_metrics['vcpu']['percentage_utilized_vs_capacity'] = round(
-                (env_metrics['vcpu']['current_request_millicores'] / env_metrics['vcpu']['total_capacity_millicores']) * 100, 1
-            )
-
-        if env_metrics['memory']['total_allocatable_bytes'] > 0:
-            env_metrics['memory']['percentage_utilized_vs_allocatable'] = round(
-                (env_metrics['memory']['current_request_bytes'] / env_metrics['memory']['total_allocatable_bytes']) * 100, 1
-            )
-        if env_metrics['memory']['total_capacity_bytes'] > 0:
-            env_metrics['memory']['percentage_utilized_vs_capacity'] = round(
-                (env_metrics['memory']['current_request_bytes'] / env_metrics['memory']['total_capacity_bytes']) * 100, 1
+        if response_data['vcpu']['total_capacity_millicores'] > 0:
+            response_data['vcpu']['percentage_utilized_vs_capacity'] = round(
+                (response_data['vcpu']['current_request_millicores'] / response_data['vcpu']['total_capacity_millicores']) * 100, 1
             )
 
-        if env_metrics['gpu']['total_allocatable_units'] > 0:
-            env_metrics['gpu']['percentage_utilized'] = round(
-                (env_metrics['gpu']['running_gpu_request_units'] / env_metrics['gpu']['total_allocatable_units']) * 100, 1
+        if response_data['memory']['total_allocatable_bytes'] > 0:
+            response_data['memory']['percentage_utilized_vs_allocatable'] = round(
+                (response_data['memory']['current_request_bytes'] / response_data['memory']['total_allocatable_bytes']) * 100, 1
+            )
+        if response_data['memory']['total_capacity_bytes'] > 0:
+            response_data['memory']['percentage_utilized_vs_capacity'] = round(
+                (response_data['memory']['current_request_bytes'] / response_data['memory']['total_capacity_bytes']) * 100, 1
+            )
+
+        if response_data['gpu']['total_allocatable_units'] > 0:
+            response_data['gpu']['percentage_utilized'] = round(
+                (response_data['gpu']['running_gpu_request_units'] / response_data['gpu']['total_allocatable_units']) * 100, 1
             )
         
-        return jsonify(env_metrics)
+        return jsonify(response_data)
 
     except Exception as e:
         logging.error(f"Error in /api/environment_metrics endpoint: {str(e)}", exc_info=True)
