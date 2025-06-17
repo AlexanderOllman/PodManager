@@ -69,40 +69,92 @@ class Database:
             logging.error(f"Error initializing database: {str(e)}")
             raise
 
-    def update_resource(self, resource_type: str, resources: List[Dict]) -> bool:
-        """Update or insert resource data, extracting name/namespace from metadata."""
+    def update_resources_atomically(self, all_resources: Dict[str, List[Dict]]) -> bool:
+        """
+        Atomically updates all resources using a staging table and rename strategy.
+        This prevents the database from being in an inconsistent state during updates.
+        """
+        staging_table = 'resources_staging'
+        live_table = 'resources'
+        old_table = 'resources_old'
+
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                
-                updated_count = 0
-                for resource in resources:
-                    metadata = resource.get('metadata', {})
-                    namespace = metadata.get('namespace', 'default') # Default if missing, though unlikely for namespaced resources
-                    name = metadata.get('name')
-                    
-                    if not name:
-                        logging.warning(f"Skipping resource update due to missing name in metadata: {resource_type} / {namespace}")
-                        continue
 
-                    cursor.execute('''
-                        INSERT OR REPLACE INTO resources 
-                        (resource_type, namespace, name, data, last_updated)
-                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    ''', (
-                        resource_type,
-                        namespace,
-                        name,
-                        json.dumps(resource) # Store the full resource dict
-                    ))
-                    updated_count += 1
+                # 1. Drop any old staging table that might exist from a failed run
+                cursor.execute(f'DROP TABLE IF EXISTS {staging_table}')
+                cursor.execute(f'DROP TABLE IF EXISTS {old_table}')
+
+                # 2. Create a new staging table
+                cursor.execute(f'''
+                    CREATE TABLE {staging_table} (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        resource_type TEXT NOT NULL,
+                        namespace TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        data TEXT NOT NULL,
+                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(resource_type, namespace, name)
+                    )
+                ''')
+                
+                # 3. Populate the staging table
+                for resource_type, resources_list in all_resources.items():
+                    self._update_resource_in_table(cursor, staging_table, resource_type, resources_list)
+                
+                # 4. Atomically swap the tables
+                cursor.execute(f'ALTER TABLE {live_table} RENAME TO {old_table}')
+                cursor.execute(f'ALTER TABLE {staging_table} RENAME TO {live_table}')
+                
+                # 5. Drop the old table
+                cursor.execute(f'DROP TABLE {old_table}')
                 
                 conn.commit()
-                logging.info(f"Updated/Inserted {updated_count} {resource_type} resources.")
+                logging.info(f"Successfully and atomically updated all resources.")
                 return True
+
         except Exception as e:
-            logging.error(f"Error updating resources for {resource_type}: {str(e)}")
+            logging.error(f"Error during atomic resource update: {str(e)}", exc_info=True)
+            # Attempt to rollback by restoring the old table if it exists
+            try:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(f'DROP TABLE IF EXISTS {live_table}') # Drop potentially incomplete new table
+                    cursor.execute(f'ALTER TABLE {old_table} RENAME TO {live_table}') # Restore backup
+                    conn.commit()
+                    logging.info("Rolled back to the previous resources table.")
+            except Exception as rollback_e:
+                logging.error(f"Failed to rollback resources table after an error: {rollback_e}")
             return False
+
+    def _update_resource_in_table(self, cursor, table_name: str, resource_type: str, resources: List[Dict]):
+        """
+        (Private helper) Update or insert resource data into a specific table.
+        This is designed to be called by the atomic update process.
+        """
+        updated_count = 0
+        for resource in resources:
+            metadata = resource.get('metadata', {})
+            namespace = metadata.get('namespace', 'default')
+            name = metadata.get('name')
+            
+            if not name:
+                logging.warning(f"Skipping resource update due to missing name: {resource_type}/{namespace}")
+                continue
+
+            cursor.execute(f'''
+                INSERT OR REPLACE INTO {table_name}
+                (resource_type, namespace, name, data, last_updated)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (
+                resource_type,
+                namespace,
+                name,
+                json.dumps(resource)
+            ))
+            updated_count += 1
+        logging.info(f"Updated/Inserted {updated_count} {resource_type} resources into {table_name}.")
 
     def get_resources(self, resource_type: str, namespace: Optional[str] = None) -> List[Dict]:
         """Retrieve resources from the database."""

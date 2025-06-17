@@ -1310,18 +1310,25 @@ def delete_pod():
 
 @app.route('/api/refresh-database', methods=['POST'])
 def refresh_database():
-    """Manually refresh the database with current Kubernetes resources and environment metrics."""
+    """
+    Manually and atomically triggers a full refresh of all cluster data,
+    including resources and environment metrics.
+    """
     try:
-        logging.info("Manual database refresh requested: Updating Kubernetes resources...")
-        updater._update_resources() # Existing call to update standard k8s resources
-        logging.info("Manual database refresh: Updating environment metrics...")
-        _collect_and_store_environment_metrics() # New call for environment metrics
+        logging.info("Manual database refresh requested via API.")
+        
+        # This function now handles the atomic update of all resources
+        updater._update_resources() 
+        
+        # This function updates the global cluster metrics
+        _collect_and_store_environment_metrics()
+        
         return jsonify({
             'success': True,
-            'message': 'Database and environment metrics refreshed successfully'
+            'message': 'Database and environment metrics refreshed successfully.'
         })
     except Exception as e:
-        logging.error(f"Error refreshing database and environment metrics: {str(e)}")
+        logging.error(f"Error during manual refresh via API: {str(e)}", exc_info=True)
         return jsonify({
             'success': False,
             'error': str(e)

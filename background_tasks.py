@@ -98,24 +98,30 @@ class KubernetesDataUpdater:
             return '0'
 
     def _update_resources(self):
-        """Update all resources in the database."""
-        resource_types = ['pods', 'services'] # Add other types as needed
+        """Update all resources in the database atomically."""
+        resource_types = ['pods', 'services', 'deployments', 'configmaps', 'secrets', 'inferenceservices']
+        all_resources = {}
         
         for resource_type in resource_types:
             try:
-                resources = self._fetch_kubernetes_resources(resource_type)
-                if resources:
-                    # Pass the raw resource dictionaries (with added 'age') to the DB
-                    success = db.update_resource(resource_type, resources)
-                    if success:
-                        logger.info(f"Successfully updated {len(resources)} {resource_type}")
-                    else:
-                        logger.error(f"Failed to update {resource_type} in database")
-                else:
-                    # Handle case where fetching might return empty list or None
-                    logger.info(f"No {resource_type} found or error fetching, skipping update.")
+                # Use a more generic fetch command
+                data = self.run_kubectl_command(f'get {resource_type} --all-namespaces')
+                resources = data.get('items', [])
+                for item in resources:
+                    # Add age calculation for all resources
+                    item['age'] = self._get_age(item.get('metadata', {}).get('creationTimestamp'))
+                all_resources[resource_type] = resources
+                logger.info(f"Fetched {len(resources)} {resource_type}")
+
             except Exception as e:
-                logger.error(f"Error updating {resource_type}: {str(e)}")
+                logger.error(f"Error fetching {resource_type}: {str(e)}")
+                all_resources[resource_type] = [] # Ensure key exists even on error
+
+        # Perform a single atomic update
+        if db.update_resources_atomically(all_resources):
+            logger.info("Successfully and atomically updated all resources in the database.")
+        else:
+            logger.error("Failed to atomically update resources in the database.")
 
     def start(self):
         """Start the background updater thread."""
