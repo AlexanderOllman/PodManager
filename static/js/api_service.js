@@ -260,21 +260,25 @@ function fetchResourceData(resourceType, namespace = 'all', fetchAll = false, pa
 
 // Processes a fetched page of resource data and updates the application state
 function processResourcePageData(resourceType, data, page, pageSize = 50) {
-    const processingStartTime = performance.now();
-
-    if (!window.app.state.resources[resourceType]) {
-        window.app.state.resources[resourceType] = {
-            items: [], totalCount: 0, currentPage: 1, pageSize: pageSize, loadedPages: [] 
-        };
-    }
-    const state = window.app.state.resources[resourceType];
-    state.pageSize = pageSize; 
-
     if (!data || !data.data) {
-        console.error("Received invalid data object in processResourcePageData for", resourceType, data);
-        if (typeof hideLoading === 'function') hideLoading(resourceType);
+        console.error("Invalid or empty data received from API for:", resourceType);
         return;
     }
+
+    // New logic: Only update dashboard metrics if cluster_metrics is present
+    if (data.data.cluster_metrics && typeof updateDashboardMetrics === 'function') {
+        updateDashboardMetrics(data.data);
+    }
+
+    const resourceData = window.app.state.resources[resourceType];
+    if (!resourceData) {
+        window.app.state.resources[resourceType] = { items: [], totalCount: 0, currentPage: 1, pageSize: pageSize, loadedPages: [] };
+    }
+
+    const processingStartTime = performance.now();
+
+    state = window.app.state.resources[resourceType];
+    state.pageSize = pageSize; 
 
     const newItems = data.data.items || [];
     
