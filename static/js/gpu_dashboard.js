@@ -555,10 +555,11 @@ function updateDashboardMetrics(data) {
     if (gpuFooter) {
         const failedGpuRequests = metrics.gpu?.failed_gpu_request_units ?? 0;
         gpuFooter.innerHTML = `
+            <div class="requests-label" style="font-weight: 500; margin-bottom: 4px; text-align: center; font-size: 0.9em;">Requests</div>
             <div class="status-breakdown">
-                <div class="status-item"><span class="status-indicator" style="background-color: #01A982;"></span>Running Requests: ${runningGpuRequests}</div>
-                <div class="status-item"><span class="status-indicator" style="background-color: #FFB800;"></span>Pending Requests: ${pendingGpuRequests}</div>
-                <div class="status-item"><span class="status-indicator" style="background-color: #FF5A5A;"></span>Failed Requests: ${failedGpuRequests}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #01A982;"></span>Running: ${runningGpuRequests}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #FFB800;"></span>Pending: ${pendingGpuRequests}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #FF5A5A;"></span>Failed: ${failedGpuRequests}</div>
             </div>`;
     }
 } 
