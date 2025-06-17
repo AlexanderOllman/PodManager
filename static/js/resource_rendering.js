@@ -118,8 +118,8 @@ function renderLoadMorePage(resourceType, resourceData) {
 function getResourceIcon(kind) {
     const kindLower = kind.toLowerCase();
     const iconMap = {
-        'pod': 'fas fa-box-open',
-        'pods': 'fas fa-box-open',
+        'pod': 'fas fa-box',
+        'pods': 'fas fa-box',
         'deployment': 'fas fa-layer-group',
         'deployments': 'fas fa-layer-group',
         'service': 'fas fa-network-wired',

@@ -540,22 +540,32 @@ function updateDashboardMetrics(data) {
     document.getElementById('ram-capacity').textContent = `${capacityRam} GB`;
 
     // --- GPU Card ---
-    const usedGpu = metrics.gpu?.running_gpu_request_units ?? 0;
-    const totalGpu = metrics.gpu?.total_allocatable_units ?? 0;
-    const pendingGpu = metrics.gpu?.pending_gpu_request_units ?? 0;
-    const gpuPercentage = totalGpu > 0 ? Math.round((usedGpu / totalGpu) * 100) : 0;
-    createOrUpdateChart('gpu-chart', gpuPercentage, gpuPercentage, 'Allocated', getColorForPercentage(gpuPercentage));
-    document.getElementById('gpu-details').textContent = `${usedGpu} / ${totalGpu} Units`;
+    const runningGpuUnits = metrics.gpu?.running_gpu_request_units ?? 0;
+    const totalGpuUnits = metrics.gpu?.total_allocatable_units ?? 0;
+    const pendingGpuUnits = metrics.gpu?.pending_gpu_request_units ?? 0;
+    const failedGpuUnits = metrics.gpu?.failed_gpu_request_units ?? 0;
+
+    // Real allocation percentage can exceed 100%
+    const realPercentage = totalGpuUnits > 0 ? Math.round((runningGpuUnits / totalGpuUnits) * 100) : 0;
+    
+    // The chart visual should be capped at 100% to represent a full physical pool
+    const displayPercentage = Math.min(realPercentage, 100);
+
+    // The 'used' count in the main details is also capped by the physical total
+    const displayUsedGpu = Math.min(runningGpuUnits, totalGpuUnits);
+
+    createOrUpdateChart('gpu-chart', displayPercentage, realPercentage, 'Utilized', getColorForPercentage(realPercentage));
+    document.getElementById('gpu-details').textContent = `${displayUsedGpu} / ${totalGpuUnits} Units`;
     
     const gpuFooter = document.getElementById('gpu-footer-info');
     if (gpuFooter) {
-        // Assume 'failed' count is 0 until provided by the API
-        const failedGpu = metrics.gpu?.failed_gpu_request_units ?? 0;
+        // This breakdown shows the state of requested GPU units.
+        // A future enhancement would be for the API to provide pod *counts* for each state.
         gpuFooter.innerHTML = `
             <div class="status-breakdown">
-                <div class="status-item"><span class="status-indicator" style="background-color: #01A982;"></span>Running: ${usedGpu}</div>
-                <div class="status-item"><span class="status-indicator" style="background-color: #FFB800;"></span>Pending: ${pendingGpu}</div>
-                <div class="status-item"><span class="status-indicator" style="background-color: #FF5A5A;"></span>Failed: ${failedGpu}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #01A982;"></span>Running Units: ${runningGpuUnits}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #FFB800;"></span>Pending Units: ${pendingGpuUnits}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #FF5A5A;"></span>Failed Units: ${failedGpuUnits}</div>
             </div>`;
     }
 } 
