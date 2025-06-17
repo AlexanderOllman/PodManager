@@ -544,7 +544,18 @@ function updateDashboardMetrics(data) {
     const totalGpu = metrics.gpu?.total_allocatable_units ?? 0;
     const pendingGpu = metrics.gpu?.pending_gpu_request_units ?? 0;
     const gpuPercentage = totalGpu > 0 ? Math.round((usedGpu / totalGpu) * 100) : 0;
-    createOrUpdateChart('gpu-chart', gpuPercentage, gpuPercentage, 'Utilized', getColorForPercentage(gpuPercentage));
+    createOrUpdateChart('gpu-chart', gpuPercentage, gpuPercentage, 'Allocated', getColorForPercentage(gpuPercentage));
     document.getElementById('gpu-details').textContent = `${usedGpu} / ${totalGpu} Units`;
-    document.getElementById('gpu-pending').textContent = `${pendingGpu} Units`;
+    
+    const gpuFooter = document.getElementById('gpu-footer-info');
+    if (gpuFooter) {
+        // Assume 'failed' count is 0 until provided by the API
+        const failedGpu = metrics.gpu?.failed_gpu_request_units ?? 0;
+        gpuFooter.innerHTML = `
+            <div class="status-breakdown">
+                <div class="status-item"><span class="status-indicator" style="background-color: #01A982;"></span>Running: ${usedGpu}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #FFB800;"></span>Pending: ${pendingGpu}</div>
+                <div class="status-item"><span class="status-indicator" style="background-color: #FF5A5A;"></span>Failed: ${failedGpu}</div>
+            </div>`;
+    }
 } 
