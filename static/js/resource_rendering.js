@@ -149,6 +149,81 @@ function getResourceIcon(kind) {
     return iconMap[kindLower] || iconMap['default'];
 }
 
+// Helper to get a standardized status from a resource item
+function getResourceStatus(resourceType, item) {
+    if (!item || !item.status) return 'Unknown';
+
+    switch (resourceType) {
+        case 'pods':
+            return item.status.phase || 'Unknown';
+        case 'deployments':
+            const readyReplicas = item.status.readyReplicas || 0;
+            const totalReplicas = item.status.replicas || 0;
+            return readyReplicas === totalReplicas && totalReplicas > 0 ? 'Available' : 'Progressing';
+        case 'inferenceservices':
+            if (item.status.conditions) {
+                const readyCondition = item.status.conditions.find(c => c.type === 'Ready');
+                if (readyCondition) {
+                    return readyCondition.status === 'True' ? 'Ready' : 'NotReady';
+                }
+            }
+            return 'Unknown';
+        case 'services':
+            return item.spec.type || 'Unknown';
+        default:
+            return 'N/A';
+    }
+}
+
+// Helper to get a color for a resource status
+function getStatusColor(status) {
+    if (!status) return '#6c757d'; // grey for unknown
+    const lowerStatus = status.toLowerCase();
+    switch (lowerStatus) {
+        case 'running':
+        case 'succeeded':
+        case 'ready':
+        case 'available':
+        case 'bound':
+            return '#28a745'; // green
+        case 'pending':
+        case 'progressing':
+        case 'containercreating':
+            return '#ffc107'; // yellow
+        case 'failed':
+        case 'error':
+        case 'notready':
+            return '#dc3545'; // red
+        default:
+            return '#6c757d'; // grey
+    }
+}
+
+// Formats a Kubernetes timestamp into a human-readable age string
+function formatAge(creationTimestamp) {
+    if (!creationTimestamp) return '-';
+    try {
+        const createdDate = new Date(creationTimestamp);
+        const now = new Date();
+        const diff = now.getTime() - createdDate.getTime();
+
+        if (diff < 0) return 'in the future';
+
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (days > 0) return `${days}d`;
+        if (hours > 0) return `${hours}h`;
+        if (minutes > 0) return `${minutes}m`;
+        return `${seconds}s`;
+    } catch (e) {
+        console.error('Could not parse timestamp:', creationTimestamp, e);
+        return '-';
+    }
+}
+
 // Creates a single table row for a given resource item
 function createResourceRow(resourceType, item) {
     const row = document.createElement('tr');
@@ -159,6 +234,7 @@ function createResourceRow(resourceType, item) {
     const name = item.metadata?.name || '-';
     const iconClass = getResourceIcon(item.kind || resourceType);
     const actionButton = typeof createActionButton === 'function' ? createActionButton(resourceType, namespace, name) : '-';
+    const age = formatAge(item.metadata?.creationTimestamp);
 
     // Icon and Name cell
     const nameCell = `
@@ -171,15 +247,20 @@ function createResourceRow(resourceType, item) {
     switch (resourceType) {
         case 'pods':
             const podResources = typeof getResourceUsage === 'function' ? getResourceUsage(item) : { cpu: '-', gpu: '-', memory: '-' };
-            const podStatusPhase = item.status?.phase || 'Unknown';
-            const podStatusIcon = typeof getStatusIcon === 'function' ? getStatusIcon(podStatusPhase) : '';
+            const podStatus = getResourceStatus(resourceType, item);
+            const podStatusColor = getStatusColor(podStatus);
+
             content = `
-                ${nameCell}
                 <td>${namespace}</td>
-                <td>${podStatusIcon}${podStatusPhase}</td>
+                ${nameCell}
+                <td>
+                    <span class="status-dot" style="background-color: ${podStatusColor};"></span>
+                    ${podStatus}
+                </td>
                 <td class="resource-cell cpu-cell">${podResources.cpu}</td>
                 <td class="resource-cell gpu-cell">${podResources.gpu}</td>
                 <td class="resource-cell memory-cell">${podResources.memory}</td>
+                <td>${age}</td>
                 <td>${actionButton}</td>
             `;
             break;
@@ -191,10 +272,9 @@ function createResourceRow(resourceType, item) {
             if (item.spec?.ports && item.spec.ports.length > 0) {
                 ports = item.spec.ports.map(p => `${p.port}${p.targetPort ? ':'+p.targetPort : ''}/${p.protocol || 'TCP'}`).join(', ');
             }
-            const age = typeof getAge === 'function' ? getAge(item.metadata?.creationTimestamp) : '-';
             content = `
-                ${nameCell}
                 <td>${namespace}</td>
+                ${nameCell}
                 <td>${serviceType}</td>
                 <td>${clusterIP}</td>
                 <td>${externalIP}</td>
@@ -204,46 +284,55 @@ function createResourceRow(resourceType, item) {
             `;
             break;
         case 'inferenceservices':
-            const isvcStatus = item.status?.conditions?.[0]?.status === 'True' ? 'Ready' : 'Not Ready';
-            const isvcStatusIcon = typeof getStatusIcon === 'function' ? getStatusIcon(isvcStatus) : '';
+            const isvcStatus = getResourceStatus(resourceType, item);
+            const isvcStatusColor = getStatusColor(isvcStatus);
             let url = '-';
             if (item.status?.url) {
                 url = `<a href="${item.status.url}" target="_blank">${item.status.url}</a>`;
             }
             const isvcResources = typeof getResourceUsage === 'function' ? getResourceUsage(item) : { cpu: '-', gpu: '-', memory: '-' };
             content = `
-                ${nameCell}
                 <td>${namespace}</td>
+                ${nameCell}
                 <td>${url}</td>
-                <td>${isvcStatusIcon}${isvcStatus}</td>
+                <td>
+                    <span class="status-dot" style="background-color: ${isvcStatusColor};"></span>
+                    ${isvcStatus}
+                </td>
                 <td>${isvcResources.cpu}</td>
                 <td>${isvcResources.gpu}</td>
                 <td>${isvcResources.memory}</td>
+                <td>${age}</td>
                 <td>${actionButton}</td>
             `;
             break;
         case 'deployments':
             const readyReplicas = item.status?.readyReplicas || 0;
             const totalReplicas = item.status?.replicas || 0;
-            const deploymentStatus = readyReplicas === totalReplicas && totalReplicas > 0 ? 'Available' : 'Progressing';
-            const deploymentStatusIcon = typeof getStatusIcon === 'function' ? getStatusIcon(deploymentStatus) : '';
+            const deploymentStatus = getResourceStatus(resourceType, item);
+            const deploymentStatusColor = getStatusColor(deploymentStatus);
             const depResources = typeof getResourceUsage === 'function' ? getResourceUsage(item) : { cpu: '-', memory: '-' }; // No GPU for deployments typically
             content = `
-                ${nameCell}
                 <td>${namespace}</td>
+                ${nameCell}
                 <td>${readyReplicas}/${totalReplicas}</td>
-                <td>${deploymentStatusIcon}${deploymentStatus}</td>
+                <td>
+                    <span class="status-dot" style="background-color: ${deploymentStatusColor};"></span>
+                    ${deploymentStatus}
+                </td>
                 <td>${depResources.cpu}</td>
                 <td>${depResources.memory}</td>
+                <td>${age}</td>
                 <td>${actionButton}</td>
             `;
             break;
         case 'configmaps':
             const dataCount = Object.keys(item.data || {}).length;
             content = `
-                ${nameCell}
                 <td>${namespace}</td>
+                ${nameCell}
                 <td>${dataCount} items</td>
+                <td>${age}</td>
                 <td>${actionButton}</td>
             `;
             break;
@@ -251,18 +340,19 @@ function createResourceRow(resourceType, item) {
             const secretType = item.type || 'Opaque';
             const secretDataCount = Object.keys(item.data || {}).length;
             content = `
-                ${nameCell}
                 <td>${namespace}</td>
+                ${nameCell}
                 <td>${secretType}</td>
                 <td>${secretDataCount} items</td>
+                <td>${age}</td>
                 <td>${actionButton}</td>
             `;
             break;
         default:
             console.warn(`Unhandled resource type for row creation: ${resourceType}`);
             content = `
-                ${nameCell}
                 <td>${namespace}</td>
+                ${nameCell}
                 <td colspan="5">Details not available for this resource type.</td>
                 <td>${actionButton}</td>
             `;
@@ -292,29 +382,46 @@ function selectTableContainer(resourceType) {
 
 // Helper function to calculate and format age of a resource
 function getAge(creationTimestamp) {
-    if (!creationTimestamp) return '-';
-    const creationTime = new Date(creationTimestamp);
-    const now = new Date();
-    const diffMs = now - creationTime;
+    if (!creationTimestamp) {
+        return '-';
+    }
+    const age = Date.now() - new Date(creationTimestamp);
+    const seconds = Math.floor(age / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
 
-    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (days > 0) return `${days}d`;
-
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    if (hours > 0) return `${hours}h`;
-
-    const minutes = Math.floor(diffMs / (1000 * 60));
-    if (minutes > 0) return `${minutes}m`;
-
-    const seconds = Math.floor(diffMs / 1000);
+    if (days > 0) {
+        return `${days}d`;
+    }
+    if (hours > 0) {
+        return `${hours}h`;
+    }
+    if (minutes > 0) {
+        return `${minutes}m`;
+    }
     return `${seconds}s`;
 }
 
 // Helper function to get status icon based on phase or status text
 function getStatusIcon(status) {
-    // Implement your logic to return the appropriate status icon based on the status text
-    // This is a placeholder and should be replaced with the actual implementation
-    return '';
+    switch(status.toLowerCase()) {
+        case 'running':
+        case 'succeeded':
+        case 'available':
+        case 'ready':
+        case 'bound':
+            return '<i class="fas fa-check-circle text-success me-2"></i>';
+        case 'pending':
+        case 'progressing':
+            return '<i class="fas fa-hourglass-half text-warning me-2"></i>';
+        case 'failed':
+        case 'error':
+            return '<i class="fas fa-exclamation-circle text-danger me-2"></i>';
+        case 'unknown':
+        default:
+            return '<i class="fas fa-question-circle text-muted me-2"></i>';
+    }
 }
 
 // Initialize all Bootstrap dropdowns on the page or in a container

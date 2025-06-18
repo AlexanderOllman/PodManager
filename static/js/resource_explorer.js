@@ -9,12 +9,22 @@ function initializeResourcesPage() {
     if (!window.app.state.lastFetch) window.app.state.lastFetch = {};
     if (!window.app.CACHE_TIMEOUT) window.app.CACHE_TIMEOUT = 60000; // 1 min cache for explorer?
     
-    // Set initial resource type if not already set (e.g., from previous navigation)
+    // Set initial resource type if not already set
     window.app.currentResourceType = window.app.currentResourceType || 'pods';
-    const resourceTypeSelector = document.getElementById('resourceTypeSelector');
-    if (resourceTypeSelector) {
-        resourceTypeSelector.value = window.app.currentResourceType;
-    }
+    
+    // Set up tabs
+    const resourceTabs = document.querySelectorAll('#resourceTypeTabs .nav-link');
+    resourceTabs.forEach(tab => {
+        // The onclick attribute in the HTML already handles calling changeResourceType
+        // We just need to set the active one based on currentResourceType
+        if (tab.getAttribute('aria-controls') === window.app.currentResourceType) {
+            tab.classList.add('active');
+            tab.setAttribute('aria-selected', 'true');
+        } else {
+            tab.classList.remove('active');
+            tab.setAttribute('aria-selected', 'false');
+        }
+    });
 
     // Setup search handler
     const searchInput = document.getElementById('resourceSearchInput');
@@ -33,36 +43,14 @@ function initializeResourcesPage() {
         });
     }
 
-    // Fetch namespaces for the selector (if it exists - removed in previous steps?)
-    // Re-adding namespace fetch logic if explorer still has a selector
-    const namespaceSelector = document.getElementById('resourceNamespaceSelector');
-    if (namespaceSelector) {
-        fetchNamespacesForSelectors() // Assumes function exists in api_service.js
-            .then(namespaces => populateResourceNamespaceSelector(namespaces))
-            .catch(error => console.error('Error loading namespaces for explorer:', error));
-        // Add listener for namespace change
-        namespaceSelector.addEventListener('change', namespaceChangedResource);
-    }
-
-    // Resource type change handler
-    if (resourceTypeSelector) {
-        resourceTypeSelector.addEventListener('change', function() {
-            changeResourceType(this.value);
-        });
-    }
-
+    // No longer need namespace selector logic here for now
     // Clear search button
     const clearSearchBtn = document.getElementById('clearSearchBtn');
     if (clearSearchBtn) {
         clearSearchBtn.addEventListener('click', clearResourceSearch);
     }
 
-    // Pagination buttons
-    const prevPageBtn = document.getElementById('prevPageBtn');
-    const nextPageBtn = document.getElementById('nextPageBtn');
-    if (prevPageBtn) prevPageBtn.addEventListener('click', () => navigateResourcePage('prev'));
-    if (nextPageBtn) nextPageBtn.addEventListener('click', () => navigateResourcePage('next'));
-
+    // Pagination buttons are not used with the full list view
     // Load initial data
     loadResourceType(window.app.currentResourceType);
     
@@ -84,6 +72,7 @@ function loadResourcesPage() {
 function loadResourceType(resourceType) {
     console.log(`Loading resource type in explorer: ${resourceType}`);
     window.app.currentResourceType = resourceType; // Update global state
+    window.app.state.resources.activeStatusFilter = null; // Clear status filter on new type load
 
     const loadingContainer = document.getElementById('resourcesLoading');
     const tableContainer = document.getElementById('resourcesTableContainer');
@@ -99,8 +88,7 @@ function loadResourceType(resourceType) {
     fetchResourceData(resourceType, 'all', true, 1, true) // fetchAll=true
         .then(data => {
             if (progressBar) progressBar.style.width = '100%';
-            // No pagination UI update needed
-            // updatePaginationUI(resourceType);
+            renderResourceSummaryCard(resourceType); // Render the summary card
             // renderResourcePage should be called by processResourcePageData via renderCurrentPage
             setTimeout(() => {
                 if (loadingContainer) loadingContainer.style.display = 'none';
@@ -165,6 +153,18 @@ function setupTableHeaders(resourceType) {
 // Handles resource type change in the explorer dropdown
 function changeResourceType(resourceType) {
     console.log(`Explorer changing to resource type: ${resourceType}`);
+    // Update active tab
+    const resourceTabs = document.querySelectorAll('#resourceTypeTabs .nav-link');
+    resourceTabs.forEach(tab => {
+        if (tab.getAttribute('aria-controls') === resourceType) {
+            tab.classList.add('active');
+            tab.setAttribute('aria-selected', 'true');
+        } else {
+            tab.classList.remove('active');
+            tab.setAttribute('aria-selected', 'false');
+        }
+    });
+
     const searchInput = document.getElementById('resourceSearchInput');
     if (searchInput) searchInput.value = ''; // Clear search on type change
     clearResourceSearchIndicator(); // Remove filter indicator
@@ -220,15 +220,20 @@ function searchResources() {
         return;
     }
 
-    // Ensure originalItems exists and is up-to-date if it's the first search
-    // or if we are clearing a search.
-    if (!state.originalItems || searchTerm === '') {
-        // If originalItems is not set, or we are clearing search, assume current items are the full list.
-        // This relies on the initial loadResourceType having fetched all items.
+    // If a status filter is active, we filter from that subset. Otherwise, from the full list.
+    const activeStatusFilter = window.app.state.resources.activeStatusFilter;
+    let itemsToFilter;
+
+    // Ensure originalItems exists and is up-to-date
+    if (!state.originalItems) {
         state.originalItems = [...state.items]; 
     }
 
-    let itemsToFilter = state.originalItems || state.items;
+    if (activeStatusFilter) {
+        itemsToFilter = state.originalItems.filter(item => getResourceStatus(resourceType, item) === activeStatusFilter);
+    } else {
+        itemsToFilter = state.originalItems;
+    }
 
     const filteredItems = searchTerm
         ? itemsToFilter.filter(item => {
@@ -237,7 +242,7 @@ function searchResources() {
             // Add other fields to search if necessary
             return name.includes(searchTerm) || namespace.includes(searchTerm);
         })
-        : [...(state.originalItems || itemsToFilter)]; // If search term is empty, show original/all items
+        : itemsToFilter; // If search term is empty, show the status-filtered (or all) items
 
     // Update the main items list in the state with the filtered results
     state.items = filteredItems;
@@ -278,19 +283,18 @@ function clearResourceSearch() {
     
     const resourceType = window.app.currentResourceType;
     const state = window.app.state.resources[resourceType];
+    const activeStatusFilter = window.app.state.resources.activeStatusFilter;
 
     if (state && state.originalItems) {
-        state.items = [...state.originalItems]; // Restore from backup
-        // Update counts/pagination if we were strictly managing that (not relevant for full list)
-        // state.totalCount = state.items.length; 
-        // state.currentPage = 1;
-        // state.totalPages = 1;
-        // delete state.originalItems; // Optionally clear originalItems if memory is a concern
+        if (activeStatusFilter) {
+            // If a status filter is active, clearing search should restore the status-filtered list
+            state.items = state.originalItems.filter(item => getResourceStatus(resourceType, item) === activeStatusFilter);
+        } else {
+            // Otherwise, restore the full original list
+            state.items = [...state.originalItems];
+        }
     } else if (state) {
-        // If no originalItems, implies either not searched yet or original state is already current
-        // For safety, could reload, but ideally originalItems should exist after first load
-        console.warn('clearResourceSearch: originalItems not found, full list might not be restored if previously filtered by other means.');
-        // If originalItems are gone, the safest is to re-trigger the full load
+        console.warn('clearResourceSearch: originalItems not found, reloading.');
         loadResourceType(resourceType);
         return;
     }
@@ -373,4 +377,85 @@ function renderResourcePage(resourceType) {
      const loadingContainer = document.getElementById('resourcesLoading');
      if (loadingContainer) loadingContainer.style.display = 'none';
      if (tableContainer) tableContainer.style.opacity = '1';
+}
+
+// Renders the summary card for the given resource type
+function renderResourceSummaryCard(resourceType) {
+    const summaryCard = document.getElementById('resourceSummaryCard');
+    const cardBody = summaryCard.querySelector('.card-body');
+    if (!cardBody) return;
+
+    const resourceData = window.app.state.resources[resourceType];
+    if (!resourceData || !resourceData.items) {
+        cardBody.innerHTML = 'No data available to generate summary.';
+        return;
+    }
+
+    const items = resourceData.items;
+    const statusCounts = items.reduce((acc, item) => {
+        const status = getResourceStatus(resourceType, item);
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+    }, {});
+
+    let summaryHtml = `<h5 class="card-title">${resourceType.charAt(0).toUpperCase() + resourceType.slice(1)} Summary</h5>`;
+    summaryHtml += '<div class="d-flex flex-wrap gap-3">';
+
+    // 'All' status
+    summaryHtml += `
+        <a href="#" class="text-decoration-none text-dark" onclick="filterResourcesByStatus(event, '${resourceType}', null)">
+            <span class="badge bg-primary rounded-pill me-1">${items.length}</span>
+            Total
+        </a>`;
+
+    Object.entries(statusCounts).forEach(([status, count]) => {
+        const statusColor = getStatusColor(status);
+        summaryHtml += `
+            <a href="#" class="text-decoration-none text-dark" onclick="filterResourcesByStatus(event, '${resourceType}', '${status}')">
+                <span class="p-1 me-1 rounded-circle" style="background-color: ${statusColor}; display: inline-block;"></span>
+                <span class="fw-bold">${count}</span>
+                ${status}
+            </a>`;
+    });
+    summaryHtml += '</div>';
+
+    cardBody.innerHTML = summaryHtml;
+}
+
+// Filter the resource table by a given status
+function filterResourcesByStatus(event, resourceType, status) {
+    event.preventDefault();
+    console.log(`Filtering ${resourceType} by status: ${status}`);
+
+    const state = window.app.state.resources[resourceType];
+    if (!state || !state.originalItems) {
+        // Fallback to ensure originalItems exists. This should be set on first load.
+        if (state.items) {
+            state.originalItems = [...state.items];
+        } else {
+            console.error("Original items not found for filtering.");
+            return;
+        }
+    }
+    
+    window.app.state.resources.activeStatusFilter = status;
+
+    if (status === null || status === 'null') {
+        state.items = [...state.originalItems];
+    } else {
+        state.items = state.originalItems.filter(item => getResourceStatus(resourceType, item) === status);
+    }
+    
+    // After filtering, re-apply any active search term
+    const searchInput = document.getElementById('resourceSearchInput');
+    if (searchInput && searchInput.value) {
+        searchResources(); // This will filter the already status-filtered list
+    } else {
+        renderCurrentPage(resourceType);
+    }
+
+    // Update active state on summary card
+    const summaryCard = document.getElementById('resourceSummaryCard');
+    summaryCard.querySelectorAll('a').forEach(a => a.classList.remove('fw-bold'));
+    event.currentTarget.classList.add('fw-bold');
 } 

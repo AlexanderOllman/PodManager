@@ -1380,6 +1380,15 @@ body {
     font-size: 0.9rem;
 }
 .filter-indicator .btn-close {
-    font-size: 0.8rem;
-    padding: 0.25rem;
+    font-size: 0.75em;
+    padding: 0.5em;
+}
+
+.status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
 } 

@@ -415,20 +415,34 @@
     <div class="tab-pane fade" id="resources" role="tabpanel" aria-labelledby="resources-tab">
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
             <h1 class="h2">Resource Explorer</h1>
-            <div class="btn-toolbar">
-                <div class="btn-group me-2">
-                    <button class="btn btn-sm btn-outline-secondary" id="refreshResourcesTopBtn" onclick="refreshResourcesPage()">
-                        <i class="fas fa-sync-alt me-1"></i> Refresh
-                    </button>
-                </div>
-                <select id="resourceTypeSelector" class="form-select form-select-sm" aria-label="Select resource type" onchange="changeResourceType(this.value)">
-                    <option value="pods">Pods</option>
-                    <option value="services">Services</option>
-                    <option value="inferenceservices">Inference Services</option>
-                    <option value="deployments">Deployments</option>
-                    <option value="configmaps">Config Maps</option>
-                    <option value="secrets">Secrets</option>
-                </select>
+        </div>
+
+        <!-- Resource Type Tabs -->
+        <ul class="nav nav-tabs" id="resourceTypeTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="pods-res-tab" data-bs-toggle="tab" data-bs-target="#pods-res" type="button" role="tab" aria-controls="pods" aria-selected="true" onclick="changeResourceType('pods')">Pods</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="services-res-tab" data-bs-toggle="tab" data-bs-target="#services-res" type="button" role="tab" aria-controls="services" aria-selected="false" onclick="changeResourceType('services')">Services</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="inferenceservices-res-tab" data-bs-toggle="tab" data-bs-target="#inferenceservices-res" type="button" role="tab" aria-controls="inferenceservices" aria-selected="false" onclick="changeResourceType('inferenceservices')">Inference Services</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="deployments-res-tab" data-bs-toggle="tab" data-bs-target="#deployments-res" type="button" role="tab" aria-controls="deployments" aria-selected="false" onclick="changeResourceType('deployments')">Deployments</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="configmaps-res-tab" data-bs-toggle="tab" data-bs-target="#configmaps-res" type="button" role="tab" aria-controls="configmaps" aria-selected="false" onclick="changeResourceType('configmaps')">Config Maps</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="secrets-res-tab" data-bs-toggle="tab" data-bs-target="#secrets-res" type="button" role="tab" aria-controls="secrets" aria-selected="false" onclick="changeResourceType('secrets')">Secrets</button>
+            </li>
+        </ul>
+
+        <!-- Summary Card -->
+        <div id="resourceSummaryCard" class="card my-3">
+            <div class="card-body">
+                <!-- Summary content will be injected here -->
             </div>
         </div>
         
@@ -696,8 +710,10 @@
             <!-- Database Refresh Section -->
             <div class="mt-4 pt-3 mb-4">
                 <h4>Database Management</h4>
-                <p class="text-muted">
-                    Manually refresh the database with current Kubernetes resources.
+                <p class="text-muted small mb-2">
+                    Last refreshed: <span id="db-last-updated-time">Loading...</span>
+                </p>
+                <p>Manually refresh the database with current Kubernetes resources.
                     This will fetch fresh data for all resources from the cluster.
                 </p>
                 <button class="btn btn-primary" onclick="refreshDatabase()">

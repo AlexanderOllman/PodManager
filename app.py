@@ -21,6 +21,7 @@ import fcntl
 import termios
 import re
 from typing import Optional, Union, Dict
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1698,6 +1699,26 @@ def delete_chart():
             'success': False,
             'error': f'An unexpected error occurred: {str(e)}'
         }), 500
+
+@app.route('/api/database/last_updated', methods=['GET'])
+def get_database_last_updated():
+    """Returns the last modification time of the database file."""
+    try:
+        db_path = db.db_path
+        if not os.path.exists(db_path):
+            return jsonify({'error': 'Database file not found.'}), 404
+
+        last_updated_timestamp = os.path.getmtime(db_path)
+        last_updated_datetime = datetime.fromtimestamp(last_updated_timestamp)
+        
+        return jsonify({
+            'last_updated_timestamp': last_updated_timestamp,
+            'last_updated_iso': last_updated_datetime.isoformat(),
+            'last_updated_human': last_updated_datetime.strftime('%Y-%m-%d %H:%M:%S %Z')
+        })
+    except Exception as e:
+        logging.error(f"Error getting database last updated time: {str(e)}", exc_info=True)
+        return jsonify({'error': 'An error occurred while fetching database status.'}), 500
 
 if __name__ == '__main__':
     # This block runs when you execute `python app.py` directly.
