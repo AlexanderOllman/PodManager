@@ -149,32 +149,6 @@ function getResourceIcon(kind) {
     return iconMap[kindLower] || iconMap['default'];
 }
 
-// Helper to get a standardized status from a resource item
-function getResourceStatus(resourceType, item) {
-    if (!item || !item.status) return 'Unknown';
-
-    switch (resourceType) {
-        case 'pods':
-            return item.status.phase || 'Unknown';
-        case 'deployments':
-            const readyReplicas = item.status.readyReplicas || 0;
-            const totalReplicas = item.status.replicas || 0;
-            return readyReplicas === totalReplicas && totalReplicas > 0 ? 'Available' : 'Progressing';
-        case 'inferenceservices':
-            if (item.status.conditions) {
-                const readyCondition = item.status.conditions.find(c => c.type === 'Ready');
-                if (readyCondition) {
-                    return readyCondition.status === 'True' ? 'Ready' : 'NotReady';
-                }
-            }
-            return 'Unknown';
-        case 'services':
-            return item.spec.type || 'Unknown';
-        default:
-            return 'N/A';
-    }
-}
-
 // Helper to get a color for a resource status
 function getStatusColor(status) {
     if (!status) return '#6c757d'; // grey for unknown

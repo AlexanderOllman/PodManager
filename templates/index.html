@@ -415,9 +415,23 @@
     <div class="tab-pane fade" id="resources" role="tabpanel" aria-labelledby="resources-tab">
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
             <h1 class="h2">Resource Explorer</h1>
-            <div class="ms-auto text-muted small" id="resource-explorer-last-updated">
-                <i class="fas fa-clock me-1"></i>
-                Last updated: <span id="resources-last-updated-time">never</span>
+            <div class="d-flex align-items-center">
+                <div id="resources-last-updated-container" class="text-muted small me-3" style="display: none;">
+                    Last updated: <span id="resources-last-updated-time">never</span>
+                </div>
+                <div class="btn-toolbar">
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" id="sort-resources-dropdown">
+                            <i class="fas fa-sort me-1"></i> Sort By
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="sort-resources-dropdown" id="resourceSortOptions">
+                            <!-- JS will populate this -->
+                        </ul>
+                    </div>
+                    <button type="button" class="btn btn-primary ms-2" id="refreshResourceDatabase">
+                        <i class="fas fa-sync-alt me-1"></i> Refresh
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -443,49 +457,27 @@
             </li>
         </ul>
 
-        <!-- Summary Card & Search -->
+        <!-- Search and Summary Card -->
         <div class="card my-3">
-            <div class="card-body p-0">
-                <div class="row align-items-center g-0">
-                    <div class="col-lg-5 border-end">
-                        <div class="p-3">
-                            <div class="input-group">
-                                <span class="input-group-text bg-light border-0">
-                                    <i class="fas fa-search text-muted"></i>
-                                </span>
-                                <input type="text" class="form-control border-0 bg-light" id="resourceSearchInput" placeholder="Search resources...">
-                                <button class="btn btn-link text-muted" type="button" id="clearSearchBtn" onclick="clearResourceSearch()" style="display: none;">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-lg-6">
+                        <!-- Search Bar -->
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-0">
+                                <i class="fas fa-search text-muted"></i>
+                            </span>
+                            <input type="text" class="form-control border-0 bg-light" id="resourceSearchInput" placeholder="Search resources...">
+                            <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" onclick="clearResourceSearch()">
+                                <i class="fas fa-times"></i>
+                            </button>
                         </div>
                     </div>
-                    <div class="col-lg-7">
-                        <div class="p-3" id="resourceSummaryContainer">
-                            <!-- Summary content will be injected here -->
-                        </div>
+                    <div class="col-lg-6">
+                        <!-- Summary content will be injected here -->
+                        <div id="resourceSummaryContainer"></div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Table Controls -->
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <div class="text-muted small" id="resources-count-info">
-                <!-- Count info will be populated here -->
-            </div>
-            <div>
-                <div class="btn-group me-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" id="resourceSortButton">
-                        <i class="fas fa-sort-amount-down me-1"></i> Sort By: <span class="fw-bold" id="current-sort-label">Name</span>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end" id="resourceSortDropdown">
-                        <!-- Options populated by JS -->
-                    </ul>
-                </div>
-                <button class="btn btn-sm btn-outline-primary" id="refreshResourcesBtn">
-                    <i class="fas fa-sync-alt me-1"></i> Refresh
-                </button>
             </div>
         </div>
         
@@ -826,4 +818,3 @@
     <script src="{{ url_for('static', filename='js/resource_explorer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/charts_page.js') }}"></script>
 {% endblock %}
-

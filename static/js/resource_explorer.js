@@ -1,10 +1,5 @@
 // resource_explorer.js
 
-// A map to store sort state for each resource type
-if (!window.app) window.app = {};
-if (!window.app.state) window.app.state = {};
-if (!window.app.state.resourceSort) window.app.state.resourceSort = {};
-
 // Initializes the Resources explorer page
 function initializeResourcesPage() {
     console.log('Initializing resources explorer page...');
@@ -38,14 +33,8 @@ function initializeResourcesPage() {
             if (e.key === 'Enter') searchResources();
         });
         let searchTimeout;
-        const clearBtn = document.getElementById('clearSearchBtn');
         searchInput.addEventListener('input', function() {
             clearTimeout(searchTimeout);
-            if(searchInput.value) {
-                clearBtn.style.display = 'block';
-            } else {
-                clearBtn.style.display = 'none';
-            }
             searchTimeout = setTimeout(() => {
                 if (searchInput.value.length >= 3 || searchInput.value.length === 0) {
                     searchResources();
@@ -58,18 +47,41 @@ function initializeResourcesPage() {
     // Clear search button
     const clearSearchBtn = document.getElementById('clearSearchBtn');
     if (clearSearchBtn) {
-        clearSearchBtn.addEventListener('click', () => {
-             clearResourceSearch();
-             clearSearchBtn.style.display = 'none';
+        clearSearchBtn.addEventListener('click', clearResourceSearch);
+    }
+
+    const refreshBtn = document.getElementById('refreshResourceDatabase');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<i class="fas fa-sync-alt fa-spin me-1"></i> Refreshing...';
+
+            fetch('/api/refresh_db', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('Database refreshed, reloading resource view.');
+                        loadResourceType(window.app.currentResourceType);
+                        // Update last updated time
+                        const timeEl = document.getElementById('resources-last-updated-time');
+                        const containerEl = document.getElementById('resources-last-updated-container');
+                        if (timeEl) timeEl.textContent = new Date().toLocaleTimeString();
+                        if (containerEl) containerEl.style.display = 'block';
+                    } else {
+                        // Show an error
+                        console.error('Failed to refresh database:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error refreshing database:', error);
+                })
+                .finally(() => {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerHTML = '<i class="fas fa-sync-alt me-1"></i> Refresh';
+                });
         });
     }
 
-    // Refresh button
-    const refreshBtn = document.getElementById('refreshResourcesBtn');
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', refreshResourcesPage);
-    }
-    
     // Pagination buttons are not used with the full list view
     // Load initial data
     loadResourceType(window.app.currentResourceType);
@@ -103,15 +115,12 @@ function loadResourceType(resourceType) {
     if (progressBar) progressBar.style.width = '10%';
 
     setupTableHeaders(resourceType); // Setup headers for the new type
-    setupSortDropdown(resourceType); // Setup sorting dropdown
 
     // Fetch ALL data, page 1, reset=true
     fetchResourceData(resourceType, 'all', true, 1, true) // fetchAll=true
         .then(data => {
             if (progressBar) progressBar.style.width = '100%';
             renderResourceSummaryCard(resourceType); // Render the summary card
-            updateLastUpdatedTimestamp('resources-last-updated-time');
-            sortResources(null, null, true); // Apply default sort
             // renderResourcePage should be called by processResourcePageData via renderCurrentPage
             setTimeout(() => {
                 if (loadingContainer) loadingContainer.style.display = 'none';
@@ -165,8 +174,90 @@ function setupTableHeaders(resourceType) {
         tableHeadersRow.appendChild(th);
     });
     
+    updateSortOptions(resourceType, headers);
+
     // Re-attach sorting listeners to the new headers
-    addSortingToResourceTable(resourceType);
+    if (typeof addSortingToResourceTable === 'function') {
+         addSortingToResourceTable(resourceType); // Assumes this function targets the correct table
+    } else {
+        console.warn('addSortingToResourceTable function not found.');
+    }
+}
+
+function updateSortOptions(resourceType, headers) {
+    const sortMenu = document.getElementById('resourceSortOptions');
+    if (!sortMenu) return;
+    sortMenu.innerHTML = ''; // Clear old options
+
+    const createSortOption = (sortKey, text) => {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.className = 'dropdown-item sort-option';
+        a.href = '#';
+        a.dataset.sort = sortKey;
+        a.textContent = text;
+        a.addEventListener('click', (e) => {
+            e.preventDefault();
+            sortResources(e.target.dataset.sort);
+            document.getElementById('sort-resources-dropdown').textContent = `Sort By: ${text}`;
+        });
+        li.appendChild(a);
+        return li;
+    };
+
+    headers.forEach(header => {
+        if (header.s) { // If sortable
+            sortMenu.appendChild(createSortOption(header.s, `${header.n} (Asc)`));
+            sortMenu.appendChild(createSortOption(`${header.s}-desc`, `${header.n} (Desc)`));
+        }
+    });
+}
+
+function sortResources(sortBy) {
+    const resourceType = window.app.currentResourceType;
+    const state = window.app.state.resources[resourceType];
+    if (!state || !state.items) return;
+
+    const [sortKey, direction] = sortBy.endsWith('-desc') 
+        ? [sortBy.replace('-desc', ''), 'desc']
+        : [sortBy, 'asc'];
+
+    const parseMemory = (memStr) => {
+        if (!memStr || memStr === '-') return 0;
+        const value = parseFloat(memStr);
+        if (memStr.toLowerCase().includes('ki')) return value * 1024;
+        if (memStr.toLowerCase().includes('mi')) return value * 1024 * 1024;
+        if (memStr.toLowerCase().includes('gi')) return value * 1024 * 1024 * 1024;
+        return value;
+    };
+
+    const getValue = (item, key) => {
+        switch (key) {
+            case 'name': return item.metadata.name.toLowerCase();
+            case 'namespace': return item.metadata.namespace.toLowerCase();
+            case 'age': return new Date(item.metadata.creationTimestamp);
+            case 'status': return getResourceStatus(resourceType, item);
+            case 'cpu':
+            case 'gpu':
+            case 'memory':
+                const usage = getResourceUsage(item);
+                if (key === 'memory') return parseMemory(usage.memory);
+                return parseFloat(usage[key]) || 0;
+            default:
+                return item[key] || '';
+        }
+    };
+
+    state.items.sort((a, b) => {
+        const valA = getValue(a, sortKey);
+        const valB = getValue(b, sortKey);
+
+        if (valA < valB) return direction === 'asc' ? -1 : 1;
+        if (valA > valB) return direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    renderCurrentPage(resourceType);
 }
 
 // Handles resource type change in the explorer dropdown
@@ -378,11 +469,19 @@ function renderResourcePage(resourceType) {
     }
     
     // Update count info
-    const countInfoEl = document.getElementById('resources-count-info');
-    if (countInfoEl) {
-        const total = resourceData.totalCount || items.length;
-        const showing = items.length;
-        countInfoEl.innerHTML = `Showing <strong>${showing}</strong> of <strong>${total}</strong> ${resourceType}`;
+    const tableContainer = document.getElementById('resourcesTableContainer');
+    if (tableContainer) {
+        let countInfo = tableContainer.querySelector('.count-info');
+        if (!countInfo) {
+             countInfo = document.createElement('div');
+             countInfo.className = 'text-muted small mb-2 count-info';
+             // Insert before the table responsive div if possible
+             const tableResponsiveDiv = tableContainer.querySelector('.table-responsive');
+             if (tableResponsiveDiv) tableContainer.insertBefore(countInfo, tableResponsiveDiv);
+             else tableContainer.prepend(countInfo);
+        }
+        // Show total count
+        countInfo.innerHTML = `Showing ${items.length} of ${totalCount || items.length} ${resourceType}`; // Use totalCount if available
     }
      // Ensure table is visible after render
      const loadingContainer = document.getElementById('resourcesLoading');
@@ -397,7 +496,7 @@ function renderResourceSummaryCard(resourceType) {
 
     const resourceData = window.app.state.resources[resourceType];
     if (!resourceData || !resourceData.items) {
-        summaryContainer.innerHTML = '<div class="text-center text-muted p-3">No data available to generate summary.</div>';
+        summaryContainer.innerHTML = 'No data available to generate summary.';
         return;
     }
 
@@ -408,24 +507,23 @@ function renderResourceSummaryCard(resourceType) {
         return acc;
     }, {});
 
-    let summaryHtml = '<div class="d-flex flex-wrap gap-3 align-items-center">';
+    let summaryHtml = `<h5 class="card-title mb-2">${resourceType.charAt(0).toUpperCase() + resourceType.slice(1)} Summary</h5>`;
+    summaryHtml += '<div class="d-flex flex-wrap gap-3 align-items-center">';
 
-    // 'All' status filter
-    const totalCount = items.length;
-    const isActive = window.app.state.resources.activeStatusFilter === null;
+    // 'All' status
     summaryHtml += `
-        <a href="#" class="text-decoration-none text-dark d-flex align-items-center ${isActive ? 'fw-bold' : ''}" onclick="filterResourcesByStatus(event, '${resourceType}', null)">
-            <span class="badge bg-secondary rounded-pill me-2">${totalCount}</span> Total
+        <a href="#" class="text-decoration-none text-dark" onclick="filterResourcesByStatus(event, '${resourceType}', null)">
+            <span class="badge bg-primary rounded-pill me-1">${items.length}</span>
+            Total
         </a>`;
 
     Object.entries(statusCounts).forEach(([status, count]) => {
         const statusColor = getStatusColor(status);
-        const isActive = window.app.state.resources.activeStatusFilter === status;
         summaryHtml += `
-            <a href="#" class="text-decoration-none text-dark d-flex align-items-center ${isActive ? 'fw-bold' : ''}" onclick="filterResourcesByStatus(event, '${resourceType}', '${status}')">
-                <span class="status-dot me-2" style="background-color: ${statusColor};"></span>
-                <span class="fw-bold me-1">${count}</span>
-                <span class="text-muted">${status}</span>
+            <a href="#" class="text-decoration-none text-dark" onclick="filterResourcesByStatus(event, '${resourceType}', '${status}')">
+                <span class="p-1 me-1 rounded-circle" style="background-color: ${statusColor}; display: inline-block;"></span>
+                <span class="fw-bold">${count}</span>
+                ${status}
             </a>`;
     });
     summaryHtml += '</div>';
@@ -466,192 +564,106 @@ function filterResourcesByStatus(event, resourceType, status) {
     }
 
     // Update active state on summary card
-    renderResourceSummaryCard(resourceType);
+    const summaryCard = document.getElementById('resourceSummaryCard');
+    summaryCard.querySelectorAll('a').forEach(a => a.classList.remove('fw-bold'));
+    event.currentTarget.classList.add('fw-bold');
 }
 
-function updateLastUpdatedTimestamp(elementId) {
-    const el = document.getElementById(elementId);
-    if (el) {
-        el.textContent = new Date().toLocaleString();
-    }
-    const container = document.getElementById('resource-explorer-last-updated');
-    if(container) container.style.display = 'block';
-}
+// Helper to get a standardized status from a resource item
+function getResourceStatus(resourceType, item) {
+    if (!item || !item.status) return 'Unknown';
 
-function refreshResourcesPage() {
-    console.log("Refreshing all resource data from server...");
-    // Assuming refreshDatabase shows its own global loading indicator
-    if (typeof refreshDatabase === 'function') {
-        // Show a button spinner
-        const refreshBtn = document.getElementById('refreshResourcesBtn');
-        const originalHtml = refreshBtn.innerHTML;
-        refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Refreshing...`;
-        refreshBtn.disabled = true;
-
-        refreshDatabase()
-            .then(() => {
-                console.log("Database refresh complete. Reloading current resource view.");
-                loadResourceType(window.app.currentResourceType);
-            })
-            .catch(error => {
-                console.error("Failed to refresh database:", error);
-                // You might want to show an error message to the user
-            })
-            .finally(() => {
-                 refreshBtn.innerHTML = originalHtml;
-                 refreshBtn.disabled = false;
-            });
-
-    } else {
-        console.error("refreshDatabase function is not defined. Cannot refresh.");
-    }
-}
-
-function getSortableValue(item, key) {
-    if (!item) return null;
-    
-    switch(key) {
-        case 'name':
-            return item.metadata?.name?.toLowerCase();
-        case 'namespace':
-            return item.metadata?.namespace?.toLowerCase();
-        case 'age':
-            return new Date(item.metadata?.creationTimestamp).getTime();
-        case 'status':
-            return getResourceStatus(window.app.currentResourceType, item);
-        case 'cpu':
-        case 'gpu':
-        case 'memory':
-            const usage = getResourceUsage(item);
-            if (key === 'memory') {
-                 // Standardize to MiB for sorting
-                 const mem = usage.memory;
-                 if (mem === '-') return 0;
-                 return parseFloat(mem);
+    switch (resourceType) {
+        case 'pods':
+            return item.status.phase || 'Unknown';
+        case 'deployments':
+            const readyReplicas = item.status.readyReplicas || 0;
+            const totalReplicas = item.status.replicas || 0;
+            return readyReplicas === totalReplicas && totalReplicas > 0 ? 'Available' : 'Progressing';
+        case 'inferenceservices':
+            if (item.status.conditions) {
+                const readyCondition = item.status.conditions.find(c => c.type === 'Ready');
+                if (readyCondition) {
+                    return readyCondition.status === 'True' ? 'NotReady' : 'Ready';
+                }
             }
-            return parseFloat(usage[key]) || 0;
+            return 'Unknown';
+        case 'services':
+            return item.spec.type || 'Unknown';
         default:
-            // For other keys like 'type', 'clusterip' etc.
-            return item.spec?.[key] || item.status?.[key] || '';
+            return 'N/A';
     }
 }
 
-function sortResources(key, order, isDefault = false) {
-    const resourceType = window.app.currentResourceType;
-    const state = window.app.state.resources[resourceType];
-    if (!state || !state.items) return;
+// Helper function to calculate resource usage (CPU, GPU, Memory)
+function getResourceUsage(item) {
+    let cpu = 0;
+    let gpu = 0;
+    let totalMemoryMi = 0; // Accumulate memory in Mi
 
-    if (!window.app.state.resourceSort[resourceType]) {
-        window.app.state.resourceSort[resourceType] = { key: 'name', order: 'asc' };
+    function standardizeAndSumMemory(memStr) {
+        if (!memStr) return 0;
+        memStr = String(memStr).trim();
+        let value = parseFloat(memStr);
+        if (isNaN(value)) return 0;
+
+        if (memStr.endsWith('Ki')) return value / 1024;
+        if (memStr.endsWith('Mi')) return value;
+        if (memStr.endsWith('Gi')) return value * 1024;
+        if (memStr.endsWith('Ti')) return value * 1024 * 1024;
+        if (memStr.endsWith('Pi')) return value * 1024 * 1024 * 1024;
+        // Assuming bytes if no unit, convert to Mi
+        if (/^\d+$/.test(memStr)) return value / (1024 * 1024);
+        return 0; // Unknown unit or format
     }
 
-    const sortState = window.app.state.resourceSort[resourceType];
-
-    if (!isDefault) {
-        if (key) {
-             if (sortState.key === key) {
-                 sortState.order = sortState.order === 'asc' ? 'desc' : 'asc';
-             } else {
-                 sortState.key = key;
-                 sortState.order = 'asc';
-             }
-         }
-    }
-    
-     if (key && order) {
-        sortState.key = key;
-        sortState.order = order;
-    }
-
-    const { key: sortKey, order: sortOrder } = sortState;
-
-    const sorter = (a, b) => {
-        const valA = getSortableValue(a, sortKey);
-        const valB = getSortableValue(b, sortKey);
-
-        const orderMultiplier = sortOrder === 'asc' ? 1 : -1;
-
-        if (typeof valA === 'string' && typeof valB === 'string') {
-            return valA.localeCompare(valB) * orderMultiplier;
-        }
-        if (valA < valB) return -1 * orderMultiplier;
-        if (valA > valB) return 1 * orderMultiplier;
-        return 0;
-    };
-
-    state.items.sort(sorter);
-    if (state.originalItems) {
-        state.originalItems.sort(sorter);
-    }
-    
-    console.log(`Sorted ${resourceType} by ${sortKey} (${sortOrder})`);
-    renderCurrentPage(resourceType);
-    updateSortIndicators();
-}
-
-function addSortingToResourceTable(resourceType) {
-    const headerRow = document.getElementById('resourcesTableHeader');
-    headerRow.querySelectorAll('th[data-sort]').forEach(th => {
-        th.addEventListener('click', () => {
-            const sortKey = th.getAttribute('data-sort');
-            sortResources(sortKey);
+    if (item.spec && item.spec.containers) {
+        item.spec.containers.forEach(container => {
+            if (container.resources && container.resources.requests) {
+                const requests = container.resources.requests;
+                if (requests.cpu) {
+                    const cpuRequest = String(requests.cpu);
+                    if (cpuRequest.endsWith('m')) {
+                        cpu += parseInt(cpuRequest.slice(0, -1)) / 1000;
+                    } else {
+                        cpu += parseFloat(cpuRequest);
+                    }
+                }
+                if (requests['nvidia.com/gpu']) {
+                    gpu += parseInt(requests['nvidia.com/gpu']);
+                } else if (requests.gpu) { // Generic gpu request
+                    gpu += parseInt(requests.gpu);
+                }
+                if (requests.memory) {
+                    totalMemoryMi += standardizeAndSumMemory(requests.memory);
+                }
+            }
         });
-    });
-}
-
-function updateSortIndicators() {
-    const resourceType = window.app.currentResourceType;
-    if (!window.app.state.resourceSort[resourceType]) return;
-
-    const { key, order } = window.app.state.resourceSort[resourceType];
-    
-    // Update dropdown button label
-    const currentSortLabel = document.getElementById('current-sort-label');
-    if(currentSortLabel) {
-        const keyLabel = key.charAt(0).toUpperCase() + key.slice(1);
-        currentSortLabel.textContent = `${keyLabel} (${order === 'asc' ? 'Asc' : 'Desc'})`;
+    }
+    // For non-pod items that might have resources directly in spec.resources.requests
+    else if (item.spec && item.spec.resources && item.spec.resources.requests) {
+        const requests = item.spec.resources.requests;
+        if (requests.cpu) {
+            const cpuRequest = String(requests.cpu);
+            if (cpuRequest.endsWith('m')) {
+                cpu += parseInt(cpuRequest.slice(0, -1)) / 1000;
+            } else {
+                cpu += parseFloat(cpuRequest);
+            }
+        }
+        if (requests['nvidia.com/gpu']) {
+            gpu += parseInt(requests['nvidia.com/gpu']);
+        } else if (requests.gpu) {
+            gpu += parseInt(requests.gpu);
+        }
+        if (requests.memory) {
+            totalMemoryMi += standardizeAndSumMemory(requests.memory);
+        }
     }
 
-    // Update table header indicators
-    const headerRow = document.getElementById('resourcesTableHeader');
-    headerRow.querySelectorAll('th[data-sort]').forEach(th => {
-        const indicator = th.querySelector('.sort-indicator');
-        th.classList.remove('sorting-asc', 'sorting-desc');
-        indicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
-
-        if (th.getAttribute('data-sort') === key) {
-            th.classList.add(order === 'asc' ? 'sorting-asc' : 'sorting-desc');
-            indicator.innerHTML = order === 'asc' ? '<i class="fas fa-sort-up"></i>' : '<i class="fas fa-sort-down"></i>';
-        }
-    });
-}
-
-function setupSortDropdown(resourceType) {
-    const dropdown = document.getElementById('resourceSortDropdown');
-    if (!dropdown) return;
-    dropdown.innerHTML = '';
-
-    const addOption = (key, label, order) => {
-        const li = document.createElement('li');
-        const a = document.createElement('a');
-        a.className = 'dropdown-item';
-        a.href = '#';
-        a.textContent = label;
-        a.onclick = (e) => {
-            e.preventDefault();
-            sortResources(key, order);
-        };
-        li.appendChild(a);
-        dropdown.appendChild(li);
+    return {
+        cpu: cpu > 0 ? cpu.toFixed(2) : '-', // Show '-' if 0
+        gpu: gpu > 0 ? gpu.toString() : '-',
+        memory: totalMemoryMi > 0 ? `${totalMemoryMi.toFixed(1)}Mi` : '-'
     };
-
-    const headers = document.querySelectorAll('#resourcesTableHeader th[data-sort]');
-    headers.forEach(th => {
-        const key = th.getAttribute('data-sort');
-        const label = th.textContent.replace(/sort/i, '').trim();
-        if (key && label) {
-             addOption(key, `${label} (Asc)`, 'asc');
-             addOption(key, `${label} (Desc)`, 'desc');
-        }
-    });
 } 
