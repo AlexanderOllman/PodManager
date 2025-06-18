@@ -415,23 +415,8 @@
     <div class="tab-pane fade" id="resources" role="tabpanel" aria-labelledby="resources-tab">
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
             <h1 class="h2">Resource Explorer</h1>
-            <div class="d-flex align-items-center">
-                <div id="resources-last-updated-container" class="text-muted small me-3" style="display: none;">
-                    Last updated: <span id="resources-last-updated-time">never</span>
-                </div>
-                <div class="btn-toolbar">
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" id="sort-resources-dropdown">
-                            <i class="fas fa-sort me-1"></i> Sort By
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="sort-resources-dropdown" id="resourceSortOptions">
-                            <!-- JS will populate this -->
-                        </ul>
-                    </div>
-                    <button type="button" class="btn btn-primary ms-2" id="refreshResourceDatabase">
-                        <i class="fas fa-sync-alt me-1"></i> Refresh
-                    </button>
-                </div>
+            <div id="resources-last-updated-container" class="text-muted small" style="display: none;">
+                Last updated: <span id="resources-last-updated-time">never</span>
             </div>
         </div>
 
@@ -457,27 +442,32 @@
             </li>
         </ul>
 
-        <!-- Search and Summary Card -->
+        <!-- Summary Card -->
         <div class="card my-3">
             <div class="card-body">
-                <div class="row align-items-center">
-                    <div class="col-lg-6">
-                        <!-- Search Bar -->
-                        <div class="input-group">
-                            <span class="input-group-text bg-light border-0">
-                                <i class="fas fa-search text-muted"></i>
-                            </span>
-                            <input type="text" class="form-control border-0 bg-light" id="resourceSearchInput" placeholder="Search resources...">
-                            <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" onclick="clearResourceSearch()">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="col-lg-6">
-                        <!-- Summary content will be injected here -->
-                        <div id="resourceSummaryContainer"></div>
-                    </div>
+                <div id="resourceSummaryContainer">
+                    <!-- Summary content will be injected here -->
                 </div>
+            </div>
+        </div>
+
+        <!-- Resource filters/controls -->
+        <div class="row mb-3 align-items-center">
+            <div class="col-md-8">
+                <div class="input-group">
+                    <span class="input-group-text bg-light border-0">
+                        <i class="fas fa-search text-muted"></i>
+                    </span>
+                    <input type="text" class="form-control border-0 bg-light" id="resourceSearchInput" placeholder="Search resources...">
+                    <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" onclick="clearResourceSearch()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                    <button type="button" class="btn btn-primary" id="refreshResourceDatabase">
+                        <i class="fas fa-sync-alt me-1"></i> Refresh
+                    </button>
             </div>
         </div>
         

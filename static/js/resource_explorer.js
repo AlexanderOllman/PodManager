@@ -9,8 +9,8 @@ function initializeResourcesPage() {
     if (!window.app.state.lastFetch) window.app.state.lastFetch = {};
     if (!window.app.CACHE_TIMEOUT) window.app.CACHE_TIMEOUT = 60000; // 1 min cache for explorer?
     
-    // Set initial resource type if not already set
-    window.app.currentResourceType = window.app.currentResourceType || 'pods';
+    // Set initial resource type to 'pods' on page load
+    window.app.currentResourceType = 'pods';
     
     // Set up tabs
     const resourceTabs = document.querySelectorAll('#resourceTypeTabs .nav-link');
@@ -105,6 +105,11 @@ function loadResourceType(resourceType) {
     console.log(`Loading resource type in explorer: ${resourceType}`);
     window.app.currentResourceType = resourceType; // Update global state
     window.app.state.resources.activeStatusFilter = null; // Clear status filter on new type load
+    
+    const state = window.app.state.resources[resourceType] || {};
+    state.sortState = { key: null, direction: null };
+    state.originalItems = null; // Mark as stale
+    window.app.state.resources[resourceType] = state;
 
     const loadingContainer = document.getElementById('resourcesLoading');
     const tableContainer = document.getElementById('resourcesTableContainer');
@@ -165,11 +170,13 @@ function setupTableHeaders(resourceType) {
         if (header.s) { // If sortable
             th.setAttribute('data-sort', header.s);
             th.style.cursor = 'pointer';
-            // Add sorting indicator placeholder
+            
             const sortIndicator = document.createElement('span');
             sortIndicator.className = 'sort-indicator ms-1';
             sortIndicator.innerHTML = '<i class="fas fa-sort text-muted"></i>';
             th.appendChild(sortIndicator);
+
+            th.addEventListener('click', () => handleHeaderSort(resourceType, header.s));
         }
         tableHeadersRow.appendChild(th);
     });
@@ -182,6 +189,62 @@ function setupTableHeaders(resourceType) {
     } else {
         console.warn('addSortingToResourceTable function not found.');
     }
+}
+
+function handleHeaderSort(resourceType, sortKey) {
+    const state = window.app.state.resources[resourceType];
+    if (!state) return;
+
+    if (!state.sortState) {
+        state.sortState = { key: null, direction: null };
+    }
+
+    const currentSortKey = state.sortState.key;
+    const currentSortDirection = state.sortState.direction;
+    let newDirection;
+
+    if (currentSortKey !== sortKey) {
+        newDirection = 'asc';
+    } else {
+        if (currentSortDirection === 'asc') {
+            newDirection = 'desc';
+        } else if (currentSortDirection === 'desc') {
+            newDirection = null; // Unsort
+        } else {
+            newDirection = 'asc';
+        }
+    }
+
+    state.sortState = { key: sortKey, direction: newDirection };
+    
+    sortResources(resourceType);
+    updateSortIndicators(resourceType);
+}
+
+function updateSortIndicators(resourceType) {
+    const state = window.app.state.resources[resourceType];
+    const sortState = state.sortState || { key: null, direction: null };
+    const tableHeaders = document.querySelectorAll('#resourcesTableHeader th[data-sort]');
+    
+    tableHeaders.forEach(th => {
+        const key = th.dataset.sort;
+        const indicator = th.querySelector('.sort-indicator i');
+        
+        th.classList.remove('sorting-asc', 'sorting-desc');
+        if (indicator) {
+            indicator.className = 'fas fa-sort text-muted';
+        
+            if (key === sortState.key && sortState.direction) {
+                if (sortState.direction === 'asc') {
+                    th.classList.add('sorting-asc');
+                    indicator.className = 'fas fa-sort-up';
+                } else {
+                    th.classList.add('sorting-desc');
+                    indicator.className = 'fas fa-sort-down';
+                }
+            }
+        }
+    });
 }
 
 function updateSortOptions(resourceType, headers) {
@@ -213,14 +276,27 @@ function updateSortOptions(resourceType, headers) {
     });
 }
 
-function sortResources(sortBy) {
-    const resourceType = window.app.currentResourceType;
+function sortResources(resourceType) {
     const state = window.app.state.resources[resourceType];
     if (!state || !state.items) return;
 
-    const [sortKey, direction] = sortBy.endsWith('-desc') 
-        ? [sortBy.replace('-desc', ''), 'desc']
-        : [sortBy, 'asc'];
+    const sortState = state.sortState;
+    if (!sortState || !sortState.direction) {
+        // If unsorting, revert to original order if available
+        if (state.originalItems) {
+            // Re-filter by status if a status filter is active
+            const activeStatusFilter = window.app.state.resources.activeStatusFilter;
+            if (activeStatusFilter) {
+                 state.items = state.originalItems.filter(item => getResourceStatus(resourceType, item) === activeStatusFilter);
+            } else {
+                state.items = [...state.originalItems];
+            }
+        }
+        renderCurrentPage(resourceType);
+        return;
+    }
+
+    const { key: sortKey, direction } = sortState;
 
     const parseMemory = (memStr) => {
         if (!memStr || memStr === '-') return 0;
@@ -244,7 +320,9 @@ function sortResources(sortBy) {
                 if (key === 'memory') return parseMemory(usage.memory);
                 return parseFloat(usage[key]) || 0;
             default:
-                return item[key] || '';
+                // For other keys like 'type' on services
+                const val = item.spec?.[key] || item[key] || '';
+                return typeof val === 'string' ? val.toLowerCase() : val;
         }
     };
 
@@ -364,17 +442,11 @@ function searchResources() {
     if (progressBar) progressBar.style.width = '100%';
     if (loadingText) loadingText.textContent = 'Rendering results...';
 
-    renderCurrentPage(resourceType); // This will call renderResourcePage
-
+    state.items = filteredItems;
+    sortResources(resourceType); // Sort the filtered results
+    
     if (searchTerm) {
         addResourceSearchIndicator(resourceType, searchTerm, filteredItems.length);
-    } else {
-        // If search term is empty, we effectively cleared the search.
-        // Restore original items if they exist, otherwise, state.items already has them.
-        if (state.originalItems) {
-            state.items = [...state.originalItems];
-            // delete state.originalItems; // Keep originalItems to allow re-filtering without re-fetch
-        }
     }
 
     setTimeout(() => {
@@ -443,6 +515,10 @@ function renderResourcePage(resourceType) {
         const tableBody = document.getElementById('resourcesTableBody');
         if (tableBody) tableBody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-4">No data available for ${resourceType}.</td></tr>`;
         return;
+    }
+    
+    if (!resourceData.originalItems) {
+        resourceData.originalItems = [...resourceData.items];
     }
     
     const { items, totalCount } = resourceData; // No pageSize/currentPage needed here
@@ -548,6 +624,8 @@ function filterResourcesByStatus(event, resourceType, status) {
     }
     
     window.app.state.resources.activeStatusFilter = status;
+    state.sortState = { key: null, direction: null }; // Reset sort on status filter change
+    updateSortIndicators(resourceType);
 
     if (status === null || status === 'null') {
         state.items = [...state.originalItems];
@@ -558,7 +636,7 @@ function filterResourcesByStatus(event, resourceType, status) {
     // After filtering, re-apply any active search term
     const searchInput = document.getElementById('resourceSearchInput');
     if (searchInput && searchInput.value) {
-        searchResources(); // This will filter the already status-filtered list
+        searchResources(); // This will filter and then re-sort
     } else {
         renderCurrentPage(resourceType);
     }
