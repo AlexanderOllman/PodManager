@@ -388,73 +388,15 @@ function searchResources() {
     
     console.log(`Explorer client-side searching ${resourceType} for: "${searchTerm}"`);
     
-    const loadingContainer = document.getElementById('resourcesLoading');
-    const tableContainer = document.getElementById('resourcesTableContainer');
-    const progressBar = document.getElementById('resourcesProgressBar');
-    const loadingText = document.getElementById('resourcesLoadingText');
-
-    if (loadingContainer) loadingContainer.style.display = 'flex';
-    if (tableContainer) tableContainer.style.opacity = '0.5'; 
-    if (progressBar) progressBar.style.width = '10%';
-    if (loadingText) loadingText.textContent = 'Filtering resources...';
-
     clearResourceSearchIndicator();
 
-    const state = window.app.state.resources[resourceType];
-    if (!state) {
-        console.warn('No state found for resource type:', resourceType);
-        if (loadingContainer) loadingContainer.style.display = 'none';
-        if (tableContainer) tableContainer.style.opacity = '1';
-        return;
-    }
-
-    // If a status filter is active, we filter from that subset. Otherwise, from the full list.
-    const activeStatusFilter = window.app.state.resources.activeStatusFilter;
-    let itemsToFilter;
-
-    // Ensure originalItems exists and is up-to-date
-    if (!state.originalItems) {
-        state.originalItems = [...state.items]; 
-    }
-
-    if (activeStatusFilter) {
-        itemsToFilter = state.originalItems.filter(item => getResourceStatus(resourceType, item) === activeStatusFilter);
-    } else {
-        itemsToFilter = state.originalItems;
-    }
-
-    const filteredItems = searchTerm
-        ? itemsToFilter.filter(item => {
-            const name = item.metadata?.name?.toLowerCase() || '';
-            const namespace = item.metadata?.namespace?.toLowerCase() || '';
-            // Add other fields to search if necessary
-            return name.includes(searchTerm) || namespace.includes(searchTerm);
-        })
-        : itemsToFilter; // If search term is empty, show the status-filtered (or all) items
-
-    // Update the main items list in the state with the filtered results
-    state.items = filteredItems;
-    // Update totalCount to reflect the filtered items for display purposes, but keep original totalCount if needed elsewhere.
-    // For simplicity in rendering, we might just show the count of filtered items.
-    // state.totalCount = filteredItems.length; // This might be confusing if totalCount means total in cluster.
-    // Let renderResourcePage handle the display of count based on current items.length
-
-    if (progressBar) progressBar.style.width = '100%';
-    if (loadingText) loadingText.textContent = 'Rendering results...';
-
-    state.items = filteredItems;
-    sortResources(resourceType); // Sort the filtered results
+    // Re-apply filters and sorting
+    applyFiltersAndSorting(resourceType);
     
+    const state = window.app.state.resources[resourceType];
     if (searchTerm) {
-        addResourceSearchIndicator(resourceType, searchTerm, filteredItems.length);
+        addResourceSearchIndicator(resourceType, searchTerm, state.items.length);
     }
-
-    setTimeout(() => {
-        if (loadingContainer) loadingContainer.style.display = 'none';
-        if (tableContainer) tableContainer.style.opacity = '1';
-    }, 300);
-
-    window.app.lastUserInteraction = Date.now();
 }
 
 // Clears the search input and results in the explorer
@@ -463,24 +405,9 @@ function clearResourceSearch() {
     if (searchInput) searchInput.value = '';
     clearResourceSearchIndicator();
     
-    const resourceType = window.app.currentResourceType;
-    const state = window.app.state.resources[resourceType];
-    const activeStatusFilter = window.app.state.resources.activeStatusFilter;
+    // Just re-apply filters, which will now use an empty search term
+    applyFiltersAndSorting(window.app.currentResourceType);
 
-    if (state && state.originalItems) {
-        if (activeStatusFilter) {
-            // If a status filter is active, clearing search should restore the status-filtered list
-            state.items = state.originalItems.filter(item => getResourceStatus(resourceType, item) === activeStatusFilter);
-        } else {
-            // Otherwise, restore the full original list
-            state.items = [...state.originalItems];
-        }
-    } else if (state) {
-        console.warn('clearResourceSearch: originalItems not found, reloading.');
-        loadResourceType(resourceType);
-        return;
-    }
-    renderCurrentPage(resourceType);
     window.app.lastUserInteraction = Date.now();
 }
 
@@ -613,38 +540,27 @@ function filterResourcesByStatus(event, resourceType, status) {
     console.log(`Filtering ${resourceType} by status: ${status}`);
 
     const state = window.app.state.resources[resourceType];
-    if (!state || !state.originalItems) {
-        // Fallback to ensure originalItems exists. This should be set on first load.
-        if (state.items) {
-            state.originalItems = [...state.items];
-        } else {
-            console.error("Original items not found for filtering.");
-            return;
-        }
-    }
+    if (!state) return;
     
     window.app.state.resources.activeStatusFilter = status;
     state.sortState = { key: null, direction: null }; // Reset sort on status filter change
     updateSortIndicators(resourceType);
 
-    if (status === null || status === 'null') {
-        state.items = [...state.originalItems];
-    } else {
-        state.items = state.originalItems.filter(item => getResourceStatus(resourceType, item) === status);
-    }
-    
-    // After filtering, re-apply any active search term
-    const searchInput = document.getElementById('resourceSearchInput');
-    if (searchInput && searchInput.value) {
-        searchResources(); // This will filter and then re-sort
-    } else {
-        renderCurrentPage(resourceType);
-    }
+    applyFiltersAndSorting(resourceType);
 
     // Update active state on summary card
-    const summaryCard = document.getElementById('resourceSummaryCard');
+    const summaryCard = document.getElementById('resourceSummaryContainer');
+    if (!summaryCard) return;
     summaryCard.querySelectorAll('a').forEach(a => a.classList.remove('fw-bold'));
-    event.currentTarget.classList.add('fw-bold');
+    
+    // Find the correct link to bold
+    const links = summaryCard.querySelectorAll('a');
+    links.forEach(link => {
+        const onclickAttr = link.getAttribute('onclick');
+        if (onclickAttr && onclickAttr.includes(`'${status}'`)) {
+            link.classList.add('fw-bold');
+        }
+    });
 }
 
 // Helper to get a standardized status from a resource item
@@ -744,4 +660,46 @@ function getResourceUsage(item) {
         gpu: gpu > 0 ? gpu.toString() : '-',
         memory: totalMemoryMi > 0 ? `${totalMemoryMi.toFixed(1)}Mi` : '-'
     };
+}
+
+// New central function to apply all filters and sorting
+function applyFiltersAndSorting(resourceType) {
+    const state = window.app.state.resources[resourceType];
+    if (!state || !state.originalItems) {
+        console.warn(`No original data for ${resourceType} to filter or sort.`);
+        if (state) renderCurrentPage(resourceType); // Render whatever we have (e.g., empty state)
+        return;
+    }
+
+    const searchInput = document.getElementById('resourceSearchInput');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    const activeStatusFilter = window.app.state.resources.activeStatusFilter;
+    
+    let filteredItems = [...state.originalItems];
+
+    // Apply status filter first
+    if (activeStatusFilter) {
+        filteredItems = filteredItems.filter(item => getResourceStatus(resourceType, item) === activeStatusFilter);
+    }
+
+    // Then apply search term filter
+    if (searchTerm) {
+        filteredItems = filteredItems.filter(item => {
+            const name = item.metadata?.name?.toLowerCase() || '';
+            const namespace = item.metadata?.namespace?.toLowerCase() || '';
+            // Add other fields to search if necessary
+            return name.includes(searchTerm) || namespace.includes(searchTerm);
+        });
+    }
+
+    state.items = filteredItems;
+
+    // Apply sorting
+    const sortState = state.sortState;
+    if (sortState && sortState.key && sortState.direction) {
+        sortResources(resourceType);
+    } else {
+        // If no active sort, just render the filtered items
+        renderCurrentPage(resourceType);
+    }
 } 
