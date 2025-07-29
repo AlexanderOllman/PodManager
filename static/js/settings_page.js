@@ -74,27 +74,36 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
-    // Global flag to prevent repeated loading
-    let isLoadingNodes = false;
-    let settingsInitialized = false;
+    // Add loading state tracking
+    let nodesLoading = false;
+    let nodesLoaded = false;
 
     function loadNodes() {
-        if (isLoadingNodes) {
-            console.log('Already loading nodes, skipping...');
+        const nodesContainer = document.getElementById('nodesContainer');
+        const nodesLoadingElement = document.getElementById('nodesLoading');
+        const nodesError = document.getElementById('nodesError');
+        
+        if (!nodesContainer) return;
+        
+        // Prevent multiple simultaneous loads
+        if (nodesLoading) {
+            console.log('Nodes already loading, skipping duplicate request');
             return;
         }
         
-        isLoadingNodes = true;
+        // If nodes are already loaded and container has content, skip
+        if (nodesLoaded && nodesContainer.children.length > 0) {
+            console.log('Nodes already loaded, skipping duplicate request');
+            return;
+        }
         
-        const loadingElement = document.getElementById('nodesLoading');
-        const containerElement = document.getElementById('nodesContainer');
-        const errorElement = document.getElementById('nodesError');
-
+        nodesLoading = true;
+        
         // Show loading state
-        if (loadingElement) loadingElement.style.display = 'block';
-        if (containerElement) containerElement.style.display = 'none';
-        if (errorElement) errorElement.style.display = 'none';
-
+        if (nodesLoadingElement) nodesLoadingElement.style.display = 'block';
+        if (nodesError) nodesError.style.display = 'none';
+        nodesContainer.innerHTML = '';
+        
         fetch('/api/nodes')
             .then(response => {
                 if (!response.ok) {
@@ -103,87 +112,94 @@ document.addEventListener('DOMContentLoaded', function() {
                 return response.json();
             })
             .then(nodes => {
+                if (nodesLoadingElement) nodesLoadingElement.style.display = 'none';
+                nodesLoading = false;
+                nodesLoaded = true;
+                
+                if (nodes.length === 0) {
+                    nodesContainer.innerHTML = '<div class="col-12"><p class="text-muted text-center">No nodes found in the cluster.</p></div>';
+                    return;
+                }
+                
                 renderNodeCards(nodes);
-                if (loadingElement) loadingElement.style.display = 'none';
-                if (containerElement) containerElement.style.display = 'block';
             })
             .catch(error => {
                 console.error('Error loading nodes:', error);
-                if (loadingElement) loadingElement.style.display = 'none';
-                if (errorElement) {
-                    errorElement.style.display = 'block';
-                    const errorMessage = errorElement.querySelector('#nodesErrorMessage');
+                nodesLoading = false;
+                if (nodesLoadingElement) nodesLoadingElement.style.display = 'none';
+                if (nodesError) {
+                    nodesError.style.display = 'block';
+                    const errorMessage = document.getElementById('nodesErrorMessage');
                     if (errorMessage) {
-                        errorMessage.textContent = `Failed to load nodes: ${error.message}`;
+                        errorMessage.textContent = `Error loading nodes: ${error.message}`;
                     }
                 }
-            })
-            .finally(() => {
-                isLoadingNodes = false;
             });
     }
     
     function renderNodeCards(nodes) {
         const nodesContainer = document.getElementById('nodesContainer');
-        if (!nodesContainer) return;
-
-        // Clear existing content
-        nodesContainer.innerHTML = '';
         
-        if (!nodes || nodes.length === 0) {
-            nodesContainer.innerHTML = '<div class="col-12"><p class="text-muted text-center">No nodes found in the cluster.</p></div>';
-            return;
-        }
-
         // Group nodes by role
         const controlPlaneNodes = [];
         const workerNodes = [];
-
+        
         nodes.forEach(node => {
             const isControlPlane = node.role === 'control-plane';
+            
             if (isControlPlane) {
                 controlPlaneNodes.push(node);
             } else {
                 workerNodes.push(node);
             }
         });
-
-        // Render Control Plane section
+        
+        // Clear container
+        nodesContainer.innerHTML = '';
+        
+        // Add Control Plane section
         if (controlPlaneNodes.length > 0) {
-            const controlPlaneSection = `
-                <div class="col-12">
-                    <div class="node-role-section mb-3">
-                        <h5><i class="fas fa-crown text-warning me-2"></i>Control Plane Nodes</h5>
-                    </div>
-                </div>
+            const controlPlaneSection = document.createElement('div');
+            controlPlaneSection.className = 'col-12 node-role-section';
+            controlPlaneSection.innerHTML = `
+                <h5 class="text-muted mb-3">
+                    <i class="fas fa-crown me-2"></i>Control Plane Nodes
+                </h5>
+                <div class="row" id="controlPlaneNodesContainer"></div>
             `;
-            nodesContainer.insertAdjacentHTML('beforeend', controlPlaneSection);
-
+            nodesContainer.appendChild(controlPlaneSection);
+            
+            const controlPlaneContainer = document.getElementById('controlPlaneNodesContainer');
             controlPlaneNodes.forEach(node => {
                 const nodeCard = createNodeCard(node);
-                nodesContainer.insertAdjacentHTML('beforeend', nodeCard);
+                controlPlaneContainer.appendChild(nodeCard);
             });
         }
-
-        // Render Workers section
+        
+        // Add Worker section
         if (workerNodes.length > 0) {
-            const workerSection = `
-                <div class="col-12">
-                    <div class="node-role-section mb-3 mt-4">
-                        <h5><i class="fas fa-server text-primary me-2"></i>Worker Nodes</h5>
-                    </div>
-                </div>
+            const workerSection = document.createElement('div');
+            workerSection.className = 'col-12 node-role-section';
+            workerSection.innerHTML = `
+                <h5 class="text-muted mb-3">
+                    <i class="fas fa-server me-2"></i>Worker Nodes
+                </h5>
+                <div class="row" id="workerNodesContainer"></div>
             `;
-            nodesContainer.insertAdjacentHTML('beforeend', workerSection);
-
+            nodesContainer.appendChild(workerSection);
+            
+            const workerContainer = document.getElementById('workerNodesContainer');
             workerNodes.forEach(node => {
                 const nodeCard = createNodeCard(node);
-                nodesContainer.insertAdjacentHTML('beforeend', nodeCard);
+                workerContainer.appendChild(nodeCard);
             });
         }
     }
     
     function createNodeCard(node) {
+        const col = document.createElement('div');
+        col.className = 'col-lg-4 col-md-6 col-sm-12 mb-4';
+        
         const statusClass = node.status === 'Ready' ? 'ready' : 'not-ready';
         const gpuDisplay = node.gpu_count > 0 ? node.gpu_count : 'None';
         
@@ -191,54 +207,60 @@ document.addEventListener('DOMContentLoaded', function() {
         const isControlPlane = node.role === 'control-plane';
         const roleIcon = isControlPlane ? 'fas fa-crown' : 'fas fa-server';
         
-        return `
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-4">
-                <div class="node-card" data-node-name="${node.name}" onclick="showNodeDetails('${node.name}')">
-                    <div class="node-header">
-                        <h5 class="node-name">
-                            <i class="${roleIcon} me-2" style="color: ${isControlPlane ? '#ffd700' : '#6c757d'};"></i>
-                            ${node.name}
-                        </h5>
-                        <span class="node-status ${statusClass}">${node.status}</span>
+        col.innerHTML = `
+            <div class="node-card" data-node-name="${node.name}">
+                <div class="node-header">
+                    <h5 class="node-name">
+                        <i class="${roleIcon} me-2" style="color: ${isControlPlane ? '#ffd700' : '#6c757d'};"></i>
+                        ${node.name}
+                    </h5>
+                    <span class="node-status ${statusClass}">${node.status}</span>
+                </div>
+                <div class="hardware-specs">
+                    <div class="spec-row">
+                        <span class="spec-label">
+                            <i class="fas fa-microchip spec-icon"></i>CPU Cores
+                        </span>
+                        <span class="spec-value">${node.cpu_cores}</span>
                     </div>
-                    <div class="hardware-specs">
-                        <div class="spec-row">
-                            <span class="spec-label">
-                                <i class="fas fa-microchip spec-icon"></i>CPU Cores
-                            </span>
-                            <span class="spec-value">${node.cpu_cores}</span>
-                        </div>
-                        <div class="spec-row">
-                            <span class="spec-label">
-                                <i class="fas fa-memory spec-icon"></i>Memory
-                            </span>
-                            <span class="spec-value">${node.memory_gb} GB</span>
-                        </div>
-                        <div class="spec-row">
-                            <span class="spec-label">
-                                <i class="fas fa-desktop spec-icon"></i>GPUs
-                            </span>
-                            <span class="spec-value">${gpuDisplay}</span>
-                        </div>
-                        <div class="spec-row">
-                            <span class="spec-label">
-                                <i class="fas fa-box spec-icon"></i>Max Pods
-                            </span>
-                            <span class="spec-value">${node.allocatable_pods}</span>
-                        </div>
-                        <div class="spec-row">
-                            <span class="spec-label">
-                                <i class="fas fa-info-circle spec-icon"></i>Kubelet
-                            </span>
-                            <span class="spec-value">${node.kubelet_version}</span>
-                        </div>
+                    <div class="spec-row">
+                        <span class="spec-label">
+                            <i class="fas fa-memory spec-icon"></i>Memory
+                        </span>
+                        <span class="spec-value">${node.memory_gb} GB</span>
                     </div>
-                    <div class="node-age">
-                        <i class="fas fa-clock me-1"></i>Age: ${node.age}
+                    <div class="spec-row">
+                        <span class="spec-label">
+                            <i class="fas fa-desktop spec-icon"></i>GPUs
+                        </span>
+                        <span class="spec-value">${gpuDisplay}</span>
                     </div>
+                    <div class="spec-row">
+                        <span class="spec-label">
+                            <i class="fas fa-box spec-icon"></i>Max Pods
+                        </span>
+                        <span class="spec-value">${node.allocatable_pods}</span>
+                    </div>
+                    <div class="spec-row">
+                        <span class="spec-label">
+                            <i class="fas fa-info-circle spec-icon"></i>Kubelet
+                        </span>
+                        <span class="spec-value">${node.kubelet_version}</span>
+                    </div>
+                </div>
+                <div class="node-age">
+                    <i class="fas fa-clock me-1"></i>Age: ${node.age}
                 </div>
             </div>
         `;
+        
+        // Add click event listener to the card
+        const cardElement = col.querySelector('.node-card');
+        cardElement.addEventListener('click', function() {
+            showNodeDetails(node.name);
+        });
+        
+        return col;
     }
     
     // Make showNodeDetails available globally
@@ -666,16 +688,46 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
 
+    // Reset state when navigating away from settings
+    function resetSettingsState() {
+        settingsViewInitialized = false;
+        nodesLoaded = false;
+        console.log('Settings state reset');
+    }
+
+    // Listen for navigation away from settings
+    window.addEventListener('beforeunload', resetSettingsState);
+    
+    // Also listen for tab changes (if using tab navigation)
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            resetSettingsState();
+        }
+    });
+
+    // Listen for navigation events that might indicate leaving settings
+    if (typeof navigateToTab === 'function') {
+        const originalNavigateToTab = navigateToTab;
+        window.navigateToTab = function(tabName) {
+            if (tabName !== 'settings') {
+                resetSettingsState();
+            }
+            return originalNavigateToTab.apply(this, arguments);
+        };
+    }
+
+    // Add state tracking for settings view
+    let settingsViewInitialized = false;
+
     function handleSettingsViewVisible() {
-        console.log('Settings view became visible');
-        
-        // Prevent repeated initialization
-        if (settingsInitialized) {
-            console.log('Settings already initialized, skipping...');
+        // Prevent multiple simultaneous initializations
+        if (settingsViewInitialized) {
+            console.log('Settings view already initialized, skipping');
             return;
         }
         
-        settingsInitialized = true;
+        console.log('Settings view became visible');
+        settingsViewInitialized = true;
         
         // Ensure the modal exists before loading nodes
         ensureModalExists();
@@ -731,39 +783,54 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Add debouncing to prevent excessive calls
+    let observerTimeout;
+
     const settingsView = document.getElementById('settings-view');
     if (settingsView) {
         const observer = new MutationObserver(mutations => {
-            mutations.forEach(mutation => {
-                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                    if (settingsView.style.display !== 'none') {
-                        handleSettingsViewVisible();
+            // Clear any existing timeout
+            if (observerTimeout) {
+                clearTimeout(observerTimeout);
+            }
+            
+            // Debounce the mutation handling
+            observerTimeout = setTimeout(() => {
+                mutations.forEach(mutation => {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                        const isVisible = settingsView.style.display !== 'none' && 
+                                        window.getComputedStyle(settingsView).display !== 'none';
+                        if (isVisible && !settingsViewInitialized) {
+                            handleSettingsViewVisible();
+                        }
                     }
-                }
-            });
+                });
+            }, 100); // 100ms debounce
         });
 
         observer.observe(settingsView, { attributes: true });
 
-        if (settingsView.style.display !== 'none') {
+        // Check initial state
+        const isInitiallyVisible = settingsView.style.display !== 'none' && 
+                                 window.getComputedStyle(settingsView).display !== 'none';
+        if (isInitiallyVisible) {
             handleSettingsViewVisible();
         }
     }
 
+    // Also listen for settings navigation with debouncing
     const settingsNavLink = document.querySelector('a.nav-link[data-target="settings-view"], a.nav-link[data-bs-target="#settings"]');
     if (settingsNavLink) {
+        let navTimeout;
         settingsNavLink.addEventListener('click', function() {
-            setTimeout(handleSettingsViewVisible, 50);
+            if (navTimeout) {
+                clearTimeout(navTimeout);
+            }
+            navTimeout = setTimeout(() => {
+                if (!settingsViewInitialized) {
+                    handleSettingsViewVisible();
+                }
+            }, 150);
         });
     }
-
-    // Reset settings state (call when navigating away from settings)
-    function resetSettingsState() {
-        settingsInitialized = false;
-        isLoadingNodes = false;
-        console.log('Settings state reset');
-    }
-
-    // Make reset function globally accessible
-    window.resetSettingsState = resetSettingsState;
 }); 

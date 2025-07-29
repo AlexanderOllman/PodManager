@@ -572,10 +572,8 @@ function loadVersionInfo() {
         });
 }
 
-// Show release notes for the new/update version (settings-specific)
+// Show release notes for the new/update version (renamed to avoid conflict)
 function showSettingsUpdateReleaseNotes() {
-    console.log('Settings-specific showUpdateReleaseNotes called');
-    
     // Get the remote version release notes
     if (window.updateChecker && window.updateChecker.remoteVersion) {
         fetch('/api/version/remote')
@@ -631,6 +629,9 @@ function showSettingsUpdateReleaseNotes() {
         console.error('No update checker or remote version available');
     }
 }
+
+// Make function globally accessible under the new name
+window.showSettingsUpdateReleaseNotes = showSettingsUpdateReleaseNotes;
 
 // Shows the release notes modal
 function showReleaseNotes() {

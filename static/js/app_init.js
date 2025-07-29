@@ -337,14 +337,6 @@ function navigateToTab(tabId) {
                 window.app.socket.emit('control_plane_cli_terminate_request');
             }
         }
-        
-        // If navigating away from settings tab, reset settings state
-        if (window.app.state.navigation.activeTab === 'settings' && tabId !== 'settings') {
-            console.log('[AppInit] Navigating away from settings, resetting settings state.');
-            if (typeof window.resetSettingsState === 'function') {
-                window.resetSettingsState();
-            }
-        }
     }
 
     // General content loading or specific function calls based on tabId

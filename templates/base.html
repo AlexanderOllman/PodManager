@@ -298,13 +298,6 @@
     
     // Navigation function for update notification pill
     function navigateToSettings() {
-        // Check if we're already on the settings tab
-        const currentTab = document.querySelector('.nav-link.active[data-bs-target="#settings"]');
-        if (currentTab) {
-            console.log('Already on settings tab, skipping navigation');
-            return;
-        }
-        
         // If we're using tabs, switch to settings tab
         const settingsTab = document.querySelector('a[data-bs-target="#settings"], a[href="#settings"]');
         if (settingsTab) {
@@ -327,20 +320,26 @@
     
     // Global function to show update release notes
     function showUpdateReleaseNotes() {
-        console.log('Global showUpdateReleaseNotes called');
-        
         // Navigate to settings first if not already there
         navigateToSettings();
         
-        // Simple delay to ensure settings page is loaded, then call the settings-specific function
+        // Delay to ensure settings page is loaded, then call the settings-specific function
         setTimeout(() => {
-            // Call the settings-specific function directly without retries
+            // Call the settings page function with a different name to avoid recursion
             if (typeof showSettingsUpdateReleaseNotes === 'function') {
                 showSettingsUpdateReleaseNotes();
             } else {
-                console.warn('Settings-specific release notes function not available');
+                console.warn('Settings page release notes function not available yet, retrying...');
+                // Retry after another short delay
+                setTimeout(() => {
+                    if (typeof showSettingsUpdateReleaseNotes === 'function') {
+                        showSettingsUpdateReleaseNotes();
+                    } else {
+                        console.error('Settings release notes function not available');
+                    }
+                }, 500);
             }
-        }, 500);
+        }, 200);
     }
     
     // Initialize update checking when DOM is ready

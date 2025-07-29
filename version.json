@@ -6,47 +6,57 @@
     {
       "version": "2.1.5",
       "date": "2025-01-29",
-      "title": "Fixed Navigation Loop & Settings Loading Issues",
+      "title": "Fixed Navigation Loop & Loading Issues",
       "type": "patch",
       "highlights": [
-        "Fixed critical navigation loop when clicking 'Update Available' pill",
-        "Resolved rapidly flashing 'Loading node information' spinner",
-        "Prevented repeated settings page initialization",
-        "Enhanced navigation state management and cleanup"
+        "Fixed infinite navigation loop causing forced redirects to Settings",
+        "Resolved rapid flashing of node loading spinner",
+        "Fixed function name conflict in update notification system",
+        "Enhanced navigation stability and user experience"
       ],
       "bugfixes": [
-        "Fixed navigation loop preventing access to other pages from settings",
-        "Resolved rapidly flashing loading indicators in settings",
-        "Fixed function naming conflicts between global and local scope",
-        "Corrected repeated node loading when settings page is already loaded",
-        "Enhanced modal and navigation state management"
+        "Fixed infinite recursion in showUpdateReleaseNotes() function",
+        "Resolved navigation loop preventing access to other pages",
+        "Fixed rapid flashing of 'Loading node information' spinner",
+        "Corrected function name conflicts between global and settings functions",
+        "Added proper guards to prevent multiple simultaneous node loading",
+        "Fixed MutationObserver causing excessive function calls"
       ],
       "features": [
         {
-          "category": "Navigation Improvements",
+          "category": "Navigation Stability",
           "items": [
-            "Added navigation state checking to prevent unnecessary redirects",
-            "Implemented settings state reset when navigating away",
-            "Enhanced function naming to avoid scope conflicts",
-            "Added loading state management to prevent repeated API calls"
+            "Added debouncing to MutationObserver to prevent excessive triggers",
+            "Implemented state tracking to prevent redundant initializations",
+            "Added proper cleanup when navigating away from settings",
+            "Enhanced navigation event handling with timeout management"
           ]
         },
         {
-          "category": "Performance Enhancements",
+          "category": "Loading Performance",
           "items": [
-            "Prevented duplicate node loading with loading flags",
-            "Optimized settings page initialization logic",
-            "Reduced unnecessary DOM manipulation and API calls",
-            "Improved user experience with smoother navigation"
+            "Added loading state guards to prevent duplicate API calls",
+            "Implemented content caching to avoid unnecessary re-loads",
+            "Added comprehensive error handling for loading states",
+            "Enhanced loading spinner management with proper state tracking"
+          ]
+        },
+        {
+          "category": "Function Naming",
+          "items": [
+            "Renamed settings-specific functions to avoid global conflicts",
+            "Separated global navigation functions from page-specific functions",
+            "Added proper namespacing for update release notes functionality",
+            "Enhanced function accessibility with better scope management"
           ]
         }
       ],
       "technical": [
-        "Renamed showUpdateReleaseNotes to showSettingsUpdateReleaseNotes to avoid conflicts",
-        "Added isLoadingNodes and settingsInitialized flags for state management",
-        "Modified createNodeCard to return HTML strings instead of DOM elements",
-        "Enhanced navigateToSettings with current tab checking",
-        "Added resetSettingsState function for proper cleanup"
+        "Fixed recursive function calls by renaming showSettingsUpdateReleaseNotes()",
+        "Added debouncing to MutationObserver with 100ms delay",
+        "Implemented state tracking variables (settingsViewInitialized, nodesLoaded)",
+        "Added timeout management for navigation and loading events",
+        "Enhanced error handling with null checks for DOM elements"
       ]
     },
     {
