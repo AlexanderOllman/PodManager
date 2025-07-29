@@ -869,32 +869,48 @@
         </div>
         
         <div id="githubSettings">
-            <!-- Database Refresh Section -->
-            <div class="settings-section">
-                <h4>Database Management</h4>
-                <p class="text-muted small mb-2">
-                    Last refreshed: <span id="db-last-updated-time">Loading...</span>
-                </p>
-                <p class="text-muted mb-3">Manually refresh the database with current Kubernetes resources.
-                    This will fetch fresh data for all resources from the cluster.
-                </p>
-                <button class="settings-btn settings-btn-primary" onclick="refreshDatabase()">
-                    <i class="fas fa-sync-alt"></i> Refresh Database
-                </button>
-                <div id="databaseRefreshStatus" class="mt-2" style="display: none;"></div>
-            </div>
+            <!-- Settings Cards Row -->
+            <div class="row">
+                <!-- Database Refresh Section -->
+                <div class="col-md-6">
+                    <div class="settings-section">
+                        <h4>Database Management</h4>
+                        <p class="text-muted small mb-2">
+                            Last refreshed: <span id="db-last-updated-time">Loading...</span>
+                        </p>
+                        <p class="text-muted mb-3">Manually refresh the database with current Kubernetes resources.
+                            This will fetch fresh data for all resources from the cluster.
+                        </p>
+                        <button class="settings-btn settings-btn-primary" onclick="refreshDatabase()">
+                            <i class="fas fa-sync-alt"></i> Refresh Database
+                        </button>
+                        <div id="databaseRefreshStatus" class="mt-2" style="display: none;"></div>
+                    </div>
+                </div>
 
-            <!-- Application Refresh Section -->
-            <div class="settings-section">
-                <h4>Application Update</h4>
-                <p class="text-muted mb-3">
-                    This will stop the application, perform a hard pull on the GitHub repository, 
-                    and restart the application with the latest code.
-                </p>
-                <button class="settings-btn settings-btn-warning" onclick="showUpdateModal()">
-                    <i class="fas fa-download"></i> Update Application
-                </button>
-                <div id="updateStatus" class="mt-2" style="display: none;"></div>
+                <!-- Application Update Section -->
+                <div class="col-md-6">
+                    <div class="settings-section">
+                        <h4>Application Update</h4>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">Current version:</span>
+                            <span class="badge bg-secondary" id="currentVersionBadge">Loading...</span>
+                        </div>
+                        <p class="text-muted mb-3">
+                            This will stop the application, perform a hard pull on the GitHub repository, 
+                            and restart the application with the latest code.
+                        </p>
+                        <button class="settings-btn settings-btn-warning" onclick="showUpdateModal()">
+                            <i class="fas fa-download"></i> Update Application
+                        </button>
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="showReleaseNotes()">
+                                <i class="fas fa-file-alt me-1"></i> Release Notes
+                            </button>
+                        </div>
+                        <div id="updateStatus" class="mt-2" style="display: none;"></div>
+                    </div>
+                </div>
             </div>
             
             <!-- Log Display Area (Legacy - kept for backward compatibility) -->
@@ -1062,6 +1078,40 @@
                         <div id="cliOutputContent">Starting update process...</div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Release Notes Modal -->
+<div class="modal fade" id="releaseNotesModal" tabindex="-1" aria-labelledby="releaseNotesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header" style="background: var(--hpe-gradient); color: white; border: none;">
+                <h5 class="modal-title" id="releaseNotesModalLabel">
+                    <i class="fas fa-file-alt me-2"></i>Release Notes
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                <div class="text-center" id="releaseNotesLoading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading release notes...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Loading release notes...</p>
+                </div>
+                
+                <div id="releaseNotesContent" style="display: none;">
+                    <!-- Release notes content will be populated here -->
+                </div>
+                
+                <div id="releaseNotesError" class="alert alert-danger" style="display: none;">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <span>Unable to load release notes. Please try again later.</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>

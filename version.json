@@ -1,0 +1,101 @@
+{
+  "version": "2.1.0",
+  "buildDate": "2025-01-29",
+  "codename": "Quantum Node",
+  "releases": [
+    {
+      "version": "2.1.0",
+      "date": "2025-01-29",
+      "title": "Enhanced Update Experience & Node Management",
+      "type": "major",
+      "highlights": [
+        "Beautiful modal-based application update system",
+        "Node hardware specification cards with detailed views",
+        "Worker-only pod allocation calculations",
+        "Universal progress bar styling throughout the application",
+        "Collapsible CLI output with terminal styling"
+      ],
+      "features": [
+        {
+          "category": "Settings & Updates",
+          "items": [
+            "Added non-dismissible update modal with step-by-step progress tracking",
+            "Implemented collapsible CLI output with dark terminal theme",
+            "Enhanced settings page with beautiful card layouts",
+            "Added gradient buttons with hover animations and micro-interactions",
+            "Created universal progress bar system with indeterminate and percentage modes"
+          ]
+        },
+        {
+          "category": "Node Management",
+          "items": [
+            "Added node hardware specification cards grouped by Control Plane and Workers",
+            "Implemented detailed node modal with complete kubectl describe information",
+            "Added node conditions, labels, and taints display",
+            "Created responsive node card layout with status indicators",
+            "Fixed pod allocation to only count worker nodes (excluding control plane)"
+          ]
+        },
+        {
+          "category": "UI/UX Improvements",
+          "items": [
+            "Applied universal progress bar styling to all loading states",
+            "Enhanced visual feedback with smooth animations and transitions",
+            "Improved modal accessibility and error handling",
+            "Added comprehensive debugging and fallback mechanisms",
+            "Created consistent HPE design language throughout the application"
+          ]
+        }
+      ],
+      "bugfixes": [
+        "Fixed Bootstrap modal initialization errors with proper fallback handling",
+        "Resolved node details modal not found issues with dynamic creation",
+        "Corrected pod utilization calculations to exclude control plane nodes",
+        "Fixed modal backdrop and keyboard event handling"
+      ],
+      "technical": [
+        "Migrated database schema to support worker-only pod allocation",
+        "Enhanced error handling for modal initialization",
+        "Improved progress tracking with real-time step updates",
+        "Added comprehensive logging for debugging and monitoring"
+      ]
+    },
+    {
+      "version": "2.0.1",
+      "date": "2025-01-28", 
+      "title": "Performance & Stability Improvements",
+      "type": "patch",
+      "highlights": [
+        "Improved dashboard loading performance",
+        "Enhanced error handling and user feedback",
+        "Optimized resource data fetching"
+      ],
+      "bugfixes": [
+        "Fixed GPU dashboard loading issues",
+        "Resolved namespace metrics calculation errors",
+        "Improved error handling for failed API requests"
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2025-01-25",
+      "title": "Major UI Overhaul & Resource Management",
+      "type": "major", 
+      "highlights": [
+        "Complete dashboard redesign with modern UI",
+        "Enhanced resource management capabilities",
+        "Improved performance and reliability"
+      ],
+      "features": [
+        {
+          "category": "Dashboard",
+          "items": [
+            "New modern dashboard with metric cards",
+            "GPU allocation tracking and visualization", 
+            "Namespace resource utilization overview"
+          ]
+        }
+      ]
+    }
+  ]
+} 

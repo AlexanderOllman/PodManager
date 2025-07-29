@@ -1771,7 +1771,36 @@ def get_database_last_updated():
         })
     except Exception as e:
         logging.error(f"Error getting database last updated time: {str(e)}", exc_info=True)
-        return jsonify({'error': 'An error occurred while fetching database status.'}), 500
+        return jsonify({'error': 'Failed to get database timestamp'}), 500
+
+@app.route('/api/version', methods=['GET'])
+def get_version_info():
+    """Returns the application version information and release notes."""
+    try:
+        version_file_path = os.path.join(os.path.dirname(__file__), 'version.json')
+        
+        if not os.path.exists(version_file_path):
+            # Return default version if file doesn't exist
+            return jsonify({
+                'version': '2.0.0',
+                'buildDate': '2025-01-25',
+                'codename': 'Unknown',
+                'releases': []
+            })
+        
+        with open(version_file_path, 'r', encoding='utf-8') as f:
+            version_data = json.load(f)
+        
+        return jsonify(version_data)
+    except Exception as e:
+        logging.error(f"Error reading version information: {str(e)}", exc_info=True)
+        return jsonify({
+            'version': 'Unknown',
+            'buildDate': 'Unknown', 
+            'codename': 'Unknown',
+            'releases': [],
+            'error': 'Failed to load version information'
+        }), 500
 
 @app.route('/api/nodes', methods=['GET'])
 def get_nodes():

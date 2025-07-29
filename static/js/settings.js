@@ -491,4 +491,228 @@ function showUpdateError(message) {
     }
     
     appendCliOutput(`[ERROR] Update failed: ${message}`);
-} 
+}
+
+// ============================================================================
+// VERSION MANAGEMENT FUNCTIONALITY
+// ============================================================================
+
+// Loads and displays current version information
+function loadVersionInfo() {
+    const versionBadge = document.getElementById('currentVersionBadge');
+    if (!versionBadge) return;
+    
+    fetch('/api/version')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                versionBadge.textContent = 'Unknown';
+                versionBadge.className = 'badge bg-warning';
+                console.error('Error loading version:', data.error);
+                return;
+            }
+            
+            versionBadge.textContent = `v${data.version}`;
+            versionBadge.className = 'badge';
+            versionBadge.id = 'currentVersionBadge'; // Ensure the ID is preserved
+            
+            // Store version data globally for release notes
+            window.versionData = data;
+        })
+        .catch(error => {
+            console.error('Error fetching version info:', error);
+            versionBadge.textContent = 'Error';
+            versionBadge.className = 'badge bg-danger';
+        });
+}
+
+// Shows the release notes modal
+function showReleaseNotes() {
+    const modal = document.getElementById('releaseNotesModal');
+    if (!modal) {
+        console.error('Release notes modal not found');
+        return;
+    }
+    
+    const loadingDiv = document.getElementById('releaseNotesLoading');
+    const contentDiv = document.getElementById('releaseNotesContent');
+    const errorDiv = document.getElementById('releaseNotesError');
+    
+    // Reset modal state
+    if (loadingDiv) loadingDiv.style.display = 'block';
+    if (contentDiv) {
+        contentDiv.style.display = 'none';
+        contentDiv.innerHTML = '';
+    }
+    if (errorDiv) errorDiv.style.display = 'none';
+    
+    // Show modal
+    const bootstrapModal = new bootstrap.Modal(modal);
+    bootstrapModal.show();
+    
+    // Load release notes
+    loadReleaseNotes();
+}
+
+// Loads and renders release notes
+function loadReleaseNotes() {
+    fetch('/api/version')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showReleaseNotesError('Failed to load version information');
+                return;
+            }
+            
+            renderReleaseNotes(data);
+        })
+        .catch(error => {
+            console.error('Error loading release notes:', error);
+            showReleaseNotesError('Network error while loading release notes');
+        });
+}
+
+// Renders the release notes content
+function renderReleaseNotes(versionData) {
+    const loadingDiv = document.getElementById('releaseNotesLoading');
+    const contentDiv = document.getElementById('releaseNotesContent');
+    
+    if (loadingDiv) loadingDiv.style.display = 'none';
+    if (!contentDiv) return;
+    
+    const releases = versionData.releases || [];
+    
+    const html = `
+        <div class="release-notes-container">
+            <!-- Current Version Header -->
+            <div class="version-header">
+                <div class="version-number">v${versionData.version}</div>
+                <div class="version-codename">${versionData.codename}</div>
+                <div class="version-date">Build Date: ${versionData.buildDate}</div>
+            </div>
+            
+            <!-- Release History -->
+            ${releases.map(release => renderReleaseItem(release)).join('')}
+        </div>
+    `;
+    
+    contentDiv.innerHTML = html;
+    contentDiv.style.display = 'block';
+}
+
+// Renders a single release item
+function renderReleaseItem(release) {
+    const typeClass = release.type || 'patch';
+    const features = release.features || [];
+    const bugfixes = release.bugfixes || [];
+    const technical = release.technical || [];
+    const highlights = release.highlights || [];
+    
+    return `
+        <div class="release-item">
+            <div class="release-header">
+                <div>
+                    <div class="release-version">v${release.version}</div>
+                    <div class="release-title">${release.title}</div>
+                </div>
+                <div class="text-end">
+                    <div class="release-type-badge ${typeClass}">${typeClass}</div>
+                    <div class="release-date mt-1">${formatReleaseDate(release.date)}</div>
+                </div>
+            </div>
+            
+            ${highlights.length > 0 ? `
+                <div class="highlights-section">
+                    <h6 class="section-title">
+                        <i class="fas fa-star"></i>
+                        Key Highlights
+                    </h6>
+                    <ul class="highlights-list">
+                        ${highlights.map(highlight => `<li>${highlight}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+            
+            ${features.length > 0 ? `
+                <div class="features-section">
+                    <h6 class="section-title">
+                        <i class="fas fa-plus-circle"></i>
+                        New Features
+                    </h6>
+                    ${features.map(category => `
+                        <div class="feature-category">
+                            <div class="feature-category-title">${category.category}</div>
+                            <ul class="feature-list">
+                                ${category.items.map(item => `<li>${item}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : ''}
+            
+            ${bugfixes.length > 0 ? `
+                <div class="bugfixes-section">
+                    <h6 class="section-title">
+                        <i class="fas fa-bug"></i>
+                        Bug Fixes
+                    </h6>
+                    <ul class="simple-list">
+                        ${bugfixes.map(fix => `<li>${fix}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+            
+            ${technical.length > 0 ? `
+                <div class="technical-section">
+                    <h6 class="section-title">
+                        <i class="fas fa-cogs"></i>
+                        Technical Changes
+                    </h6>
+                    <ul class="simple-list">
+                        ${technical.map(change => `<li>${change}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+// Formats a release date for display
+function formatReleaseDate(dateString) {
+    try {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    } catch (error) {
+        return dateString;
+    }
+}
+
+// Shows error state in release notes modal
+function showReleaseNotesError(message) {
+    const loadingDiv = document.getElementById('releaseNotesLoading');
+    const contentDiv = document.getElementById('releaseNotesContent');
+    const errorDiv = document.getElementById('releaseNotesError');
+    
+    if (loadingDiv) loadingDiv.style.display = 'none';
+    if (contentDiv) contentDiv.style.display = 'none';
+    if (errorDiv) {
+        errorDiv.style.display = 'block';
+        const errorSpan = errorDiv.querySelector('span');
+        if (errorSpan) {
+            errorSpan.textContent = message;
+        }
+    }
+}
+
+// Initialize version loading when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Load version info if we're on the settings page
+    const settingsSection = document.getElementById('githubSettings');
+    if (settingsSection) {
+        loadVersionInfo();
+    }
+}); 

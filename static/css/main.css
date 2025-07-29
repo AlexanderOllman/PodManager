@@ -2057,4 +2057,208 @@ body {
 .update-status-indicator.error {
     background: rgba(255, 90, 90, 0.1);
     color: var(--hpe-error);
+}
+
+/* Release Notes Styling */
+.release-notes-container {
+    font-family: var(--hpe-font-family);
+}
+
+.version-header {
+    background: linear-gradient(135deg, var(--hpe-primary), var(--hpe-secondary));
+    color: white;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    text-align: center;
+}
+
+.version-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.version-codename {
+    font-size: 1.2rem;
+    opacity: 0.9;
+    margin-bottom: 4px;
+}
+
+.version-date {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.release-item {
+    background: var(--hpe-white);
+    border: 1px solid var(--hpe-light-gray);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.release-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--hpe-light-gray);
+}
+
+.release-version {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--hpe-dark);
+}
+
+.release-date {
+    color: var(--hpe-gray);
+    font-size: 0.9rem;
+}
+
+.release-type-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.release-type-badge.major {
+    background: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}
+
+.release-type-badge.minor {
+    background: rgba(255, 184, 0, 0.1);
+    color: #ffc107;
+}
+
+.release-type-badge.patch {
+    background: rgba(40, 167, 69, 0.1);
+    color: #28a745;
+}
+
+.release-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--hpe-primary);
+    margin-bottom: 12px;
+}
+
+.highlights-section {
+    margin-bottom: 20px;
+}
+
+.highlights-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.highlights-list li {
+    padding: 8px 0;
+    padding-left: 24px;
+    position: relative;
+    color: var(--hpe-dark);
+}
+
+.highlights-list li::before {
+    content: '★';
+    position: absolute;
+    left: 0;
+    color: var(--hpe-primary);
+    font-weight: bold;
+}
+
+.features-section {
+    margin-bottom: 20px;
+}
+
+.feature-category {
+    margin-bottom: 16px;
+}
+
+.feature-category-title {
+    font-weight: 600;
+    color: var(--hpe-secondary);
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--hpe-light-gray);
+}
+
+.feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.feature-list li {
+    padding: 4px 0;
+    padding-left: 20px;
+    position: relative;
+    color: var(--hpe-dark);
+    font-size: 0.9rem;
+}
+
+.feature-list li::before {
+    content: '•';
+    position: absolute;
+    left: 0;
+    color: var(--hpe-primary);
+    font-weight: bold;
+}
+
+.bugfixes-section, .technical-section {
+    margin-bottom: 16px;
+}
+
+.section-title {
+    font-weight: 600;
+    color: var(--hpe-dark);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.section-title i {
+    color: var(--hpe-primary);
+}
+
+.simple-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.simple-list li {
+    padding: 4px 0;
+    padding-left: 20px;
+    position: relative;
+    color: var(--hpe-dark);
+    font-size: 0.9rem;
+}
+
+.simple-list li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--hpe-success);
+    font-weight: bold;
+}
+
+/* Version Badge in Settings */
+#currentVersionBadge {
+    font-size: 0.8rem;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: var(--hpe-gradient);
+    color: white;
+    border: none;
+    font-weight: 500;
 } 
