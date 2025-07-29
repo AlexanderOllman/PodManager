@@ -950,6 +950,41 @@
         </div>
     </div>
 </div>
+
+<!-- Node Details Modal -->
+<div class="modal fade node-details-modal" id="nodeDetailsModal" tabindex="-1" aria-labelledby="nodeDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="nodeDetailsModalLabel">
+                    <i class="fas fa-server me-2"></i>Node Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="nodeDetailsLoading" class="text-center py-4" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading node details...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Loading detailed node information...</p>
+                </div>
+                
+                <div id="nodeDetailsContent" class="node-details-content">
+                    <!-- Node details will be populated here -->
+                </div>
+                
+                <div id="nodeDetailsError" class="alert alert-danger" style="display: none;">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <span id="nodeDetailsErrorMessage">Unable to load node details.</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block page_scripts %}
@@ -962,37 +997,3 @@
     <script src="{{ url_for('static', filename='js/resource_explorer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/charts_page.js') }}"></script>
 {% endblock %}
-
-    <!-- Node Details Modal -->
-    <div class="modal fade node-details-modal" id="nodeDetailsModal" tabindex="-1" aria-labelledby="nodeDetailsModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="nodeDetailsModalLabel">
-                        <i class="fas fa-server me-2"></i>Node Details
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="nodeDetailsLoading" class="text-center py-4" style="display: none;">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading node details...</span>
-                        </div>
-                        <p class="mt-2 text-muted">Loading detailed node information...</p>
-                    </div>
-                    
-                    <div id="nodeDetailsContent" class="node-details-content">
-                        <!-- Node details will be populated here -->
-                    </div>
-                    
-                    <div id="nodeDetailsError" class="alert alert-danger" style="display: none;">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        <span id="nodeDetailsErrorMessage">Unable to load node details.</span>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>

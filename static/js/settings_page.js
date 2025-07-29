@@ -239,11 +239,33 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Make showNodeDetails available globally
     window.showNodeDetails = function(nodeName) {
-        const modalElement = document.getElementById('nodeDetailsModal');
+        console.log('showNodeDetails called for:', nodeName);
+        
+        // Add more comprehensive modal searching
+        let modalElement = document.getElementById('nodeDetailsModal');
+        
         if (!modalElement) {
-            console.error('Node details modal not found');
+            console.log('Modal not found by ID, searching by class...');
+            modalElement = document.querySelector('.node-details-modal');
+        }
+        
+        if (!modalElement) {
+            console.log('Modal not found by class, searching by any modal with node details...');
+            modalElement = document.querySelector('[id*="nodeDetails"]');
+        }
+        
+        if (!modalElement) {
+            console.error('Node details modal not found in DOM');
+            console.log('Available modals:', document.querySelectorAll('.modal'));
+            console.log('Elements with nodeDetails:', document.querySelectorAll('[id*="nodeDetails"]'));
+            console.log('DOM ready state:', document.readyState);
+            
+            // Try to create the modal dynamically if it doesn't exist
+            createModalDynamically();
             return;
         }
+        
+        console.log('Modal found:', modalElement);
         
         const modalTitle = document.getElementById('nodeDetailsModalLabel');
         const loadingDiv = document.getElementById('nodeDetailsLoading');
@@ -339,6 +361,65 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             };
             document.addEventListener('keydown', handleEscape);
+        }
+        
+        // Function to create modal dynamically if not found
+        function createModalDynamically() {
+            console.log('Creating modal dynamically...');
+            const modalHTML = `
+                <div class="modal fade node-details-modal" id="nodeDetailsModal" tabindex="-1" aria-labelledby="nodeDetailsModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-xl">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="nodeDetailsModalLabel">
+                                    <i class="fas fa-server me-2"></i>Node Details: ${nodeName}
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div id="nodeDetailsLoading" class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading node details...</span>
+                                    </div>
+                                    <p class="mt-2 text-muted">Loading detailed node information...</p>
+                                </div>
+                                
+                                <div id="nodeDetailsContent" class="node-details-content">
+                                    <!-- Node details will be populated here -->
+                                </div>
+                                
+                                <div id="nodeDetailsError" class="alert alert-danger" style="display: none;">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <span id="nodeDetailsErrorMessage">Unable to load node details.</span>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add the modal to the body
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+            
+            // Now try to show the modal again
+            const newModal = document.getElementById('nodeDetailsModal');
+            if (newModal) {
+                console.log('Modal created successfully');
+                try {
+                    const modal = new bootstrap.Modal(newModal, {
+                        backdrop: true,
+                        keyboard: true,
+                        focus: true
+                    });
+                    modal.show();
+                } catch (error) {
+                    console.error('Error with dynamically created modal:', error);
+                    showModalFallback();
+                }
+            }
         }
         
         // Fetch node details
@@ -582,9 +663,60 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function handleSettingsViewVisible() {
+        console.log('Settings view became visible');
+        
+        // Ensure the modal exists before loading nodes
+        ensureModalExists();
+        
         injectTimestampElement();
         updateDatabaseTimestamp();
         loadNodes();
+    }
+    
+    function ensureModalExists() {
+        let modal = document.getElementById('nodeDetailsModal');
+        if (!modal) {
+            console.log('Modal not found, creating it...');
+            // Create the modal if it doesn't exist
+            const modalHTML = `
+                <div class="modal fade node-details-modal" id="nodeDetailsModal" tabindex="-1" aria-labelledby="nodeDetailsModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-xl">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="nodeDetailsModalLabel">
+                                    <i class="fas fa-server me-2"></i>Node Details
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div id="nodeDetailsLoading" class="text-center py-4" style="display: none;">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading node details...</span>
+                                    </div>
+                                    <p class="mt-2 text-muted">Loading detailed node information...</p>
+                                </div>
+                                
+                                <div id="nodeDetailsContent" class="node-details-content">
+                                    <!-- Node details will be populated here -->
+                                </div>
+                                
+                                <div id="nodeDetailsError" class="alert alert-danger" style="display: none;">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <span id="nodeDetailsErrorMessage">Unable to load node details.</span>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+            console.log('Modal created and added to DOM');
+        } else {
+            console.log('Modal already exists');
+        }
     }
 
     const settingsView = document.getElementById('settings-view');

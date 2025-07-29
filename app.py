@@ -159,9 +159,21 @@ def _collect_and_store_environment_metrics():
         status = node.get('status', {})
         capacity = status.get('capacity', {})
         allocatable = status.get('allocatable', {})
+        metadata = node.get('metadata', {})
+        labels = metadata.get('labels', {})
+        
+        # Check if this is a control plane node
+        is_control_plane = (
+            'node-role.kubernetes.io/control-plane' in labels or 
+            'node-role.kubernetes.io/master' in labels
+        )
 
+        # For pod allocation, only count worker nodes (exclude control plane)
+        if not is_control_plane:
+            total_allocatable_pods += int(allocatable.get('pods', 0))
+        
+        # For capacity and other resources, count all nodes
         total_pod_capacity += int(capacity.get('pods', 0))
-        total_allocatable_pods += int(allocatable.get('pods', 0))
         total_allocatable_cpu_millicores += parse_cpu_to_millicores(allocatable.get('cpu', '0'))
         total_allocatable_memory_bytes += parse_memory_to_bytes(allocatable.get('memory', '0'))
         total_allocatable_gpus += int(allocatable.get('nvidia.com/gpu', 0))
