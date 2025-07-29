@@ -1761,6 +1761,78 @@ def get_database_last_updated():
         logging.error(f"Error getting database last updated time: {str(e)}", exc_info=True)
         return jsonify({'error': 'An error occurred while fetching database status.'}), 500
 
+@app.route('/api/nodes', methods=['GET'])
+def get_nodes():
+    """Get all nodes from the database with hardware specifications."""
+    try:
+        nodes = db.get_resources('nodes')
+        
+        # Process nodes to extract key hardware specs for cards
+        node_cards = []
+        for node in nodes:
+            metadata = node.get('metadata', {})
+            status = node.get('status', {})
+            capacity = status.get('capacity', {})
+            allocatable = status.get('allocatable', {})
+            node_info = status.get('nodeInfo', {})
+            
+            # Parse CPU and memory for display
+            cpu_cores = capacity.get('cpu', '0')
+            memory_ki = capacity.get('memory', '0Ki')
+            
+            # Convert memory to GB for display
+            memory_gb = 0
+            if memory_ki.endswith('Ki'):
+                memory_gb = round(int(memory_ki[:-2]) / (1024 * 1024), 1)
+            
+            # Get GPU count
+            gpu_count = int(capacity.get('nvidia.com/gpu', 0))
+            
+            # Get node conditions for status
+            conditions = status.get('conditions', [])
+            ready_condition = next((c for c in conditions if c.get('type') == 'Ready'), {})
+            is_ready = ready_condition.get('status') == 'True'
+            
+            node_card = {
+                'name': metadata.get('name', ''),
+                'cpu_cores': cpu_cores,
+                'memory_gb': memory_gb,
+                'gpu_count': gpu_count,
+                'os_image': node_info.get('osImage', ''),
+                'kernel_version': node_info.get('kernelVersion', ''),
+                'container_runtime': node_info.get('containerRuntimeVersion', ''),
+                'kubelet_version': node_info.get('kubeletVersion', ''),
+                'status': 'Ready' if is_ready else 'NotReady',
+                'age': node.get('age', ''),
+                'labels': metadata.get('labels', {}),
+                'allocatable_cpu': allocatable.get('cpu', '0'),
+                'allocatable_memory': allocatable.get('memory', '0'),
+                'allocatable_pods': allocatable.get('pods', '0')
+            }
+            node_cards.append(node_card)
+        
+        return jsonify(node_cards)
+    except Exception as e:
+        logging.error(f"Error getting nodes: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/nodes/<node_name>/details', methods=['GET'])
+def get_node_details(node_name):
+    """Get detailed information for a specific node."""
+    try:
+        nodes = db.get_resources('nodes')
+        
+        # Find the specific node
+        node = next((n for n in nodes if n.get('metadata', {}).get('name') == node_name), None)
+        
+        if not node:
+            return jsonify({"error": f"Node {node_name} not found"}), 404
+        
+        return jsonify(node)
+    except Exception as e:
+        logging.error(f"Error getting node details for {node_name}: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     # This block runs when you execute `python app.py` directly.
     # It's common to run development server here.

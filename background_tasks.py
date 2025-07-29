@@ -99,7 +99,7 @@ class KubernetesDataUpdater:
 
     def _update_resources(self):
         """Update all resources in the database atomically."""
-        resource_types = ['pods', 'services', 'deployments', 'configmaps', 'secrets', 'inferenceservices']
+        resource_types = ['pods', 'services', 'deployments', 'configmaps', 'secrets', 'inferenceservices', 'nodes']
         all_resources = {}
         
         for resource_type in resource_types:
