@@ -84,7 +84,7 @@
                 </a>
                 <div class="d-flex align-items-center">
                     <!-- Update Available Notification -->
-                    <div class="update-notification-pill" id="updateNotificationPill" style="display: none;" onclick="navigateToSettings()">
+                    <div class="update-notification-pill" id="updateNotificationPill" style="display: none;" onclick="showUpdateReleaseNotes()">
                         <i class="fas fa-download me-1"></i>
                         <span>Update Available</span>
                     </div>
@@ -156,15 +156,7 @@
                 this.localVersion = localVer;
                 this.remoteVersion = remoteVer;
                 
-                if (localVer && remoteVer && this.isUpdateAvailable(localVer, remoteVer)) {
-                    this.showUpdateNotifications();
-                } else {
-                    this.hideUpdateNotifications();
-                    // Still show remote version badge even if no update available
-                    if (remoteVer) {
-                        this.showRemoteVersion();
-                    }
-                }
+                this.showUpdateNotifications();
             }).catch(error => {
                 console.warn('Update check failed:', error);
                 this.hideUpdateNotifications();
@@ -215,14 +207,22 @@
         isUpdateAvailable: function(localVer, remoteVer) {
             if (!localVer || !remoteVer) return false;
             
+            // Normalize versions by removing 'v' prefix if present
+            const normalizeVersion = (ver) => ver.replace(/^v/, '');
+            const local = normalizeVersion(localVer);
+            const remote = normalizeVersion(remoteVer);
+            
+            // Return false if versions are exactly the same
+            if (local === remote) return false;
+            
             // Simple version comparison (works for semantic versioning like 2.1.0)
             const parseVersion = (ver) => ver.split('.').map(num => parseInt(num, 10));
-            const local = parseVersion(localVer);
-            const remote = parseVersion(remoteVer);
+            const localParts = parseVersion(local);
+            const remoteParts = parseVersion(remote);
             
-            for (let i = 0; i < Math.max(local.length, remote.length); i++) {
-                const localPart = local[i] || 0;
-                const remotePart = remote[i] || 0;
+            for (let i = 0; i < Math.max(localParts.length, remoteParts.length); i++) {
+                const localPart = localParts[i] || 0;
+                const remotePart = remoteParts[i] || 0;
                 
                 if (remotePart > localPart) return true;
                 if (remotePart < localPart) return false;
@@ -238,18 +238,26 @@
             const remoteVersionBadge = document.getElementById('remoteVersionBadge');
             const remoteVersionText = document.getElementById('remoteVersionText');
             
-            if (navbarPill) {
-                navbarPill.style.display = 'flex';
+            // Only show update notifications if there's actually a version difference
+            if (this.localVersion && this.remoteVersion && this.isUpdateAvailable(this.localVersion, this.remoteVersion)) {
+                if (navbarPill) {
+                    navbarPill.style.display = 'flex';
+                }
+                if (settingsPill) {
+                    settingsPill.style.display = 'flex';
+                }
+                if (remoteVersionBadge && remoteVersionText) {
+                    remoteVersionText.textContent = `v${this.remoteVersion}`;
+                    remoteVersionBadge.style.display = 'inline-flex';
+                    remoteVersionBadge.className = 'badge bg-success me-2'; // Green for "update available"
+                }
+                
+                console.log(`Update available: ${this.localVersion} → ${this.remoteVersion}`);
+            } else {
+                // No update available, hide all update notifications
+                this.hideUpdateNotifications();
+                console.log(`Versions are the same: local=${this.localVersion}, remote=${this.remoteVersion}`);
             }
-            if (settingsPill) {
-                settingsPill.style.display = 'flex';
-            }
-            if (remoteVersionBadge && remoteVersionText && this.remoteVersion) {
-                remoteVersionText.textContent = `v${this.remoteVersion}`;
-                remoteVersionBadge.style.display = 'inline-flex';
-            }
-            
-            console.log(`Update available: ${this.localVersion} → ${this.remoteVersion}`);
         },
         
         // Hide update notification pills
@@ -274,10 +282,16 @@
             const remoteVersionBadge = document.getElementById('remoteVersionBadge');
             const remoteVersionText = document.getElementById('remoteVersionText');
             
-            if (remoteVersionBadge && remoteVersionText && this.remoteVersion) {
-                remoteVersionText.textContent = `v${this.remoteVersion}`;
-                remoteVersionBadge.style.display = 'inline-flex';
-                remoteVersionBadge.className = 'badge bg-info me-2'; // Blue for "up to date"
+            if (remoteVersionBadge && remoteVersionText && this.remoteVersion && this.localVersion) {
+                // Only show remote version badge if we have both versions and they're different
+                if (this.remoteVersion !== this.localVersion) {
+                    remoteVersionText.textContent = `v${this.remoteVersion}`;
+                    remoteVersionBadge.style.display = 'inline-flex';
+                    remoteVersionBadge.className = 'badge bg-info me-2'; // Blue for "up to date"
+                } else {
+                    // Versions are the same, hide the badge
+                    remoteVersionBadge.style.display = 'none';
+                }
             }
         }
     };
@@ -302,6 +316,29 @@
         if (settingsSection) {
             settingsSection.scrollIntoView({ behavior: 'smooth' });
         }
+    }
+    
+    // Global function to show update release notes
+    function showUpdateReleaseNotes() {
+        // Navigate to settings first if not already there
+        navigateToSettings();
+        
+        // Delay to ensure settings page is loaded, then call the settings-specific function
+        setTimeout(() => {
+            if (typeof window.showUpdateReleaseNotes === 'function') {
+                window.showUpdateReleaseNotes();
+            } else {
+                console.warn('Settings page showUpdateReleaseNotes function not available yet, retrying...');
+                // Retry after another short delay
+                setTimeout(() => {
+                    if (typeof window.showUpdateReleaseNotes === 'function') {
+                        window.showUpdateReleaseNotes();
+                    } else {
+                        console.error('showUpdateReleaseNotes function not available');
+                    }
+                }, 500);
+            }
+        }, 200);
     }
     
     // Initialize update checking when DOM is ready

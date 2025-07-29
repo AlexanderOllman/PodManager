@@ -534,21 +534,13 @@ function loadVersionInfo() {
             // Store version data globally for release notes
             window.versionData = versionData;
             
-            // Update current version badge in Application Update card
-            const currentVersionBadge = document.getElementById('currentVersionBadge');
-            if (currentVersionBadge) {
-                currentVersionBadge.textContent = `v${versionData.version}`;
-            }
-            
             // Update About card information
             const aboutVersionText = document.getElementById('aboutVersionText');
             const aboutLastUpdated = document.getElementById('aboutLastUpdated');
             
             if (aboutVersionText) {
+                // Just show version number without codename
                 aboutVersionText.textContent = `v${versionData.version}`;
-                if (versionData.codename) {
-                    aboutVersionText.textContent += ` "${versionData.codename}"`;
-                }
             }
             
             if (aboutLastUpdated) {
@@ -568,13 +560,9 @@ function loadVersionInfo() {
             console.error('Failed to load version info:', error);
             
             // Update with fallback values
-            const currentVersionBadge = document.getElementById('currentVersionBadge');
             const aboutVersionText = document.getElementById('aboutVersionText');
             const aboutLastUpdated = document.getElementById('aboutLastUpdated');
             
-            if (currentVersionBadge) {
-                currentVersionBadge.textContent = 'Unknown';
-            }
             if (aboutVersionText) {
                 aboutVersionText.textContent = 'Unknown';
             }
@@ -583,6 +571,67 @@ function loadVersionInfo() {
             }
         });
 }
+
+// Show release notes for the new/update version (make globally accessible)
+function showUpdateReleaseNotes() {
+    // Get the remote version release notes
+    if (window.updateChecker && window.updateChecker.remoteVersion) {
+        fetch('/api/version/remote')
+            .then(response => response.json())
+            .then(remoteData => {
+                if (remoteData.success) {
+                    // Show the modal and render release notes for the new version
+                    const modal = new bootstrap.Modal(document.getElementById('releaseNotesModal'));
+                    
+                    // Update modal title to indicate it's for the new version
+                    const modalTitle = document.getElementById('releaseNotesModalLabel');
+                    if (modalTitle) {
+                        modalTitle.innerHTML = '<i class="fas fa-file-alt me-2"></i>Release Notes - New Version';
+                    }
+                    
+                    // Fetch the full version data to get release notes
+                    fetch('/api/version/remote/full')
+                        .then(response => response.json())
+                        .then(fullRemoteData => {
+                            if (fullRemoteData.success && fullRemoteData.releases) {
+                                // Find the release notes for the remote version
+                                const targetRelease = fullRemoteData.releases.find(release => 
+                                    release.version === remoteData.version
+                                );
+                                
+                                if (targetRelease) {
+                                    const mockVersionData = {
+                                        version: fullRemoteData.version,
+                                        releases: [targetRelease] // Show only the new release
+                                    };
+                                    renderReleaseNotes(mockVersionData);
+                                } else {
+                                    showReleaseNotesError('Release notes not found for the new version.');
+                                }
+                            } else {
+                                showReleaseNotesError('Unable to fetch detailed release notes.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching full remote version data:', error);
+                            showReleaseNotesError('Failed to load release notes for the new version.');
+                        });
+                    
+                    modal.show();
+                } else {
+                    console.error('No remote version data available');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching remote version for release notes:', error);
+            });
+    } else {
+        console.error('No update checker or remote version available');
+    }
+}
+
+// Make function globally accessible
+window.showUpdateReleaseNotes = showUpdateReleaseNotes;
 
 // Shows the release notes modal
 function showReleaseNotes() {

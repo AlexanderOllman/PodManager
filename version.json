@@ -1,8 +1,64 @@
 {
-  "version": "2.1.2",
+  "version": "2.1.3",
   "buildDate": "2025-01-29",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.1.3",
+      "date": "2025-01-29",
+      "title": "Refined Update Notification & Version Display",
+      "type": "minor",
+      "highlights": [
+        "Intelligent update notifications that only appear when versions differ",
+        "Streamlined Application Update card with cleaner interface",
+        "Enhanced About card with simplified version display and prominent Release Notes link",
+        "Smart remote version detection with strict comparison logic"
+      ],
+      "features": [
+        {
+          "category": "Update Notifications",
+          "items": [
+            "Update notifications only appear when local and remote versions actually differ",
+            "Clicking 'Update Available' pill shows release notes for the new version specifically",
+            "Enhanced version comparison with proper semantic versioning support",
+            "Intelligent remote version badge display based on version differences"
+          ]
+        },
+        {
+          "category": "Interface Refinements",
+          "items": [
+            "Removed version number and Release Notes button from Application Update card",
+            "Simplified About card version display without codename",
+            "Replaced info icon with prominent '[Release Notes]' text link",
+            "Enhanced clickable styling for Release Notes link with hover effects"
+          ]
+        },
+        {
+          "category": "Backend Improvements",
+          "items": [
+            "Added /api/version/remote/full endpoint for complete release notes",
+            "Server-side GitHub API integration to avoid CORS issues",
+            "Enhanced error handling and logging for remote version fetching",
+            "Optimized response format for faster loading"
+          ]
+        },
+        {
+          "category": "User Experience",
+          "items": [
+            "Update pills now show targeted release notes for new versions",
+            "Cleaner, less cluttered settings interface",
+            "More intuitive visual hierarchy for version information",
+            "Consistent behavior across navbar and settings update notifications"
+          ]
+        }
+      ],
+      "technical": [
+        "Enhanced version string normalization and comparison logic",
+        "Global function accessibility for cross-component communication",
+        "Improved conditional rendering based on version state",
+        "Strict version equality checking to prevent false positives"
+      ]
+    },
     {
       "version": "2.1.2",
       "date": "2025-01-29",

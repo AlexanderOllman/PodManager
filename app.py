@@ -1830,6 +1830,49 @@ def get_remote_version_info():
             'details': str(e)
         }), 500
 
+@app.route('/api/version/remote/full', methods=['GET'])
+def get_remote_version_full():
+    """Get complete remote version information from GitHub including releases"""
+    github_url = 'https://raw.githubusercontent.com/AlexanderOllman/PodManager/refs/heads/main/version.json'
+    
+    try:
+        # Set a reasonable timeout and user agent
+        headers = {
+            'User-Agent': 'HPE-PCAI-Resource-Manager/1.0',
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache'
+        }
+        
+        response = requests.get(github_url, headers=headers, timeout=10)
+        response.raise_for_status()  # Raises an HTTPError for bad responses
+        
+        # Parse JSON response
+        remote_data = response.json()
+        
+        # Return the complete version data
+        return jsonify({
+            'version': remote_data.get('version', 'unknown'),
+            'buildDate': remote_data.get('buildDate', 'unknown'),
+            'codename': remote_data.get('codename', ''),
+            'releases': remote_data.get('releases', []),
+            'success': True
+        })
+        
+    except requests.exceptions.RequestException as e:
+        app.logger.warning(f"Failed to fetch full remote version from GitHub: {e}")
+        return jsonify({
+            'error': 'Failed to fetch full remote version',
+            'success': False,
+            'details': str(e)
+        }), 503  # Service Unavailable
+    except Exception as e:
+        app.logger.error(f"Unexpected error fetching full remote version: {e}")
+        return jsonify({
+            'error': 'Unexpected error',
+            'success': False,
+            'details': str(e)
+        }), 500
+
 @app.route('/api/nodes', methods=['GET'])
 def get_nodes():
     """Get all nodes from the database with hardware specifications."""
