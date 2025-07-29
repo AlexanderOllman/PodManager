@@ -74,18 +74,27 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
+    // Global flag to prevent repeated loading
+    let isLoadingNodes = false;
+    let settingsInitialized = false;
+
     function loadNodes() {
-        const nodesContainer = document.getElementById('nodesContainer');
-        const nodesLoading = document.getElementById('nodesLoading');
-        const nodesError = document.getElementById('nodesError');
+        if (isLoadingNodes) {
+            console.log('Already loading nodes, skipping...');
+            return;
+        }
         
-        if (!nodesContainer) return;
+        isLoadingNodes = true;
         
+        const loadingElement = document.getElementById('nodesLoading');
+        const containerElement = document.getElementById('nodesContainer');
+        const errorElement = document.getElementById('nodesError');
+
         // Show loading state
-        nodesLoading.style.display = 'block';
-        nodesError.style.display = 'none';
-        nodesContainer.innerHTML = '';
-        
+        if (loadingElement) loadingElement.style.display = 'block';
+        if (containerElement) containerElement.style.display = 'none';
+        if (errorElement) errorElement.style.display = 'none';
+
         fetch('/api/nodes')
             .then(response => {
                 if (!response.ok) {
@@ -94,86 +103,87 @@ document.addEventListener('DOMContentLoaded', function() {
                 return response.json();
             })
             .then(nodes => {
-                nodesLoading.style.display = 'none';
-                
-                if (nodes.length === 0) {
-                    nodesContainer.innerHTML = '<div class="col-12"><p class="text-muted text-center">No nodes found in the cluster.</p></div>';
-                    return;
-                }
-                
                 renderNodeCards(nodes);
+                if (loadingElement) loadingElement.style.display = 'none';
+                if (containerElement) containerElement.style.display = 'block';
             })
             .catch(error => {
                 console.error('Error loading nodes:', error);
-                nodesLoading.style.display = 'none';
-                nodesError.style.display = 'block';
-                document.getElementById('nodesErrorMessage').textContent = `Error loading nodes: ${error.message}`;
+                if (loadingElement) loadingElement.style.display = 'none';
+                if (errorElement) {
+                    errorElement.style.display = 'block';
+                    const errorMessage = errorElement.querySelector('#nodesErrorMessage');
+                    if (errorMessage) {
+                        errorMessage.textContent = `Failed to load nodes: ${error.message}`;
+                    }
+                }
+            })
+            .finally(() => {
+                isLoadingNodes = false;
             });
     }
     
     function renderNodeCards(nodes) {
         const nodesContainer = document.getElementById('nodesContainer');
+        if (!nodesContainer) return;
+
+        // Clear existing content
+        nodesContainer.innerHTML = '';
         
+        if (!nodes || nodes.length === 0) {
+            nodesContainer.innerHTML = '<div class="col-12"><p class="text-muted text-center">No nodes found in the cluster.</p></div>';
+            return;
+        }
+
         // Group nodes by role
         const controlPlaneNodes = [];
         const workerNodes = [];
-        
+
         nodes.forEach(node => {
             const isControlPlane = node.role === 'control-plane';
-            
             if (isControlPlane) {
                 controlPlaneNodes.push(node);
             } else {
                 workerNodes.push(node);
             }
         });
-        
-        // Clear container
-        nodesContainer.innerHTML = '';
-        
-        // Add Control Plane section
+
+        // Render Control Plane section
         if (controlPlaneNodes.length > 0) {
-            const controlPlaneSection = document.createElement('div');
-            controlPlaneSection.className = 'col-12 node-role-section';
-            controlPlaneSection.innerHTML = `
-                <h5 class="text-muted mb-3">
-                    <i class="fas fa-crown me-2"></i>Control Plane Nodes
-                </h5>
-                <div class="row" id="controlPlaneNodesContainer"></div>
+            const controlPlaneSection = `
+                <div class="col-12">
+                    <div class="node-role-section mb-3">
+                        <h5><i class="fas fa-crown text-warning me-2"></i>Control Plane Nodes</h5>
+                    </div>
+                </div>
             `;
-            nodesContainer.appendChild(controlPlaneSection);
-            
-            const controlPlaneContainer = document.getElementById('controlPlaneNodesContainer');
+            nodesContainer.insertAdjacentHTML('beforeend', controlPlaneSection);
+
             controlPlaneNodes.forEach(node => {
                 const nodeCard = createNodeCard(node);
-                controlPlaneContainer.appendChild(nodeCard);
+                nodesContainer.insertAdjacentHTML('beforeend', nodeCard);
             });
         }
-        
-        // Add Worker section
+
+        // Render Workers section
         if (workerNodes.length > 0) {
-            const workerSection = document.createElement('div');
-            workerSection.className = 'col-12 node-role-section';
-            workerSection.innerHTML = `
-                <h5 class="text-muted mb-3">
-                    <i class="fas fa-server me-2"></i>Worker Nodes
-                </h5>
-                <div class="row" id="workerNodesContainer"></div>
+            const workerSection = `
+                <div class="col-12">
+                    <div class="node-role-section mb-3 mt-4">
+                        <h5><i class="fas fa-server text-primary me-2"></i>Worker Nodes</h5>
+                    </div>
+                </div>
             `;
-            nodesContainer.appendChild(workerSection);
-            
-            const workerContainer = document.getElementById('workerNodesContainer');
+            nodesContainer.insertAdjacentHTML('beforeend', workerSection);
+
             workerNodes.forEach(node => {
                 const nodeCard = createNodeCard(node);
-                workerContainer.appendChild(nodeCard);
+                nodesContainer.insertAdjacentHTML('beforeend', nodeCard);
             });
         }
     }
     
     function createNodeCard(node) {
-        const col = document.createElement('div');
-        col.className = 'col-lg-4 col-md-6 col-sm-12 mb-4';
-        
         const statusClass = node.status === 'Ready' ? 'ready' : 'not-ready';
         const gpuDisplay = node.gpu_count > 0 ? node.gpu_count : 'None';
         
@@ -181,60 +191,54 @@ document.addEventListener('DOMContentLoaded', function() {
         const isControlPlane = node.role === 'control-plane';
         const roleIcon = isControlPlane ? 'fas fa-crown' : 'fas fa-server';
         
-        col.innerHTML = `
-            <div class="node-card" data-node-name="${node.name}">
-                <div class="node-header">
-                    <h5 class="node-name">
-                        <i class="${roleIcon} me-2" style="color: ${isControlPlane ? '#ffd700' : '#6c757d'};"></i>
-                        ${node.name}
-                    </h5>
-                    <span class="node-status ${statusClass}">${node.status}</span>
-                </div>
-                <div class="hardware-specs">
-                    <div class="spec-row">
-                        <span class="spec-label">
-                            <i class="fas fa-microchip spec-icon"></i>CPU Cores
-                        </span>
-                        <span class="spec-value">${node.cpu_cores}</span>
+        return `
+            <div class="col-lg-4 col-md-6 col-sm-12 mb-4">
+                <div class="node-card" data-node-name="${node.name}" onclick="showNodeDetails('${node.name}')">
+                    <div class="node-header">
+                        <h5 class="node-name">
+                            <i class="${roleIcon} me-2" style="color: ${isControlPlane ? '#ffd700' : '#6c757d'};"></i>
+                            ${node.name}
+                        </h5>
+                        <span class="node-status ${statusClass}">${node.status}</span>
                     </div>
-                    <div class="spec-row">
-                        <span class="spec-label">
-                            <i class="fas fa-memory spec-icon"></i>Memory
-                        </span>
-                        <span class="spec-value">${node.memory_gb} GB</span>
+                    <div class="hardware-specs">
+                        <div class="spec-row">
+                            <span class="spec-label">
+                                <i class="fas fa-microchip spec-icon"></i>CPU Cores
+                            </span>
+                            <span class="spec-value">${node.cpu_cores}</span>
+                        </div>
+                        <div class="spec-row">
+                            <span class="spec-label">
+                                <i class="fas fa-memory spec-icon"></i>Memory
+                            </span>
+                            <span class="spec-value">${node.memory_gb} GB</span>
+                        </div>
+                        <div class="spec-row">
+                            <span class="spec-label">
+                                <i class="fas fa-desktop spec-icon"></i>GPUs
+                            </span>
+                            <span class="spec-value">${gpuDisplay}</span>
+                        </div>
+                        <div class="spec-row">
+                            <span class="spec-label">
+                                <i class="fas fa-box spec-icon"></i>Max Pods
+                            </span>
+                            <span class="spec-value">${node.allocatable_pods}</span>
+                        </div>
+                        <div class="spec-row">
+                            <span class="spec-label">
+                                <i class="fas fa-info-circle spec-icon"></i>Kubelet
+                            </span>
+                            <span class="spec-value">${node.kubelet_version}</span>
+                        </div>
                     </div>
-                    <div class="spec-row">
-                        <span class="spec-label">
-                            <i class="fas fa-desktop spec-icon"></i>GPUs
-                        </span>
-                        <span class="spec-value">${gpuDisplay}</span>
+                    <div class="node-age">
+                        <i class="fas fa-clock me-1"></i>Age: ${node.age}
                     </div>
-                    <div class="spec-row">
-                        <span class="spec-label">
-                            <i class="fas fa-box spec-icon"></i>Max Pods
-                        </span>
-                        <span class="spec-value">${node.allocatable_pods}</span>
-                    </div>
-                    <div class="spec-row">
-                        <span class="spec-label">
-                            <i class="fas fa-info-circle spec-icon"></i>Kubelet
-                        </span>
-                        <span class="spec-value">${node.kubelet_version}</span>
-                    </div>
-                </div>
-                <div class="node-age">
-                    <i class="fas fa-clock me-1"></i>Age: ${node.age}
                 </div>
             </div>
         `;
-        
-        // Add click event listener to the card
-        const cardElement = col.querySelector('.node-card');
-        cardElement.addEventListener('click', function() {
-            showNodeDetails(node.name);
-        });
-        
-        return col;
     }
     
     // Make showNodeDetails available globally
@@ -665,6 +669,14 @@ document.addEventListener('DOMContentLoaded', function() {
     function handleSettingsViewVisible() {
         console.log('Settings view became visible');
         
+        // Prevent repeated initialization
+        if (settingsInitialized) {
+            console.log('Settings already initialized, skipping...');
+            return;
+        }
+        
+        settingsInitialized = true;
+        
         // Ensure the modal exists before loading nodes
         ensureModalExists();
         
@@ -744,4 +756,14 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(handleSettingsViewVisible, 50);
         });
     }
+
+    // Reset settings state (call when navigating away from settings)
+    function resetSettingsState() {
+        settingsInitialized = false;
+        isLoadingNodes = false;
+        console.log('Settings state reset');
+    }
+
+    // Make reset function globally accessible
+    window.resetSettingsState = resetSettingsState;
 }); 

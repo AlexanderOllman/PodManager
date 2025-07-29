@@ -1,8 +1,54 @@
 {
-  "version": "2.1.4",
+  "version": "2.1.5",
   "buildDate": "2025-01-29",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.1.5",
+      "date": "2025-01-29",
+      "title": "Fixed Navigation Loop & Settings Loading Issues",
+      "type": "patch",
+      "highlights": [
+        "Fixed critical navigation loop when clicking 'Update Available' pill",
+        "Resolved rapidly flashing 'Loading node information' spinner",
+        "Prevented repeated settings page initialization",
+        "Enhanced navigation state management and cleanup"
+      ],
+      "bugfixes": [
+        "Fixed navigation loop preventing access to other pages from settings",
+        "Resolved rapidly flashing loading indicators in settings",
+        "Fixed function naming conflicts between global and local scope",
+        "Corrected repeated node loading when settings page is already loaded",
+        "Enhanced modal and navigation state management"
+      ],
+      "features": [
+        {
+          "category": "Navigation Improvements",
+          "items": [
+            "Added navigation state checking to prevent unnecessary redirects",
+            "Implemented settings state reset when navigating away",
+            "Enhanced function naming to avoid scope conflicts",
+            "Added loading state management to prevent repeated API calls"
+          ]
+        },
+        {
+          "category": "Performance Enhancements",
+          "items": [
+            "Prevented duplicate node loading with loading flags",
+            "Optimized settings page initialization logic",
+            "Reduced unnecessary DOM manipulation and API calls",
+            "Improved user experience with smoother navigation"
+          ]
+        }
+      ],
+      "technical": [
+        "Renamed showUpdateReleaseNotes to showSettingsUpdateReleaseNotes to avoid conflicts",
+        "Added isLoadingNodes and settingsInitialized flags for state management",
+        "Modified createNodeCard to return HTML strings instead of DOM elements",
+        "Enhanced navigateToSettings with current tab checking",
+        "Added resetSettingsState function for proper cleanup"
+      ]
+    },
     {
       "version": "2.1.4",
       "date": "2025-01-29",
