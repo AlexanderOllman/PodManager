@@ -233,6 +233,19 @@ class Database:
             logging.error(f"Error retrieving metrics: {str(e)}")
             return []
 
+    def clear_environment_metrics_cache(self) -> bool:
+        """Clear any cached environment metrics to force fresh collection."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM environment_metrics')
+                conn.commit()
+                logging.info("Environment metrics cache cleared.")
+                return True
+        except Exception as e:
+            logging.error(f"Error clearing environment metrics cache: {str(e)}")
+            return False
+
     def update_environment_metrics(self, metrics_data: Dict) -> bool:
         """Update the single row in environment_metrics table with the latest metrics."""
         try:

@@ -1403,22 +1403,31 @@ def refresh_database():
     try:
         logging.info("Manual database refresh requested via API.")
         
+        # Force clear any cached metrics first
+        db.clear_environment_metrics_cache()
+        
         # This function now handles the atomic update of all resources
         updater._update_resources() 
         
-        # This function updates the global cluster metrics
+        # Force a fresh collection of environment metrics with new logic
+        logging.info("Forcing fresh environment metrics collection...")
         _collect_and_store_environment_metrics()
         
+        # Verify the metrics were updated correctly
+        env_metrics = db.get_latest_environment_metrics()
+        logging.info(f"Updated metrics - total_allocatable_pods: {env_metrics.get('total_node_allocatable_pods', 'NOT FOUND')}")
+        logging.info(f"Updated metrics - total_capacity_pods: {env_metrics.get('total_node_pod_capacity', 'NOT FOUND')}")
+        
         return jsonify({
-            'success': True,
-            'message': 'Database and environment metrics refreshed successfully.'
+            "success": True, 
+            "message": "Database refresh completed successfully.",
+            "environment_metrics_updated": True,
+            "total_allocatable_pods": env_metrics.get('total_node_allocatable_pods', 0),
+            "total_capacity_pods": env_metrics.get('total_node_pod_capacity', 0)
         })
     except Exception as e:
-        logging.error(f"Error during manual refresh via API: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logging.error(f"Database refresh failed: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/environment_metrics', methods=['GET'])
 def get_environment_metrics_endpoint():
@@ -1978,6 +1987,73 @@ def get_node_details(node_name):
     except Exception as e:
         logging.error(f"Error getting node details for {node_name}: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/debug/pods', methods=['GET'])
+def debug_pod_allocation():
+    """Debug endpoint to check pod allocation calculation"""
+    try:
+        # Get current database values
+        env_metrics = db.get_latest_environment_metrics()
+        
+        # Manually run the collection to see what we get
+        logging.info("=== DEBUG: Manually collecting environment metrics ===")
+        _collect_and_store_environment_metrics()
+        
+        # Get updated values
+        updated_env_metrics = db.get_latest_environment_metrics()
+        
+        # Also check nodes directly
+        nodes_data = run_kubectl_command(["get", "nodes", "-o", "json"])
+        node_analysis = []
+        
+        if nodes_data and 'items' in nodes_data:
+            for node in nodes_data.get('items', []):
+                metadata = node.get('metadata', {})
+                labels = metadata.get('labels', {})
+                spec = node.get('spec', {})
+                status = node.get('status', {})
+                allocatable = status.get('allocatable', {})
+                capacity = status.get('capacity', {})
+                
+                is_schedulable = not spec.get('unschedulable', False)
+                is_control_plane = (
+                    'node-role.kubernetes.io/control-plane' in labels or 
+                    'node-role.kubernetes.io/master' in labels or
+                    'node-role.kubernetes.io/etcd' in labels
+                )
+                has_worker_role = (
+                    'node-role.kubernetes.io/worker' in labels or
+                    'kubernetes.io/role' in labels and labels['kubernetes.io/role'] == 'worker'
+                )
+                is_pure_control_plane = is_control_plane and not has_worker_role and not is_schedulable
+                
+                node_analysis.append({
+                    'name': metadata.get('name', 'unknown'),
+                    'is_schedulable': is_schedulable,
+                    'is_control_plane': is_control_plane,
+                    'has_worker_role': has_worker_role,
+                    'is_pure_control_plane': is_pure_control_plane,
+                    'allocatable_pods': int(allocatable.get('pods', 0)),
+                    'capacity_pods': int(capacity.get('pods', 0)),
+                    'labels': labels
+                })
+        
+        return jsonify({
+            'before_refresh': env_metrics,
+            'after_refresh': updated_env_metrics,
+            'node_analysis': node_analysis,
+            'total_allocatable_from_workers': sum(
+                node['allocatable_pods'] for node in node_analysis 
+                if not node['is_pure_control_plane'] and node['is_schedulable']
+            ),
+            'total_capacity_all_nodes': sum(
+                node['capacity_pods'] for node in node_analysis
+            )
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in debug endpoint: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     # This block runs when you execute `python app.py` directly.

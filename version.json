@@ -1,8 +1,59 @@
 {
-  "version": "2.1.5",
+  "version": "2.1.6",
   "buildDate": "2025-01-29",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.1.6",
+      "date": "2025-01-29",
+      "title": "Pod Allocation Debug Tools & Enhanced Metrics",
+      "type": "patch",
+      "highlights": [
+        "Added comprehensive debugging tools for pod allocation calculation",
+        "Enhanced database refresh with forced metrics collection",
+        "Improved logging and verification of environment metrics",
+        "Added real-time node analysis and allocation verification"
+      ],
+      "features": [
+        {
+          "category": "Debugging Tools",
+          "items": [
+            "Added '/api/debug/pods' endpoint for detailed pod allocation analysis",
+            "Implemented 'Debug Pod Allocation' button in Database Management card",
+            "Added comprehensive node classification breakdown and analysis",
+            "Enhanced console logging with before/after refresh comparisons",
+            "Real-time verification of worker vs control plane node detection"
+          ]
+        },
+        {
+          "category": "Database Management",
+          "items": [
+            "Added forced cache clearing in database refresh operations",
+            "Enhanced environment metrics collection with verification logging",
+            "Improved database refresh endpoint with detailed status reporting",
+            "Added metrics validation and error reporting",
+            "Implemented comprehensive refresh status feedback"
+          ]
+        },
+        {
+          "category": "Monitoring & Logging",
+          "items": [
+            "Enhanced logging for environment metrics collection process",
+            "Added detailed node analysis with role classification",
+            "Improved debug output with allocation calculations breakdown",
+            "Added verification of database updates after refresh",
+            "Enhanced error reporting for metrics collection failures"
+          ]
+        }
+      ],
+      "technical": [
+        "Added clear_environment_metrics_cache() method to Database class",
+        "Enhanced _collect_and_store_environment_metrics() with detailed logging",
+        "Added comprehensive node analysis in debug endpoint",
+        "Improved refresh database API with status verification",
+        "Added debugPodAllocation() function for frontend debugging"
+      ]
+    },
     {
       "version": "2.1.5",
       "date": "2025-01-29",
