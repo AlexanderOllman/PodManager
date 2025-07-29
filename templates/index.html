@@ -142,11 +142,12 @@
                     </div>
                     <div class="card-body p-0">
                         <div class="loading-container" id="gpuPodsLoading">
-                            <div class="progress-container">
-                                <div class="progress">
-                                    <div class="progress-bar" role="progressbar" style="width: 0%" id="gpuPodsProgressBar"></div>
+                            <div class="universal-progress-container">
+                                <div class="universal-progress-text" id="gpuPodsLoadingText">Loading GPU Pods...</div>
+                                <div class="universal-progress-bar">
+                                    <div class="universal-progress-fill indeterminate" id="gpuPodsProgressBar"></div>
                                 </div>
-                                <div class="loading-text" id="gpuPodsLoadingText">Loading GPU Pods...</div>
+                                <div class="universal-progress-details">Fetching GPU-enabled pods from cluster...</div>
                             </div>
                         </div>
                         <div class="table-container" id="gpuPodsTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
@@ -189,11 +190,12 @@
                     </div>
                     <div class="card-body p-0">
                         <div class="loading-container" id="namespaceMetricsLoading">
-                            <div class="progress-container">
-                                <div class="progress">
-                                    <div class="progress-bar" role="progressbar" style="width: 0%" id="namespaceMetricsProgressBar"></div>
+                            <div class="universal-progress-container">
+                                <div class="universal-progress-text" id="namespaceMetricsLoadingText">Loading Namespace Metrics...</div>
+                                <div class="universal-progress-bar">
+                                    <div class="universal-progress-fill indeterminate" id="namespaceMetricsProgressBar"></div>
                                 </div>
-                                <div class="loading-text" id="namespaceMetricsLoadingText">Loading Namespace Metrics...</div>
+                                <div class="universal-progress-details">Fetching namespace metrics from cluster...</div>
                             </div>
                         </div>
                         <div class="table-container" id="namespaceMetricsTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
@@ -475,12 +477,12 @@
         <div id="resourceMainContainer">
             <!-- Loading indicator -->
             <div class="loading-container" id="resourcesLoading">
-                <div class="progress-container">
-                    <div class="progress">
-                        <div class="progress-bar" role="progressbar" style="width: 0%" id="resourcesProgressBar"></div>
+                <div class="universal-progress-container">
+                    <div class="universal-progress-text" id="resourcesLoadingText">Loading resources...</div>
+                    <div class="universal-progress-bar">
+                        <div class="universal-progress-fill indeterminate" id="resourcesProgressBar"></div>
                     </div>
-                    <div class="loading-text" id="resourcesLoadingText">Loading resources...</div>
-                    <div class="loading-details" id="resourcesLoadingDetails"></div>
+                    <div class="universal-progress-details" id="resourcesLoadingDetails">Fetching resource data from cluster...</div>
                 </div>
             </div>
             
@@ -572,11 +574,12 @@
 
         <!-- Namespaces Loading -->
         <div id="namespacesLoading" class="loading-container">
-            <div class="progress-container">
-                <div class="progress">
-                    <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+            <div class="universal-progress-container">
+                <div class="universal-progress-text">Loading namespaces...</div>
+                <div class="universal-progress-bar">
+                    <div class="universal-progress-fill indeterminate"></div>
                 </div>
-                <div class="loading-text">Loading namespaces...</div>
+                <div class="universal-progress-details">Fetching namespace information from cluster...</div>
             </div>
         </div>
 
@@ -867,34 +870,34 @@
         
         <div id="githubSettings">
             <!-- Database Refresh Section -->
-            <div class="mt-4 pt-3 mb-4">
+            <div class="settings-section">
                 <h4>Database Management</h4>
                 <p class="text-muted small mb-2">
                     Last refreshed: <span id="db-last-updated-time">Loading...</span>
                 </p>
-                <p>Manually refresh the database with current Kubernetes resources.
+                <p class="text-muted mb-3">Manually refresh the database with current Kubernetes resources.
                     This will fetch fresh data for all resources from the cluster.
                 </p>
-                <button class="btn btn-primary" onclick="refreshDatabase()">
+                <button class="settings-btn settings-btn-primary" onclick="refreshDatabase()">
                     <i class="fas fa-sync-alt"></i> Refresh Database
                 </button>
                 <div id="databaseRefreshStatus" class="mt-2" style="display: none;"></div>
             </div>
 
             <!-- Application Refresh Section -->
-            <div class="mt-4 pt-3 mb-4">
-                <h4>Application Refresh</h4>
-                <p class="text-muted">
+            <div class="settings-section">
+                <h4>Application Update</h4>
+                <p class="text-muted mb-3">
                     This will stop the application, perform a hard pull on the GitHub repository, 
                     and restart the application with the latest code.
                 </p>
-                <button class="btn btn-warning" onclick="refreshApplication()">
-                    <i class="fas fa-sync-alt"></i> Update Application
+                <button class="settings-btn settings-btn-warning" onclick="showUpdateModal()">
+                    <i class="fas fa-download"></i> Update Application
                 </button>
                 <div id="updateStatus" class="mt-2" style="display: none;"></div>
             </div>
             
-            <!-- Log Display Area -->
+            <!-- Log Display Area (Legacy - kept for backward compatibility) -->
             <div id="refreshLogContainer" class="mt-3" style="display: none;">
                 <div class="card">
                     <div class="card-header bg-light">
@@ -919,11 +922,12 @@
         </div>
 
         <div class="loading-container" id="chartsLoading">
-            <div class="progress-container">
-                <div class="progress">
-                    <div class="progress-bar" role="progressbar" style="width: 0%" id="chartsProgressBar"></div>
+            <div class="universal-progress-container">
+                <div class="universal-progress-text">Loading Charts...</div>
+                <div class="universal-progress-bar">
+                    <div class="universal-progress-fill indeterminate" id="chartsProgressBar"></div>
                 </div>
-                <div class="loading-text">Loading Charts...</div>
+                <div class="universal-progress-details">Connecting to Chart Library...</div>
             </div>
         </div>
 
@@ -980,6 +984,84 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Application Update Modal -->
+<div class="modal fade update-modal" id="updateModal" tabindex="-1" aria-labelledby="updateModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="updateModalLabel">
+                    <i class="fas fa-download me-2"></i>Application Update
+                </h5>
+            </div>
+            <div class="modal-body">
+                <!-- Overall Progress -->
+                <div class="universal-progress-container">
+                    <div class="universal-progress-text" id="updateProgressText">Initializing update process...</div>
+                    <div class="universal-progress-bar">
+                        <div class="universal-progress-fill indeterminate" id="updateProgressFill"></div>
+                    </div>
+                    <div class="universal-progress-details" id="updateProgressDetails">Please wait while we prepare the update...</div>
+                </div>
+
+                <!-- Update Steps -->
+                <div class="update-steps">
+                    <div class="update-step" id="step-preparing">
+                        <div class="update-step-icon pending" id="step-preparing-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="update-step-text">Preparing update environment</div>
+                    </div>
+                    
+                    <div class="update-step" id="step-stopping">
+                        <div class="update-step-icon pending" id="step-stopping-icon">
+                            <i class="fas fa-stop"></i>
+                        </div>
+                        <div class="update-step-text">Stopping application gracefully</div>
+                    </div>
+                    
+                    <div class="update-step" id="step-pulling">
+                        <div class="update-step-icon pending" id="step-pulling-icon">
+                            <i class="fas fa-download"></i>
+                        </div>
+                        <div class="update-step-text">Pulling latest code from repository</div>
+                    </div>
+                    
+                    <div class="update-step" id="step-installing">
+                        <div class="update-step-icon pending" id="step-installing-icon">
+                            <i class="fas fa-cogs"></i>
+                        </div>
+                        <div class="update-step-text">Installing dependencies</div>
+                    </div>
+                    
+                    <div class="update-step" id="step-restarting">
+                        <div class="update-step-icon pending" id="step-restarting-icon">
+                            <i class="fas fa-play"></i>
+                        </div>
+                        <div class="update-step-text">Restarting application</div>
+                    </div>
+                </div>
+
+                <!-- Status Indicator -->
+                <div class="update-status-indicator running" id="updateStatusIndicator">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span id="updateStatusText">Update in progress...</span>
+                </div>
+
+                <!-- CLI Output Section -->
+                <div class="cli-output-section" id="cliOutputSection">
+                    <div class="cli-output-header" onclick="toggleCliOutput()">
+                        <h6><i class="fas fa-terminal me-2"></i>Command Output</h6>
+                        <i class="fas fa-chevron-down cli-output-toggle" id="cliOutputToggle"></i>
+                    </div>
+                    <div class="cli-output-body" id="cliOutputBody">
+                        <div id="cliOutputContent">Starting update process...</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

@@ -197,4 +197,298 @@ function clearRefreshLog() {
     if (refreshLog) {
         refreshLog.innerHTML = '<div class="text-muted fst-italic">-- Log appears here during refresh --</div>';
     }
+}
+
+// ============================================================================
+// MODAL-BASED UPDATE FUNCTIONALITY
+// ============================================================================
+
+// Shows the update modal and starts the update process
+function showUpdateModal() {
+    const modal = document.getElementById('updateModal');
+    if (!modal) {
+        console.error('Update modal not found');
+        Swal.fire('Error', 'Update interface not available. Please try refreshing the page.', 'error');
+        return;
+    }
+    
+    // Reset modal state
+    resetUpdateModal();
+    
+    // Show the modal
+    const bootstrapModal = new bootstrap.Modal(modal, {
+        backdrop: 'static',
+        keyboard: false
+    });
+    bootstrapModal.show();
+    
+    // Start the update process after a brief delay
+    setTimeout(() => {
+        startApplicationUpdate();
+    }, 1000);
+}
+
+// Resets the update modal to initial state
+function resetUpdateModal() {
+    // Reset progress bar
+    const progressFill = document.getElementById('updateProgressFill');
+    const progressText = document.getElementById('updateProgressText');
+    const progressDetails = document.getElementById('updateProgressDetails');
+    
+    if (progressFill) {
+        progressFill.style.width = '0%';
+        progressFill.classList.add('indeterminate');
+    }
+    if (progressText) progressText.textContent = 'Initializing update process...';
+    if (progressDetails) progressDetails.textContent = 'Please wait while we prepare the update...';
+    
+    // Reset all steps to pending
+    const steps = ['preparing', 'stopping', 'pulling', 'installing', 'restarting'];
+    steps.forEach(step => {
+        const stepElement = document.getElementById(`step-${step}`);
+        const iconElement = document.getElementById(`step-${step}-icon`);
+        
+        if (stepElement) {
+            stepElement.classList.remove('active', 'completed');
+        }
+        if (iconElement) {
+            iconElement.classList.remove('active', 'completed');
+            iconElement.classList.add('pending');
+        }
+    });
+    
+    // Reset status indicator
+    const statusIndicator = document.getElementById('updateStatusIndicator');
+    const statusText = document.getElementById('updateStatusText');
+    if (statusIndicator) {
+        statusIndicator.className = 'update-status-indicator running';
+    }
+    if (statusText) statusText.textContent = 'Update in progress...';
+    
+    // Reset CLI output
+    const cliContent = document.getElementById('cliOutputContent');
+    if (cliContent) cliContent.textContent = 'Starting update process...';
+}
+
+// Starts the application update process with modal progress
+function startApplicationUpdate() {
+    updateProgress(10, 'Connecting to server...', 'Establishing connection for update process');
+    updateStep('preparing', 'active');
+    appendCliOutput('[INFO] Starting application update process...');
+    
+    const url = window.app.getRelativeUrl('/refresh_application');
+    fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo_url: undefined })
+    })
+    .then(response => {
+        updateProgress(25, 'Server response received...', 'Processing update request');
+        updateStep('preparing', 'completed');
+        updateStep('stopping', 'active');
+        appendCliOutput('[INFO] Update request sent to server');
+        
+        if (response.ok) {
+            return response.json().then(data => {
+                if (data && data.status === 'success' && data.message && data.message.includes('restart')) {
+                    appendCliOutput('[SUCCESS] Server confirmed restart initiation');
+                    updateProgress(50, 'Application stopping...', 'Gracefully shutting down services');
+                    updateStep('stopping', 'completed');
+                    updateStep('pulling', 'active');
+                    waitForApplicationRestartModal();
+                } else if (data && data.status === 'success') {
+                    appendCliOutput(`[SUCCESS] ${data.message || 'Update completed successfully'}`);
+                    updateProgress(100, 'Update completed', 'Application updated successfully');
+                    updateAllStepsCompleted();
+                    showUpdateSuccess();
+                } else {
+                    const msg = data?.error || data?.message || 'Update finished with unexpected status';
+                    appendCliOutput(`[WARNING] ${msg}`);
+                    showUpdateError(msg);
+                }
+            });
+        } else {
+            appendCliOutput('[INFO] Server became unresponsive (restart likely initiated)');
+            updateProgress(50, 'Application restarting...', 'Server is restarting with latest code');
+            updateStep('stopping', 'completed');
+            updateStep('pulling', 'active');
+            waitForApplicationRestartModal();
+        }
+    })
+    .catch(error => {
+        if (error.message.includes('restart_likely_in_progress')) {
+            appendCliOutput('[INFO] Application restart detected');
+            waitForApplicationRestartModal();
+        } else {
+            appendCliOutput(`[ERROR] ${error.message}`);
+            showUpdateError(error.message);
+        }
+    });
+}
+
+// Updates the progress bar and text
+function updateProgress(percentage, text, details) {
+    const progressFill = document.getElementById('updateProgressFill');
+    const progressText = document.getElementById('updateProgressText');
+    const progressDetails = document.getElementById('updateProgressDetails');
+    
+    if (progressFill) {
+        progressFill.style.width = `${percentage}%`;
+        if (percentage > 0) {
+            progressFill.classList.remove('indeterminate');
+        }
+    }
+    if (progressText) progressText.textContent = text;
+    if (progressDetails) progressDetails.textContent = details;
+}
+
+// Updates a specific step state
+function updateStep(stepName, state) {
+    const stepElement = document.getElementById(`step-${stepName}`);
+    const iconElement = document.getElementById(`step-${stepName}-icon`);
+    
+    if (!stepElement || !iconElement) return;
+    
+    // Remove all state classes
+    stepElement.classList.remove('active', 'completed');
+    iconElement.classList.remove('pending', 'active', 'completed');
+    
+    // Add new state
+    stepElement.classList.add(state);
+    iconElement.classList.add(state);
+    
+    // Update icon based on state
+    const iconImg = iconElement.querySelector('i');
+    if (iconImg) {
+        if (state === 'active') {
+            iconImg.className = 'fas fa-spinner fa-spin';
+        } else if (state === 'completed') {
+            iconImg.className = 'fas fa-check';
+        }
+    }
+}
+
+// Marks all steps as completed
+function updateAllStepsCompleted() {
+    const steps = ['preparing', 'stopping', 'pulling', 'installing', 'restarting'];
+    steps.forEach(step => updateStep(step, 'completed'));
+}
+
+// Appends text to CLI output
+function appendCliOutput(text) {
+    const cliContent = document.getElementById('cliOutputContent');
+    if (cliContent) {
+        const timestamp = new Date().toLocaleTimeString();
+        cliContent.innerHTML += `\n[${timestamp}] ${text}`;
+        
+        // Auto-scroll to bottom if CLI is expanded
+        const cliBody = document.getElementById('cliOutputBody');
+        if (cliBody && cliBody.classList.contains('expanded')) {
+            cliBody.scrollTop = cliBody.scrollHeight;
+        }
+    }
+}
+
+// Toggles CLI output visibility
+function toggleCliOutput() {
+    const cliBody = document.getElementById('cliOutputBody');
+    const toggle = document.getElementById('cliOutputToggle');
+    
+    if (cliBody && toggle) {
+        cliBody.classList.toggle('expanded');
+        toggle.classList.toggle('expanded');
+        
+        // Auto-scroll to bottom when expanding
+        if (cliBody.classList.contains('expanded')) {
+            setTimeout(() => {
+                cliBody.scrollTop = cliBody.scrollHeight;
+            }, 300);
+        }
+    }
+}
+
+// Waits for application restart with modal updates
+function waitForApplicationRestartModal() {
+    const MAX_ATTEMPTS = 45;
+    let attempts = 0;
+    
+    updateProgress(60, 'Pulling latest code...', 'Downloading updates from repository');
+    updateStep('pulling', 'completed');
+    updateStep('installing', 'active');
+    appendCliOutput('[INFO] Waiting for application to come back online...');
+    
+    const checkServer = function() {
+        attempts++;
+        const progressPercentage = 60 + (attempts / MAX_ATTEMPTS) * 35; // 60% to 95%
+        
+        if (attempts < 15) {
+            updateProgress(Math.min(progressPercentage, 75), 'Installing dependencies...', `Attempt ${attempts}/${MAX_ATTEMPTS}`);
+        } else if (attempts < 30) {
+            updateStep('installing', 'completed');
+            updateStep('restarting', 'active');
+            updateProgress(Math.min(progressPercentage, 90), 'Restarting application...', `Attempt ${attempts}/${MAX_ATTEMPTS}`);
+        } else {
+            updateProgress(Math.min(progressPercentage, 95), 'Finalizing startup...', `Attempt ${attempts}/${MAX_ATTEMPTS}`);
+        }
+        
+        const healthCheckUrl = window.app.getRelativeUrl('/health_check');
+        fetch(healthCheckUrl, { 
+            method: 'GET',
+            headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } 
+        })
+        .then(response => {
+            if (response.ok) {
+                updateProgress(100, 'Update completed successfully!', 'Application is back online');
+                updateAllStepsCompleted();
+                appendCliOutput('[SUCCESS] Application back online! Reloading page in 3 seconds...');
+                showUpdateSuccess();
+                setTimeout(() => window.location.reload(), 3000);
+            } else {
+                if (attempts < MAX_ATTEMPTS) {
+                    setTimeout(checkServer, 1000);
+                } else {
+                    handleModalRestartTimeout();
+                }
+            }
+        })
+        .catch(error => {
+            if (attempts < MAX_ATTEMPTS) {
+                setTimeout(checkServer, 1000);
+            } else {
+                handleModalRestartTimeout();
+            }
+        });
+    };
+    
+    setTimeout(checkServer, 2000);
+}
+
+// Handles restart timeout in modal
+function handleModalRestartTimeout() {
+    appendCliOutput('[WARNING] Application restart took longer than expected');
+    showUpdateError('Application restart took longer than expected. Please refresh the page manually.');
+}
+
+// Shows update success state
+function showUpdateSuccess() {
+    const statusIndicator = document.getElementById('updateStatusIndicator');
+    const statusText = document.getElementById('updateStatusText');
+    
+    if (statusIndicator) {
+        statusIndicator.className = 'update-status-indicator success';
+        statusIndicator.innerHTML = '<i class="fas fa-check-circle"></i><span>Update completed successfully!</span>';
+    }
+}
+
+// Shows update error state
+function showUpdateError(message) {
+    const statusIndicator = document.getElementById('updateStatusIndicator');
+    const statusText = document.getElementById('updateStatusText');
+    
+    if (statusIndicator) {
+        statusIndicator.className = 'update-status-indicator error';
+        statusIndicator.innerHTML = `<i class="fas fa-exclamation-circle"></i><span>Update failed: ${message}</span>`;
+    }
+    
+    appendCliOutput(`[ERROR] Update failed: ${message}`);
 } 
