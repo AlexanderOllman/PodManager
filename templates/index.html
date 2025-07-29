@@ -891,7 +891,14 @@
                 <!-- Application Update Section -->
                 <div class="col-md-6">
                     <div class="settings-section">
-                        <h4>Application Update</h4>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4>Application Update</h4>
+                            <!-- Update Available Notification in Settings -->
+                            <div class="update-notification-pill-small" id="updateNotificationSettingsPill" style="display: none;">
+                                <i class="fas fa-exclamation-circle me-1"></i>
+                                <span>Update Available</span>
+                            </div>
+                        </div>
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <span class="text-muted small">Current version:</span>
                             <span class="badge bg-secondary" id="currentVersionBadge">Loading...</span>

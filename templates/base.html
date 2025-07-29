@@ -83,6 +83,11 @@
                     <span class="brand-text">HPE Private Cloud AI Resource Manager</span>
                 </a>
                 <div class="d-flex align-items-center">
+                    <!-- Update Available Notification -->
+                    <div class="update-notification-pill" id="updateNotificationPill" style="display: none;" onclick="navigateToSettings()">
+                        <i class="fas fa-download me-1"></i>
+                        <span>Update Available</span>
+                    </div>
                     <span class="text-dark me-2"><i class="fas fa-user-circle me-1"></i> Admin</span>
                 </div>
             </nav>
@@ -129,5 +134,151 @@
 
     <!-- Page specific scripts will be in child templates using this block -->
     {% block page_scripts %}{% endblock %}
+
+    <!-- Update Notification System -->
+    <script>
+    // Global update notification system
+    window.updateChecker = {
+        GITHUB_VERSION_URL: 'https://raw.githubusercontent.com/AlexanderOllman/PodManager/refs/heads/main/version.json',
+        localVersion: null,
+        remoteVersion: null,
+        
+        // Initialize update checking on page load
+        init: function() {
+            this.checkForUpdates();
+        },
+        
+        // Check for updates by comparing local and GitHub versions
+        checkForUpdates: function() {
+            Promise.all([
+                this.fetchLocalVersion(),
+                this.fetchRemoteVersion()
+            ]).then(([localVer, remoteVer]) => {
+                this.localVersion = localVer;
+                this.remoteVersion = remoteVer;
+                
+                if (localVer && remoteVer && this.isUpdateAvailable(localVer, remoteVer)) {
+                    this.showUpdateNotifications();
+                } else {
+                    this.hideUpdateNotifications();
+                }
+            }).catch(error => {
+                console.warn('Update check failed:', error);
+                this.hideUpdateNotifications();
+            });
+        },
+        
+        // Fetch local version from API
+        fetchLocalVersion: function() {
+            return fetch('/api/version')
+                .then(response => response.json())
+                .then(data => data.version)
+                .catch(error => {
+                    console.error('Failed to fetch local version:', error);
+                    return null;
+                });
+        },
+        
+        // Fetch remote version from GitHub
+        fetchRemoteVersion: function() {
+            return fetch(this.GITHUB_VERSION_URL, {
+                cache: 'no-cache',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`GitHub fetch failed: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => data.version)
+                .catch(error => {
+                    console.error('Failed to fetch remote version:', error);
+                    return null;
+                });
+        },
+        
+        // Compare versions to determine if update is available
+        isUpdateAvailable: function(localVer, remoteVer) {
+            if (!localVer || !remoteVer) return false;
+            
+            // Simple version comparison (works for semantic versioning like 2.1.0)
+            const parseVersion = (ver) => ver.split('.').map(num => parseInt(num, 10));
+            const local = parseVersion(localVer);
+            const remote = parseVersion(remoteVer);
+            
+            for (let i = 0; i < Math.max(local.length, remote.length); i++) {
+                const localPart = local[i] || 0;
+                const remotePart = remote[i] || 0;
+                
+                if (remotePart > localPart) return true;
+                if (remotePart < localPart) return false;
+            }
+            
+            return false; // Versions are equal
+        },
+        
+        // Show update notification pills
+        showUpdateNotifications: function() {
+            const navbarPill = document.getElementById('updateNotificationPill');
+            const settingsPill = document.getElementById('updateNotificationSettingsPill');
+            
+            if (navbarPill) {
+                navbarPill.style.display = 'flex';
+            }
+            if (settingsPill) {
+                settingsPill.style.display = 'flex';
+            }
+            
+            console.log(`Update available: ${this.localVersion} → ${this.remoteVersion}`);
+        },
+        
+        // Hide update notification pills
+        hideUpdateNotifications: function() {
+            const navbarPill = document.getElementById('updateNotificationPill');
+            const settingsPill = document.getElementById('updateNotificationSettingsPill');
+            
+            if (navbarPill) {
+                navbarPill.style.display = 'none';
+            }
+            if (settingsPill) {
+                settingsPill.style.display = 'none';
+            }
+        }
+    };
+    
+    // Navigation function for update notification pill
+    function navigateToSettings() {
+        // If we're using tabs, switch to settings tab
+        const settingsTab = document.querySelector('a[data-bs-target="#settings"], a[href="#settings"]');
+        if (settingsTab) {
+            settingsTab.click();
+            return;
+        }
+        
+        // If we're using navigation system, navigate to settings
+        if (typeof navigateToTab === 'function') {
+            navigateToTab('settings');
+            return;
+        }
+        
+        // Fallback: scroll to settings section
+        const settingsSection = document.getElementById('settings');
+        if (settingsSection) {
+            settingsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+    
+    // Initialize update checking when DOM is ready
+    document.addEventListener('DOMContentLoaded', function() {
+        // Delay the update check slightly to not interfere with page loading
+        setTimeout(() => {
+            window.updateChecker.init();
+        }, 2000);
+    });
+    </script>
 </body>
 </html> 

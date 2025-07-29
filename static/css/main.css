@@ -2261,4 +2261,76 @@ body {
     color: white;
     border: none;
     font-weight: 500;
+}
+
+/* Update Notification Pills */
+.update-notification-pill {
+    background: linear-gradient(135deg, #FFB800, #FFA000);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 25px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(255, 184, 0, 0.2);
+    margin-right: 16px;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    border: none;
+    user-select: none;
+}
+
+.update-notification-pill:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(255, 184, 0, 0.3);
+    color: white;
+    text-decoration: none;
+}
+
+.update-notification-pill i {
+    animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+    0%, 20%, 50%, 80%, 100% {
+        transform: translateY(0);
+    }
+    40% {
+        transform: translateY(-3px);
+    }
+    60% {
+        transform: translateY(-1px);
+    }
+}
+
+/* Update Notification Pill - Small Version for Settings */
+.update-notification-pill-small {
+    background: linear-gradient(135deg, #FFB800, #FFA000);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(255, 184, 0, 0.2);
+    display: flex;
+    align-items: center;
+    animation: pulse-warning 3s infinite;
+}
+
+@keyframes pulse-warning {
+    0% {
+        box-shadow: 0 2px 6px rgba(255, 184, 0, 0.2);
+    }
+    50% {
+        box-shadow: 0 4px 12px rgba(255, 184, 0, 0.4);
+    }
+    100% {
+        box-shadow: 0 2px 6px rgba(255, 184, 0, 0.2);
+    }
+}
+
+.update-notification-pill-small i {
+    font-size: 0.7rem;
 } 

@@ -1,8 +1,47 @@
 {
-  "version": "2.1.0",
+  "version": "2.1.1",
   "buildDate": "2025-01-29",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.1.1",
+      "date": "2025-01-29",
+      "title": "Update Notification System",
+      "type": "minor",
+      "highlights": [
+        "Automatic update detection by comparing local and GitHub versions",
+        "Update Available notification pill in top navbar",
+        "Visual indicators in Settings page for available updates",
+        "One-click navigation to update functionality"
+      ],
+      "features": [
+        {
+          "category": "Update Management",
+          "items": [
+            "Added automatic version checking against GitHub repository on page load",
+            "Implemented 'Update Available' pill in top navigation bar",
+            "Added update notification in Application Update settings card",
+            "Created seamless navigation from update notifications to Settings page",
+            "Enhanced user awareness of available updates with visual indicators"
+          ]
+        },
+        {
+          "category": "User Experience",
+          "items": [
+            "Automatic background version checking without user intervention",
+            "Non-intrusive notification system that doesn't interrupt workflow",
+            "Clear visual indicators for update availability",
+            "Improved update discovery and adoption workflow"
+          ]
+        }
+      ],
+      "technical": [
+        "Integrated GitHub API for remote version checking",
+        "Added version comparison logic with semantic versioning support",
+        "Implemented cross-origin resource sharing for GitHub content access",
+        "Enhanced error handling for network connectivity issues"
+      ]
+    },
     {
       "version": "2.1.0",
       "date": "2025-01-29",

@@ -714,5 +714,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const settingsSection = document.getElementById('githubSettings');
     if (settingsSection) {
         loadVersionInfo();
+        
+        // Also trigger update check when settings page loads
+        if (window.updateChecker) {
+            setTimeout(() => {
+                window.updateChecker.checkForUpdates();
+            }, 1000);
+        }
     }
-}); 
+});
+
+// Manual update check function (can be called from UI)
+function checkForUpdatesManually() {
+    if (window.updateChecker) {
+        console.log('Manually checking for updates...');
+        window.updateChecker.checkForUpdates();
+    } else {
+        console.error('Update checker not available');
+    }
+} 
