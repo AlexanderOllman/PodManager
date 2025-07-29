@@ -1807,7 +1807,8 @@ def get_nodes():
                 'labels': metadata.get('labels', {}),
                 'allocatable_cpu': allocatable.get('cpu', '0'),
                 'allocatable_memory': allocatable.get('memory', '0'),
-                'allocatable_pods': allocatable.get('pods', '0')
+                'allocatable_pods': allocatable.get('pods', '0'),
+                'role': 'control-plane' if metadata.get('labels', {}).get('node-role.kubernetes.io/control-plane') is not None or metadata.get('labels', {}).get('node-role.kubernetes.io/master') is not None else 'worker'
             }
             node_cards.append(node_card)
         

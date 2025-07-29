@@ -1532,6 +1532,27 @@ body {
     border-color: #01A982;
 }
 
+/* Node Role Section Headers */
+.node-role-section {
+    margin-bottom: 2rem;
+}
+
+.node-role-section h5 {
+    color: #495057;
+    font-weight: 600;
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 8px;
+    margin-bottom: 20px;
+}
+
+.node-role-section h5 i {
+    color: #01A982;
+}
+
+.node-role-section h5 i.fa-crown {
+    color: #ffd700;
+}
+
 .node-card .node-header {
     display: flex;
     justify-content: space-between;
@@ -1547,6 +1568,10 @@ body {
     color: #2c3e50;
     margin: 0;
     flex-grow: 1;
+}
+
+.node-card .node-name i {
+    font-size: 0.9rem;
 }
 
 .node-card .node-status {

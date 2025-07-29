@@ -114,10 +114,60 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderNodeCards(nodes) {
         const nodesContainer = document.getElementById('nodesContainer');
         
+        // Group nodes by role
+        const controlPlaneNodes = [];
+        const workerNodes = [];
+        
         nodes.forEach(node => {
-            const nodeCard = createNodeCard(node);
-            nodesContainer.appendChild(nodeCard);
+            const isControlPlane = node.role === 'control-plane';
+            
+            if (isControlPlane) {
+                controlPlaneNodes.push(node);
+            } else {
+                workerNodes.push(node);
+            }
         });
+        
+        // Clear container
+        nodesContainer.innerHTML = '';
+        
+        // Add Control Plane section
+        if (controlPlaneNodes.length > 0) {
+            const controlPlaneSection = document.createElement('div');
+            controlPlaneSection.className = 'col-12 node-role-section';
+            controlPlaneSection.innerHTML = `
+                <h5 class="text-muted mb-3">
+                    <i class="fas fa-crown me-2"></i>Control Plane Nodes
+                </h5>
+                <div class="row" id="controlPlaneNodesContainer"></div>
+            `;
+            nodesContainer.appendChild(controlPlaneSection);
+            
+            const controlPlaneContainer = document.getElementById('controlPlaneNodesContainer');
+            controlPlaneNodes.forEach(node => {
+                const nodeCard = createNodeCard(node);
+                controlPlaneContainer.appendChild(nodeCard);
+            });
+        }
+        
+        // Add Worker section
+        if (workerNodes.length > 0) {
+            const workerSection = document.createElement('div');
+            workerSection.className = 'col-12 node-role-section';
+            workerSection.innerHTML = `
+                <h5 class="text-muted mb-3">
+                    <i class="fas fa-server me-2"></i>Worker Nodes
+                </h5>
+                <div class="row" id="workerNodesContainer"></div>
+            `;
+            nodesContainer.appendChild(workerSection);
+            
+            const workerContainer = document.getElementById('workerNodesContainer');
+            workerNodes.forEach(node => {
+                const nodeCard = createNodeCard(node);
+                workerContainer.appendChild(nodeCard);
+            });
+        }
     }
     
     function createNodeCard(node) {
@@ -127,10 +177,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const statusClass = node.status === 'Ready' ? 'ready' : 'not-ready';
         const gpuDisplay = node.gpu_count > 0 ? node.gpu_count : 'None';
         
+        // Determine node role for display
+        const isControlPlane = node.role === 'control-plane';
+        const roleIcon = isControlPlane ? 'fas fa-crown' : 'fas fa-server';
+        
         col.innerHTML = `
-            <div class="node-card" onclick="showNodeDetails('${node.name}')">
+            <div class="node-card" data-node-name="${node.name}">
                 <div class="node-header">
-                    <h5 class="node-name">${node.name}</h5>
+                    <h5 class="node-name">
+                        <i class="${roleIcon} me-2" style="color: ${isControlPlane ? '#ffd700' : '#6c757d'};"></i>
+                        ${node.name}
+                    </h5>
                     <span class="node-status ${statusClass}">${node.status}</span>
                 </div>
                 <div class="hardware-specs">
@@ -171,27 +228,118 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
         
+        // Add click event listener to the card
+        const cardElement = col.querySelector('.node-card');
+        cardElement.addEventListener('click', function() {
+            showNodeDetails(node.name);
+        });
+        
         return col;
     }
     
     // Make showNodeDetails available globally
     window.showNodeDetails = function(nodeName) {
-        const modal = new bootstrap.Modal(document.getElementById('nodeDetailsModal'));
+        const modalElement = document.getElementById('nodeDetailsModal');
+        if (!modalElement) {
+            console.error('Node details modal not found');
+            return;
+        }
+        
         const modalTitle = document.getElementById('nodeDetailsModalLabel');
         const loadingDiv = document.getElementById('nodeDetailsLoading');
         const contentDiv = document.getElementById('nodeDetailsContent');
         const errorDiv = document.getElementById('nodeDetailsError');
         
         // Set modal title
-        modalTitle.innerHTML = `<i class="fas fa-server me-2"></i>Node Details: ${nodeName}`;
+        if (modalTitle) {
+            modalTitle.innerHTML = `<i class="fas fa-server me-2"></i>Node Details: ${nodeName}`;
+        }
         
         // Show loading state
-        loadingDiv.style.display = 'block';
-        contentDiv.innerHTML = '';
-        errorDiv.style.display = 'none';
+        if (loadingDiv) loadingDiv.style.display = 'block';
+        if (contentDiv) contentDiv.innerHTML = '';
+        if (errorDiv) errorDiv.style.display = 'none';
         
-        // Show modal
-        modal.show();
+        // Initialize and show modal with proper configuration and error handling
+        let modal = null;
+        
+        // First, check if Bootstrap is available
+        if (typeof bootstrap === 'undefined' || typeof bootstrap.Modal === 'undefined') {
+            console.error('Bootstrap is not loaded or Modal class is not available');
+            showModalFallback();
+            return;
+        }
+        
+        try {
+            // Check if there's already a modal instance
+            const existingModal = bootstrap.Modal.getInstance(modalElement);
+            if (existingModal) {
+                modal = existingModal;
+            } else {
+                // Create new modal instance with explicit configuration
+                modal = new bootstrap.Modal(modalElement, {
+                    backdrop: true,
+                    keyboard: true,
+                    focus: true
+                });
+            }
+            
+            // Show the modal
+            modal.show();
+            
+        } catch (error) {
+            console.error('Error initializing Bootstrap modal:', error);
+            showModalFallback();
+            return;
+        }
+        
+        // Fallback modal display function
+        function showModalFallback() {
+            console.log('Using fallback modal display');
+            modalElement.style.display = 'block';
+            modalElement.classList.add('show');
+            modalElement.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('modal-open');
+            
+            // Create backdrop manually
+            let backdrop = document.getElementById('nodeDetailsBackdrop');
+            if (!backdrop) {
+                backdrop = document.createElement('div');
+                backdrop.className = 'modal-backdrop fade show';
+                backdrop.id = 'nodeDetailsBackdrop';
+                document.body.appendChild(backdrop);
+            }
+            
+            // Add manual close handlers for fallback
+            const closeModal = () => {
+                modalElement.style.display = 'none';
+                modalElement.classList.remove('show');
+                modalElement.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('modal-open');
+                const existingBackdrop = document.getElementById('nodeDetailsBackdrop');
+                if (existingBackdrop) {
+                    existingBackdrop.remove();
+                }
+            };
+            
+            // Close on backdrop click
+            backdrop.addEventListener('click', closeModal);
+            
+            // Close on close button click
+            const closeButton = modalElement.querySelector('.btn-close');
+            if (closeButton) {
+                closeButton.addEventListener('click', closeModal);
+            }
+            
+            // Close on escape key
+            const handleEscape = (e) => {
+                if (e.key === 'Escape') {
+                    closeModal();
+                    document.removeEventListener('keydown', handleEscape);
+                }
+            };
+            document.addEventListener('keydown', handleEscape);
+        }
         
         // Fetch node details
         fetch(`/api/nodes/${nodeName}/details`)
@@ -202,14 +350,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 return response.json();
             })
             .then(nodeData => {
-                loadingDiv.style.display = 'none';
+                if (loadingDiv) loadingDiv.style.display = 'none';
                 renderNodeDetails(nodeData);
             })
             .catch(error => {
                 console.error('Error loading node details:', error);
-                loadingDiv.style.display = 'none';
-                errorDiv.style.display = 'block';
-                document.getElementById('nodeDetailsErrorMessage').textContent = `Error loading node details: ${error.message}`;
+                if (loadingDiv) loadingDiv.style.display = 'none';
+                if (errorDiv) {
+                    errorDiv.style.display = 'block';
+                    const errorMessage = document.getElementById('nodeDetailsErrorMessage');
+                    if (errorMessage) {
+                        errorMessage.textContent = `Error loading node details: ${error.message}`;
+                    }
+                }
             });
     };
     
