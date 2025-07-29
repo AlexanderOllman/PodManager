@@ -2334,3 +2334,88 @@ body {
 .update-notification-pill-small i {
     font-size: 0.7rem;
 } 
+
+/* Settings Section Improvements */
+.settings-section {
+    background: white;
+    border: 1px solid #e0e6ed;
+    border-radius: 12px;
+    padding: 24px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    min-height: 300px;
+}
+
+.settings-section:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.settings-section h4 {
+    color: var(--hpe-primary);
+    margin-bottom: 16px;
+    font-weight: 600;
+    border-bottom: 2px solid var(--hpe-light);
+    padding-bottom: 8px;
+}
+
+/* About Card Styling */
+.about-info {
+    flex-grow: 1;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #f5f5f5;
+}
+
+.info-item:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    font-weight: 600;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.info-value {
+    font-weight: 500;
+    color: #333;
+    display: flex;
+    align-items: center;
+}
+
+.info-value .btn-link {
+    color: var(--hpe-primary);
+    text-decoration: none;
+    font-size: 0.8rem;
+}
+
+.info-value .btn-link:hover {
+    color: var(--hpe-secondary);
+}
+
+/* Remote Version Badge */
+#remoteVersionBadge {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    border: none;
+    font-weight: 500;
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
+}
+
+/* Ensure buttons align at bottom */
+.settings-section .mt-auto {
+    margin-top: auto !important;
+    padding-top: 16px;
+} 

@@ -1,8 +1,64 @@
 {
-  "version": "2.1.1",
+  "version": "2.1.2",
   "buildDate": "2025-01-29",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.1.2",
+      "date": "2025-01-29",
+      "title": "Enhanced Settings Layout & About Information",
+      "type": "minor",
+      "highlights": [
+        "Redesigned settings page with three equal-height cards",
+        "Added comprehensive About card with author and version information",
+        "Enhanced remote version detection display",
+        "Integrated feedback system with pre-populated email template"
+      ],
+      "features": [
+        {
+          "category": "Settings & Layout",
+          "items": [
+            "Redesigned settings into three equal-height cards (Database, Update, About)",
+            "Added remote version badge display in Application Update header",
+            "Implemented flexbox layout for consistent card heights",
+            "Enhanced visual design with hover effects and consistent styling"
+          ]
+        },
+        {
+          "category": "About Information",
+          "items": [
+            "Added About card with author information (Alex Ollman)",
+            "Integrated version display with release notes link",
+            "Added last update date from build information",
+            "Created structured info layout with labels and values"
+          ]
+        },
+        {
+          "category": "Feedback System",
+          "items": [
+            "Implemented 'Provide Feedback' button with mailto integration",
+            "Created pre-populated email template with current version",
+            "Added structured feedback fields (Issue/Request, Description, Screenshots)",
+            "Configured feedback emails to aollman@hpe.com"
+          ]
+        },
+        {
+          "category": "Version Management",
+          "items": [
+            "Enhanced remote version detection and display",
+            "Added visual indicators for current vs. available versions",
+            "Improved version comparison with semantic versioning support",
+            "Integrated codename display in About section"
+          ]
+        }
+      ],
+      "technical": [
+        "Enhanced CSS flexbox implementation for equal card heights",
+        "Improved JavaScript version handling and display logic",
+        "Added mailto URL encoding for special characters",
+        "Enhanced error handling for version loading failures"
+      ]
+    },
     {
       "version": "2.1.1",
       "date": "2025-01-29",

@@ -497,32 +497,90 @@ function showUpdateError(message) {
 // VERSION MANAGEMENT FUNCTIONALITY
 // ============================================================================
 
-// Loads and displays current version information
-function loadVersionInfo() {
-    const versionBadge = document.getElementById('currentVersionBadge');
-    if (!versionBadge) return;
+// Provide feedback functionality
+function provideFeedback() {
+    // Get current version for the email template
+    const currentVersion = document.getElementById('aboutVersionText')?.textContent || 'Unknown';
     
+    // Email template
+    const subject = encodeURIComponent('HPE PCAI Resource Manager Feedback');
+    const body = encodeURIComponent(`Version: ${currentVersion}
+
+Issue or Request:
+
+
+Description:
+
+
+Screenshots (if applicable):
+
+`);
+    
+    // Open mailto link
+    const mailtoLink = `mailto:aollman@hpe.com?subject=${subject}&body=${body}`;
+    window.location.href = mailtoLink;
+}
+
+// Enhanced version loading for both current version badge and About card
+function loadVersionInfo() {
     fetch('/api/version')
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                versionBadge.textContent = 'Unknown';
-                versionBadge.className = 'badge bg-warning';
-                console.error('Error loading version:', data.error);
-                return;
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(versionData => {
+            // Store version data globally for release notes
+            window.versionData = versionData;
+            
+            // Update current version badge in Application Update card
+            const currentVersionBadge = document.getElementById('currentVersionBadge');
+            if (currentVersionBadge) {
+                currentVersionBadge.textContent = `v${versionData.version}`;
             }
             
-            versionBadge.textContent = `v${data.version}`;
-            versionBadge.className = 'badge';
-            versionBadge.id = 'currentVersionBadge'; // Ensure the ID is preserved
+            // Update About card information
+            const aboutVersionText = document.getElementById('aboutVersionText');
+            const aboutLastUpdated = document.getElementById('aboutLastUpdated');
             
-            // Store version data globally for release notes
-            window.versionData = data;
+            if (aboutVersionText) {
+                aboutVersionText.textContent = `v${versionData.version}`;
+                if (versionData.codename) {
+                    aboutVersionText.textContent += ` "${versionData.codename}"`;
+                }
+            }
+            
+            if (aboutLastUpdated) {
+                if (versionData.buildDate) {
+                    const buildDate = new Date(versionData.buildDate);
+                    aboutLastUpdated.textContent = buildDate.toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    });
+                } else {
+                    aboutLastUpdated.textContent = 'Unknown';
+                }
+            }
         })
         .catch(error => {
-            console.error('Error fetching version info:', error);
-            versionBadge.textContent = 'Error';
-            versionBadge.className = 'badge bg-danger';
+            console.error('Failed to load version info:', error);
+            
+            // Update with fallback values
+            const currentVersionBadge = document.getElementById('currentVersionBadge');
+            const aboutVersionText = document.getElementById('aboutVersionText');
+            const aboutLastUpdated = document.getElementById('aboutLastUpdated');
+            
+            if (currentVersionBadge) {
+                currentVersionBadge.textContent = 'Unknown';
+            }
+            if (aboutVersionText) {
+                aboutVersionText.textContent = 'Unknown';
+            }
+            if (aboutLastUpdated) {
+                aboutLastUpdated.textContent = 'Unknown';
+            }
         });
 }
 

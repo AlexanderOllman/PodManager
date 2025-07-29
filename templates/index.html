@@ -872,8 +872,8 @@
             <!-- Settings Cards Row -->
             <div class="row">
                 <!-- Database Refresh Section -->
-                <div class="col-md-6">
-                    <div class="settings-section">
+                <div class="col-md-4 mb-4">
+                    <div class="settings-section h-100">
                         <h4>Database Management</h4>
                         <p class="text-muted small mb-2">
                             Last refreshed: <span id="db-last-updated-time">Loading...</span>
@@ -881,22 +881,31 @@
                         <p class="text-muted mb-3">Manually refresh the database with current Kubernetes resources.
                             This will fetch fresh data for all resources from the cluster.
                         </p>
-                        <button class="settings-btn settings-btn-primary" onclick="refreshDatabase()">
-                            <i class="fas fa-sync-alt"></i> Refresh Database
-                        </button>
+                        <div class="mt-auto">
+                            <button class="settings-btn settings-btn-primary" onclick="refreshDatabase()">
+                                <i class="fas fa-sync-alt"></i> Refresh Database
+                            </button>
+                        </div>
                         <div id="databaseRefreshStatus" class="mt-2" style="display: none;"></div>
                     </div>
                 </div>
 
                 <!-- Application Update Section -->
-                <div class="col-md-6">
-                    <div class="settings-section">
+                <div class="col-md-4 mb-4">
+                    <div class="settings-section h-100">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h4>Application Update</h4>
-                            <!-- Update Available Notification in Settings -->
-                            <div class="update-notification-pill-small" id="updateNotificationSettingsPill" style="display: none;">
-                                <i class="fas fa-exclamation-circle me-1"></i>
-                                <span>Update Available</span>
+                            <!-- Remote Version Display -->
+                            <div class="d-flex align-items-center">
+                                <span class="badge bg-success me-2" id="remoteVersionBadge" style="display: none;">
+                                    <i class="fas fa-cloud-download-alt me-1"></i>
+                                    <span id="remoteVersionText">v0.0.0</span>
+                                </span>
+                                <!-- Update Available Notification in Settings -->
+                                <div class="update-notification-pill-small" id="updateNotificationSettingsPill" style="display: none;">
+                                    <i class="fas fa-exclamation-circle me-1"></i>
+                                    <span>Update Available</span>
+                                </div>
                             </div>
                         </div>
                         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -907,15 +916,48 @@
                             This will stop the application, perform a hard pull on the GitHub repository, 
                             and restart the application with the latest code.
                         </p>
-                        <button class="settings-btn settings-btn-warning" onclick="showUpdateModal()">
-                            <i class="fas fa-download"></i> Update Application
-                        </button>
-                        <div class="mt-2">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="showReleaseNotes()">
-                                <i class="fas fa-file-alt me-1"></i> Release Notes
+                        <div class="mt-auto">
+                            <button class="settings-btn settings-btn-warning" onclick="showUpdateModal()">
+                                <i class="fas fa-download"></i> Update Application
                             </button>
+                            <div class="mt-2">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="showReleaseNotes()">
+                                    <i class="fas fa-file-alt me-1"></i> Release Notes
+                                </button>
+                            </div>
                         </div>
                         <div id="updateStatus" class="mt-2" style="display: none;"></div>
+                    </div>
+                </div>
+
+                <!-- About Section -->
+                <div class="col-md-4 mb-4">
+                    <div class="settings-section h-100">
+                        <h4>About</h4>
+                        <div class="about-info mb-3">
+                            <div class="info-item">
+                                <span class="info-label">Author:</span>
+                                <span class="info-value">Alex Ollman</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Version:</span>
+                                <span class="info-value">
+                                    <span id="aboutVersionText">Loading...</span>
+                                    <button class="btn btn-sm btn-link p-0 ms-1" onclick="showReleaseNotes()" title="View Release Notes">
+                                        <i class="fas fa-info-circle"></i>
+                                    </button>
+                                </span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Last Updated:</span>
+                                <span class="info-value" id="aboutLastUpdated">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="mt-auto">
+                            <button class="settings-btn settings-btn-primary" onclick="provideFeedback()">
+                                <i class="fas fa-envelope"></i> Provide Feedback
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

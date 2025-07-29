@@ -19,9 +19,9 @@ import select
 import struct
 import fcntl
 import termios
-import re
 from typing import Optional, Union, Dict
 from datetime import datetime
+import requests
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1775,31 +1775,59 @@ def get_database_last_updated():
 
 @app.route('/api/version', methods=['GET'])
 def get_version_info():
-    """Returns the application version information and release notes."""
+    """Get local version information"""
+    version_file_path = os.path.join(os.path.dirname(__file__), 'version.json')
+    if not os.path.exists(version_file_path):
+        return jsonify({'version': '2.0.0', 'buildDate': '2025-01-25', 'codename': 'Unknown', 'releases': []})
+    
     try:
-        version_file_path = os.path.join(os.path.dirname(__file__), 'version.json')
-        
-        if not os.path.exists(version_file_path):
-            # Return default version if file doesn't exist
-            return jsonify({
-                'version': '2.0.0',
-                'buildDate': '2025-01-25',
-                'codename': 'Unknown',
-                'releases': []
-            })
-        
         with open(version_file_path, 'r', encoding='utf-8') as f:
             version_data = json.load(f)
-        
         return jsonify(version_data)
     except Exception as e:
-        logging.error(f"Error reading version information: {str(e)}", exc_info=True)
+        app.logger.error(f"Error reading version file: {e}")
+        return jsonify({'error': 'Failed to read version file'}), 500
+
+@app.route('/api/version/remote', methods=['GET'])
+def get_remote_version_info():
+    """Get remote version information from GitHub (server-side to avoid CORS)"""
+    github_url = 'https://raw.githubusercontent.com/AlexanderOllman/PodManager/refs/heads/main/version.json'
+    
+    try:
+        # Set a reasonable timeout and user agent
+        headers = {
+            'User-Agent': 'HPE-PCAI-Resource-Manager/1.0',
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache'
+        }
+        
+        response = requests.get(github_url, headers=headers, timeout=10)
+        response.raise_for_status()  # Raises an HTTPError for bad responses
+        
+        # Parse JSON response
+        remote_data = response.json()
+        
+        # Return only the essential information to minimize response size
         return jsonify({
-            'version': 'Unknown',
-            'buildDate': 'Unknown', 
-            'codename': 'Unknown',
-            'releases': [],
-            'error': 'Failed to load version information'
+            'version': remote_data.get('version', 'unknown'),
+            'buildDate': remote_data.get('buildDate', 'unknown'),
+            'codename': remote_data.get('codename', ''),
+            'success': True
+        })
+        
+    except requests.exceptions.RequestException as e:
+        app.logger.warning(f"Failed to fetch remote version from GitHub: {e}")
+        return jsonify({
+            'error': 'Failed to fetch remote version',
+            'success': False,
+            'details': str(e)
+        }), 503  # Service Unavailable
+    except Exception as e:
+        app.logger.error(f"Unexpected error fetching remote version: {e}")
+        return jsonify({
+            'error': 'Unexpected error',
+            'success': False,
+            'details': str(e)
         }), 500
 
 @app.route('/api/nodes', methods=['GET'])

@@ -139,7 +139,6 @@
     <script>
     // Global update notification system
     window.updateChecker = {
-        GITHUB_VERSION_URL: 'https://raw.githubusercontent.com/AlexanderOllman/PodManager/refs/heads/main/version.json',
         localVersion: null,
         remoteVersion: null,
         
@@ -161,6 +160,10 @@
                     this.showUpdateNotifications();
                 } else {
                     this.hideUpdateNotifications();
+                    // Still show remote version badge even if no update available
+                    if (remoteVer) {
+                        this.showRemoteVersion();
+                    }
                 }
             }).catch(error => {
                 console.warn('Update check failed:', error);
@@ -179,9 +182,9 @@
                 });
         },
         
-        // Fetch remote version from GitHub
+        // Fetch remote version from backend (which fetches from GitHub server-side)
         fetchRemoteVersion: function() {
-            return fetch(this.GITHUB_VERSION_URL, {
+            return fetch('/api/version/remote', {
                 cache: 'no-cache',
                 headers: {
                     'Cache-Control': 'no-cache',
@@ -190,11 +193,18 @@
             })
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`GitHub fetch failed: ${response.status}`);
+                        throw new Error(`Backend fetch failed: ${response.status}`);
                     }
                     return response.json();
                 })
-                .then(data => data.version)
+                .then(data => {
+                    if (data.success) {
+                        return data.version;
+                    } else {
+                        console.warn('Remote version fetch failed:', data.error);
+                        return null;
+                    }
+                })
                 .catch(error => {
                     console.error('Failed to fetch remote version:', error);
                     return null;
@@ -225,12 +235,18 @@
         showUpdateNotifications: function() {
             const navbarPill = document.getElementById('updateNotificationPill');
             const settingsPill = document.getElementById('updateNotificationSettingsPill');
+            const remoteVersionBadge = document.getElementById('remoteVersionBadge');
+            const remoteVersionText = document.getElementById('remoteVersionText');
             
             if (navbarPill) {
                 navbarPill.style.display = 'flex';
             }
             if (settingsPill) {
                 settingsPill.style.display = 'flex';
+            }
+            if (remoteVersionBadge && remoteVersionText && this.remoteVersion) {
+                remoteVersionText.textContent = `v${this.remoteVersion}`;
+                remoteVersionBadge.style.display = 'inline-flex';
             }
             
             console.log(`Update available: ${this.localVersion} → ${this.remoteVersion}`);
@@ -240,12 +256,28 @@
         hideUpdateNotifications: function() {
             const navbarPill = document.getElementById('updateNotificationPill');
             const settingsPill = document.getElementById('updateNotificationSettingsPill');
+            const remoteVersionBadge = document.getElementById('remoteVersionBadge');
             
             if (navbarPill) {
                 navbarPill.style.display = 'none';
             }
             if (settingsPill) {
                 settingsPill.style.display = 'none';
+            }
+            if (remoteVersionBadge) {
+                remoteVersionBadge.style.display = 'none';
+            }
+        },
+
+        // Show remote version even when no update is available
+        showRemoteVersion: function() {
+            const remoteVersionBadge = document.getElementById('remoteVersionBadge');
+            const remoteVersionText = document.getElementById('remoteVersionText');
+            
+            if (remoteVersionBadge && remoteVersionText && this.remoteVersion) {
+                remoteVersionText.textContent = `v${this.remoteVersion}`;
+                remoteVersionBadge.style.display = 'inline-flex';
+                remoteVersionBadge.className = 'badge bg-info me-2'; // Blue for "up to date"
             }
         }
     };
