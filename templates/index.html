@@ -564,6 +564,9 @@
                 <button type="button" class="btn btn-primary ms-2" id="refreshNamespaces">
                     <i class="fas fa-sync-alt me-1"></i> Refresh
                 </button>
+                <button type="button" class="btn btn-secondary ms-2" id="newNamespaceBtn">
+                    <i class="fas fa-plus me-1"></i> New Namespace
+                </button>
             </div>
         </div>
 
@@ -700,6 +703,135 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="saveNamespaceChanges" style="display: none;">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Namespace Modal -->
+    <div class="modal fade" id="newNamespaceModal" tabindex="-1" aria-labelledby="newNamespaceModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newNamespaceModalLabel">
+                        <i class="fas fa-plus me-2"></i>Create New Namespace
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="newNamespaceForm">
+                        <!-- Namespace Name -->
+                        <div class="mb-4">
+                            <label for="namespaceName" class="form-label fw-bold">Namespace Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="namespaceName" placeholder="Enter namespace name" required>
+                            <div class="form-text">Must be a valid DNS-1123 label (lowercase letters, numbers, and hyphens only)</div>
+                        </div>
+
+                        <!-- Description -->
+                        <div class="mb-4">
+                            <label for="namespaceDescription" class="form-label fw-bold">Description</label>
+                            <textarea class="form-control" id="namespaceDescription" rows="2" placeholder="Optional description for this namespace"></textarea>
+                        </div>
+
+                        <!-- Default Labels Section -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Default Labels</label>
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                The following labels will be automatically added to your namespace:
+                            </div>
+                            
+                            <!-- Pill-based label selectors -->
+                            <div class="label-pills-container">
+                                <div class="form-check form-check-pill">
+                                    <input class="form-check-input" type="checkbox" id="label-part-of" checked>
+                                    <label class="form-check-label pill-label" for="label-part-of">
+                                        <span class="label-key">app.kubernetes.io/part-of:</span>
+                                        <span class="label-value">kubeflow-profile</span>
+                                    </label>
+                                </div>
+                                
+                                <div class="form-check form-check-pill">
+                                    <input class="form-check-input" type="checkbox" id="label-ezmodels" checked>
+                                    <label class="form-check-label pill-label" for="label-ezmodels">
+                                        <span class="label-key">hpe-ezua/ezmodels:</span>
+                                        <span class="label-value">"true"</span>
+                                    </label>
+                                </div>
+                                
+                                <div class="form-check form-check-pill">
+                                    <input class="form-check-input" type="checkbox" id="label-cluster" checked>
+                                    <label class="form-check-label pill-label" for="label-cluster">
+                                        <span class="label-key">hpe.com/cluster:</span>
+                                        <span class="label-value">none</span>
+                                    </label>
+                                </div>
+                                
+                                <div class="form-check form-check-pill">
+                                    <input class="form-check-input" type="checkbox" id="label-istio" checked>
+                                    <label class="form-check-label pill-label" for="label-istio">
+                                        <span class="label-key">istio-injection:</span>
+                                        <span class="label-value">enabled</span>
+                                    </label>
+                                </div>
+                                
+                                <div class="form-check form-check-pill">
+                                    <input class="form-check-input" type="checkbox" id="label-katib" checked>
+                                    <label class="form-check-label pill-label" for="label-katib">
+                                        <span class="label-key">katib.kubeflow.org/metrics-collector-injection:</span>
+                                        <span class="label-value">enabled</span>
+                                    </label>
+                                </div>
+                                
+                                <div class="form-check form-check-pill">
+                                    <input class="form-check-input" type="checkbox" id="label-pipelines" checked>
+                                    <label class="form-check-label pill-label" for="label-pipelines">
+                                        <span class="label-key">pipelines.kubeflow.org/enabled:</span>
+                                        <span class="label-value">"true"</span>
+                                    </label>
+                                </div>
+                                
+                                <div class="form-check form-check-pill">
+                                    <input class="form-check-input" type="checkbox" id="label-serving" checked>
+                                    <label class="form-check-label pill-label" for="label-serving">
+                                        <span class="label-key">serving.kubeflow.org/inferenceservice:</span>
+                                        <span class="label-value">enabled</span>
+                                    </label>
+                                </div>
+                                
+                                <!-- Always included metadata name label -->
+                                <div class="form-check form-check-pill disabled">
+                                    <input class="form-check-input" type="checkbox" id="label-metadata-name" checked disabled>
+                                    <label class="form-check-label pill-label" for="label-metadata-name">
+                                        <span class="label-key">kubernetes.io/metadata.name:</span>
+                                        <span class="label-value" id="metadataNameValue">&lt;namespace name&gt;</span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-text mt-2">
+                                <i class="fas fa-lightbulb me-1"></i>
+                                You can uncheck labels you don't want to include. The metadata.name label is always required.
+                            </div>
+                        </div>
+
+                        <!-- Custom Labels Section -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Additional Labels</label>
+                            <div class="custom-labels-container" id="customLabelsContainer">
+                                <!-- Custom labels will be added here dynamically -->
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="addCustomLabel">
+                                <i class="fas fa-plus me-1"></i>Add Custom Label
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="createNamespaceBtn">
+                        <i class="fas fa-plus me-1"></i>Create Namespace
+                    </button>
                 </div>
             </div>
         </div>

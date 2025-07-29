@@ -52,6 +52,7 @@ class Database:
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         total_node_pod_capacity INTEGER,
+                        total_node_allocatable_pods INTEGER,
                         total_node_allocatable_cpu_millicores INTEGER,
                         total_node_allocatable_memory_bytes INTEGER, -- Storing as bytes (BIGINT)
                         total_node_allocatable_gpus INTEGER,
@@ -62,6 +63,14 @@ class Database:
                         -- Add other global environment metrics here if needed in the future
                     )
                 ''')
+                
+                # Migration: Add total_node_allocatable_pods column if it doesn't exist
+                try:
+                    cursor.execute("SELECT total_node_allocatable_pods FROM environment_metrics LIMIT 1")
+                except sqlite3.OperationalError:
+                    # Column doesn't exist, add it
+                    logging.info("Adding total_node_allocatable_pods column to environment_metrics table")
+                    cursor.execute("ALTER TABLE environment_metrics ADD COLUMN total_node_allocatable_pods INTEGER DEFAULT 0")
                 
                 conn.commit()
                 logging.info(f"Database initialized successfully at {self.db_path}")
@@ -237,6 +246,7 @@ class Database:
                 cursor.execute('''
                     INSERT INTO environment_metrics (
                         total_node_pod_capacity,
+                        total_node_allocatable_pods,
                         total_node_allocatable_cpu_millicores,
                         total_node_allocatable_memory_bytes,
                         total_node_allocatable_gpus,
@@ -246,9 +256,10 @@ class Database:
                         -- memory_limit_percentage -- Removed
                         -- timestamp is DEFAULT CURRENT_TIMESTAMP
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     metrics_data.get('total_node_pod_capacity'),
+                    metrics_data.get('total_node_allocatable_pods'),
                     metrics_data.get('total_node_allocatable_cpu_millicores'),
                     metrics_data.get('total_node_allocatable_memory_bytes'),
                     metrics_data.get('total_node_allocatable_gpus'),

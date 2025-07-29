@@ -506,7 +506,7 @@ function updateDashboardMetrics(data) {
 
     // --- Pods Card ---
     const runningPods = metrics.pods?.current_running ?? 0;
-    const totalPods = metrics.pods?.total_capacity ?? 0;
+    const totalPods = metrics.pods?.total_allocatable ?? 0;
     const podPercentage = totalPods > 0 ? Math.round((runningPods / totalPods) * 100) : 0;
     createOrUpdateChart('pods-chart', podPercentage, podPercentage, 'Running', getColorForPercentage(podPercentage));
     document.getElementById('pods-details').textContent = `${runningPods} / ${totalPods}`;

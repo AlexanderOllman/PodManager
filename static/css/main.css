@@ -207,7 +207,6 @@ body {
   margin-right: 15px; /* Space between icon and text */
   text-align: center;
   font-size: 22px;
-  font-weight: 400;
 }
 
 .sidebar-toggle-btn {
@@ -1391,4 +1390,118 @@ body {
     border-radius: 50%;
     margin-right: 8px;
     vertical-align: middle;
+} 
+
+/* Pill-based label selectors for namespace creation */
+.label-pills-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.form-check-pill {
+    margin-bottom: 0;
+}
+
+.form-check-pill .form-check-input {
+    display: none;
+}
+
+.form-check-pill .pill-label {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--hpe-light-gray);
+    border: 2px solid var(--hpe-medium-gray);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 0;
+    user-select: none;
+}
+
+.form-check-pill .pill-label:hover {
+    background-color: #e9ecef;
+    border-color: var(--hpe-primary);
+}
+
+.form-check-pill .form-check-input:checked + .pill-label {
+    background-color: var(--hpe-primary);
+    border-color: var(--hpe-primary);
+    color: white;
+}
+
+.form-check-pill.disabled .pill-label {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    color: #6c757d;
+    cursor: not-allowed;
+}
+
+.form-check-pill .label-key {
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+.form-check-pill .label-value {
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 0.85em;
+}
+
+.form-check-pill .form-check-input:checked + .pill-label .label-value {
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.form-check-pill.disabled .label-value {
+    background-color: rgba(108, 117, 125, 0.1);
+}
+
+/* Custom labels container */
+.custom-labels-container {
+    margin-bottom: 10px;
+}
+
+.custom-label-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: center;
+}
+
+.custom-label-row input {
+    flex: 1;
+}
+
+.custom-label-row .btn-remove {
+    flex-shrink: 0;
+}
+
+/* New namespace modal specific styles */
+#newNamespaceModal .modal-body {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+#newNamespaceModal .form-label.fw-bold {
+    color: var(--hpe-dark);
+    margin-bottom: 8px;
+}
+
+#newNamespaceModal .alert-info {
+    background-color: #e7f3ff;
+    border-color: #b8daff;
+    color: #0c5460;
+}
+
+/* Loading states for namespace creation */
+.creating-namespace .btn {
+    pointer-events: none;
+}
+
+.creating-namespace .btn-primary {
+    background-color: var(--hpe-medium-gray);
+    border-color: var(--hpe-medium-gray);
 } 

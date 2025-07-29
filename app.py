@@ -148,6 +148,7 @@ def _collect_and_store_environment_metrics():
         return
 
     total_pod_capacity = 0
+    total_allocatable_pods = 0
     total_allocatable_cpu_millicores = 0
     total_allocatable_memory_bytes = 0
     total_allocatable_gpus = 0
@@ -160,6 +161,7 @@ def _collect_and_store_environment_metrics():
         allocatable = status.get('allocatable', {})
 
         total_pod_capacity += int(capacity.get('pods', 0))
+        total_allocatable_pods += int(allocatable.get('pods', 0))
         total_allocatable_cpu_millicores += parse_cpu_to_millicores(allocatable.get('cpu', '0'))
         total_allocatable_memory_bytes += parse_memory_to_bytes(allocatable.get('memory', '0'))
         total_allocatable_gpus += int(allocatable.get('nvidia.com/gpu', 0))
@@ -177,6 +179,7 @@ def _collect_and_store_environment_metrics():
 
     metrics_data = {
         'total_node_pod_capacity': total_pod_capacity,
+        'total_node_allocatable_pods': total_allocatable_pods,
         'total_node_allocatable_cpu_millicores': total_allocatable_cpu_millicores,
         'total_node_allocatable_memory_bytes': total_allocatable_memory_bytes,
         'total_node_allocatable_gpus': total_allocatable_gpus,
@@ -679,9 +682,46 @@ def api_namespace_events():
     
     # command = f"kubectl get events -n {namespace} --sort-by='.lastTimestamp'"
     command_list = ["get", "events", "-n", namespace, "--sort-by=.lastTimestamp"]
-    output = run_kubectl_command(command_list, is_json_output=False) # Events are text by default
+    output = run_kubectl_command(command_list, is_json_output=False)
     
     return jsonify(output=output)
+
+@app.route('/api/namespace/create', methods=['POST'])
+def api_namespace_create():
+    """Create a new namespace with the provided YAML content."""
+    yaml_content = request.form.get('yaml')
+    namespace_name = request.form.get('name')
+    
+    if not yaml_content:
+        return jsonify(error="YAML content not specified")
+    
+    if not namespace_name:
+        return jsonify(error="Namespace name not specified")
+    
+    # Create a temporary file to store the YAML
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.yaml', delete=False) as temp:
+            temp_path = temp.name
+            temp.write(yaml_content.encode('utf-8'))
+        
+        # Apply the YAML file to create the namespace
+        command_list = ["apply", "-f", temp_path]
+        output = run_kubectl_command(command_list, is_json_output=False)
+        
+        # Clean up the temporary file
+        os.unlink(temp_path)
+        
+        # Check if the command was successful
+        if "error" in output.lower() or "failed" in output.lower():
+            return jsonify(error=f"Failed to create namespace: {output}")
+        
+        return jsonify(output=output, success=True, message=f"Namespace '{namespace_name}' created successfully")
+        
+    except Exception as e:
+        # Clean up temp file in case of error too
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            os.unlink(temp_path)
+        return jsonify(error=f"Error creating namespace: {str(e)}")
 
 @app.route('/api/namespace/delete', methods=['POST'])
 def api_namespace_delete():
@@ -1386,6 +1426,7 @@ def get_environment_metrics_endpoint():
         response_data = {
             'pods': {
                 'total_capacity': env_metrics.get('total_node_pod_capacity', 0),
+                'total_allocatable': env_metrics.get('total_node_allocatable_pods', 0),
                 'current_running': current_running_pods,
                 'current_pending': current_pending_pods,
                 'current_failed': current_failed_pods,
@@ -1416,9 +1457,9 @@ def get_environment_metrics_endpoint():
         }
 
         # Calculate percentages
-        if response_data['pods']['total_capacity'] > 0:
+        if response_data['pods']['total_allocatable'] > 0:
             response_data['pods']['percentage_running'] = round(
-                (response_data['pods']['current_running'] / response_data['pods']['total_capacity']) * 100, 1
+                (response_data['pods']['current_running'] / response_data['pods']['total_allocatable']) * 100, 1
             )
 
         if response_data['vcpu']['total_allocatable_millicores'] > 0:

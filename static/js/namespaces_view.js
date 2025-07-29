@@ -49,6 +49,33 @@ $(document).ready(function() {
         deleteNamespace();
     });
 
+    // New Namespace button
+    $('#newNamespaceBtn').on('click', function() {
+        openNewNamespaceModal();
+    });
+
+    // Create namespace button
+    $('#createNamespaceBtn').on('click', function() {
+        createNamespace();
+    });
+
+    // Namespace name input - update metadata name label
+    $('#namespaceName').on('input', function() {
+        const namespaceName = $(this).val();
+        const metadataValue = namespaceName || '<namespace name>';
+        $('#metadataNameValue').text(metadataValue);
+    });
+
+    // Add custom label button
+    $('#addCustomLabel').on('click', function() {
+        addCustomLabelRow();
+    });
+
+    // Handle removal of custom labels (event delegation)
+    $(document).on('click', '.remove-custom-label', function() {
+        $(this).closest('.custom-label-row').remove();
+    });
+
     // Modal tab switching (to show/hide save button)
     $('#namespaceDetailTabs button').on('shown.bs.tab', function (e) {
         const isEditTab = $(e.target).attr('id') === 'edit-tab';
@@ -343,8 +370,180 @@ function deleteNamespace() {
             }
         },
         error: function(xhr) {
-            Swal.fire('Error', `Failed to delete namespace: ${xhr.responseJSON?.error || xhr.statusText}`, 'error');
-            $('#confirmNamespaceDelete').prop('disabled', false).html('<i class="fas fa-trash-alt me-2"></i> Confirm Delete');
+            console.error("Error deleting namespace:", xhr.responseText);
+            alert("Error deleting namespace: " + xhr.responseText);
+        }
+    });
+}
+
+// New Namespace Functions
+
+function openNewNamespaceModal() {
+    // Reset the form
+    $('#newNamespaceForm')[0].reset();
+    
+    // Reset metadata name value
+    $('#metadataNameValue').text('<namespace name>');
+    
+    // Clear any custom labels
+    $('#customLabelsContainer').empty();
+    
+    // Reset all default labels to checked
+    $('.form-check-pill input[type="checkbox"]:not(#label-metadata-name)').prop('checked', true);
+    
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('newNamespaceModal'));
+    modal.show();
+}
+
+function addCustomLabelRow() {
+    const customLabelsContainer = $('#customLabelsContainer');
+    const rowId = 'custom-label-' + Date.now();
+    
+    const labelRow = $(`
+        <div class="custom-label-row" id="${rowId}">
+            <input type="text" class="form-control" placeholder="Label key (e.g., environment)" name="customLabelKey">
+            <input type="text" class="form-control" placeholder="Label value (e.g., production)" name="customLabelValue">
+            <button type="button" class="btn btn-outline-danger btn-sm remove-custom-label">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `);
+    
+    customLabelsContainer.append(labelRow);
+}
+
+function validateNamespaceName(name) {
+    // DNS-1123 label validation
+    const dnsLabelRegex = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
+    
+    if (!name) {
+        return { valid: false, message: "Namespace name is required" };
+    }
+    
+    if (name.length > 63) {
+        return { valid: false, message: "Namespace name must be 63 characters or less" };
+    }
+    
+    if (!dnsLabelRegex.test(name)) {
+        return { valid: false, message: "Namespace name must contain only lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen" };
+    }
+    
+    return { valid: true };
+}
+
+function createNamespace() {
+    const namespaceName = $('#namespaceName').val().trim();
+    const namespaceDescription = $('#namespaceDescription').val().trim();
+    
+    // Validate namespace name
+    const validation = validateNamespaceName(namespaceName);
+    if (!validation.valid) {
+        alert(validation.message);
+        $('#namespaceName').focus();
+        return;
+    }
+    
+    // Collect selected default labels
+    const defaultLabels = {};
+    
+    // Always include metadata name
+    defaultLabels['kubernetes.io/metadata.name'] = namespaceName;
+    
+    // Check which default labels are selected
+    const labelMappings = {
+        'label-part-of': { key: 'app.kubernetes.io/part-of', value: 'kubeflow-profile' },
+        'label-ezmodels': { key: 'hpe-ezua/ezmodels', value: 'true' },
+        'label-cluster': { key: 'hpe.com/cluster', value: 'none' },
+        'label-istio': { key: 'istio-injection', value: 'enabled' },
+        'label-katib': { key: 'katib.kubeflow.org/metrics-collector-injection', value: 'enabled' },
+        'label-pipelines': { key: 'pipelines.kubeflow.org/enabled', value: 'true' },
+        'label-serving': { key: 'serving.kubeflow.org/inferenceservice', value: 'enabled' }
+    };
+    
+    Object.keys(labelMappings).forEach(checkboxId => {
+        if ($('#' + checkboxId).is(':checked')) {
+            const mapping = labelMappings[checkboxId];
+            defaultLabels[mapping.key] = mapping.value;
+        }
+    });
+    
+    // Collect custom labels
+    const customLabels = {};
+    $('.custom-label-row').each(function() {
+        const key = $(this).find('input[name="customLabelKey"]').val().trim();
+        const value = $(this).find('input[name="customLabelValue"]').val().trim();
+        
+        if (key && value) {
+            customLabels[key] = value;
+        }
+    });
+    
+    // Combine all labels
+    const allLabels = { ...defaultLabels, ...customLabels };
+    
+    // Add description as annotation if provided
+    const annotations = {};
+    if (namespaceDescription) {
+        annotations['description'] = namespaceDescription;
+    }
+    
+    // Prepare the namespace YAML
+    const namespaceYaml = `apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${namespaceName}
+  labels:
+${Object.entries(allLabels).map(([key, value]) => `    ${key}: "${value}"`).join('\n')}
+${Object.keys(annotations).length > 0 ? `  annotations:
+${Object.entries(annotations).map(([key, value]) => `    ${key}: "${value}"`).join('\n')}` : ''}`;
+    
+    // Show loading state
+    $('#newNamespaceModal').addClass('creating-namespace');
+    $('#createNamespaceBtn').html('<i class="fas fa-spinner fa-spin me-1"></i>Creating...');
+    
+    // Send the request to create the namespace
+    $.ajax({
+        url: '/api/namespace/create',
+        type: 'POST',
+        data: {
+            yaml: namespaceYaml,
+            name: namespaceName
+        },
+        success: function(response) {
+            if (response.error) {
+                alert('Error creating namespace: ' + response.error);
+                return;
+            }
+            
+            // Success - close modal and refresh namespaces list
+            const modal = bootstrap.Modal.getInstance(document.getElementById('newNamespaceModal'));
+            modal.hide();
+            
+            // Show success message
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Namespace Created!',
+                    text: `Namespace "${namespaceName}" has been created successfully.`,
+                    timer: 3000,
+                    showConfirmButton: false
+                });
+            } else {
+                alert(`Namespace "${namespaceName}" has been created successfully.`);
+            }
+            
+            // Refresh the namespaces list
+            loadNamespacesViewData();
+        },
+        error: function(xhr, status, error) {
+            console.error('Error creating namespace:', xhr.responseText);
+            alert('Error creating namespace: ' + (xhr.responseJSON?.error || error));
+        },
+        complete: function() {
+            // Reset loading state
+            $('#newNamespaceModal').removeClass('creating-namespace');
+            $('#createNamespaceBtn').html('<i class="fas fa-plus me-1"></i>Create Namespace');
         }
     });
 }
