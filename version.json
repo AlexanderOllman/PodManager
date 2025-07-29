@@ -1,8 +1,52 @@
 {
-  "version": "2.1.3",
+  "version": "2.1.4",
   "buildDate": "2025-01-29",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.1.4",
+      "date": "2025-01-29",
+      "title": "Fixed Pod Allocation Calculation",
+      "type": "patch",
+      "highlights": [
+        "Fixed critical pod allocation calculation showing 0% usage",
+        "Enhanced node detection logic for various cluster configurations",
+        "Improved support for single-node and mixed-role clusters",
+        "Added comprehensive debugging and fallback mechanisms"
+      ],
+      "bugfixes": [
+        "Fixed pod allocation showing 0 total allocatable pods (264 / 0 issue)",
+        "Corrected control plane vs worker node detection logic",
+        "Added fallback for edge cases where no schedulable nodes are detected",
+        "Enhanced handling of mixed-role nodes (common in small clusters)"
+      ],
+      "features": [
+        {
+          "category": "Node Detection",
+          "items": [
+            "Enhanced control plane detection including etcd nodes",
+            "Added explicit worker role checking",
+            "Implemented schedulable node verification",
+            "Added support for mixed-role nodes in single-node clusters"
+          ]
+        },
+        {
+          "category": "Debugging & Monitoring",
+          "items": [
+            "Added comprehensive logging for node classification",
+            "Detailed debugging output for pod allocation calculations",
+            "Node analysis summary with role counts",
+            "Enhanced error handling with multiple fallback strategies"
+          ]
+        }
+      ],
+      "technical": [
+        "Modified _collect_and_store_environment_metrics() for robust node detection",
+        "Added schedulability checking beyond role-based detection",
+        "Implemented multi-tier fallback logic for edge cases",
+        "Enhanced logging for troubleshooting cluster configuration issues"
+      ]
+    },
     {
       "version": "2.1.3",
       "date": "2025-01-29",

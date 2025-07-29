@@ -154,6 +154,11 @@ def _collect_and_store_environment_metrics():
     total_allocatable_gpus = 0
     total_capacity_cpu_millicores = 0
     total_capacity_memory_bytes = 0
+    
+    # Debug counters and tracking
+    control_plane_count = 0
+    worker_count = 0
+    schedulable_nodes = 0
 
     for node in nodes_data.get('items', []):
         status = node.get('status', {})
@@ -161,15 +166,43 @@ def _collect_and_store_environment_metrics():
         allocatable = status.get('allocatable', {})
         metadata = node.get('metadata', {})
         labels = metadata.get('labels', {})
+        node_name = metadata.get('name', 'unknown')
         
-        # Check if this is a control plane node
+        # Check if node is schedulable (not cordoned)
+        spec = node.get('spec', {})
+        is_schedulable = not spec.get('unschedulable', False)
+        
+        # Enhanced control plane detection
         is_control_plane = (
             'node-role.kubernetes.io/control-plane' in labels or 
-            'node-role.kubernetes.io/master' in labels
+            'node-role.kubernetes.io/master' in labels or
+            'node-role.kubernetes.io/etcd' in labels
         )
+        
+        # Check if node has worker role explicitly
+        has_worker_role = (
+            'node-role.kubernetes.io/worker' in labels or
+            'kubernetes.io/role' in labels and labels['kubernetes.io/role'] == 'worker'
+        )
+        
+        # For mixed role nodes (common in single-node or small clusters),
+        # consider them as workers if they're schedulable and can run pods
+        is_pure_control_plane = is_control_plane and not has_worker_role and not is_schedulable
+        
+        # Debug logging
+        if is_pure_control_plane:
+            control_plane_count += 1
+            logging.info(f"Node {node_name} detected as pure control plane (schedulable: {is_schedulable})")
+        else:
+            worker_count += 1
+            logging.info(f"Node {node_name} detected as worker/mixed (control_plane: {is_control_plane}, worker: {has_worker_role}, schedulable: {is_schedulable})")
+        
+        if is_schedulable:
+            schedulable_nodes += 1
 
-        # For pod allocation, only count worker nodes (exclude control plane)
-        if not is_control_plane:
+        # For pod allocation, count all schedulable nodes (not just pure workers)
+        # This handles single-node clusters and mixed-role nodes properly
+        if not is_pure_control_plane and is_schedulable:
             total_allocatable_pods += int(allocatable.get('pods', 0))
         
         # For capacity and other resources, count all nodes
@@ -180,14 +213,16 @@ def _collect_and_store_environment_metrics():
         total_capacity_cpu_millicores += parse_cpu_to_millicores(capacity.get('cpu', '0'))
         total_capacity_memory_bytes += parse_memory_to_bytes(capacity.get('memory', '0'))
 
-    # Fetch overallocation limits from 'kubectl describe nodes'
-    # This command output is text, not JSON, so we parse it differently
-    # describe_nodes_output = run_kubectl_command(["describe", "nodes"], is_json_output=False)
-    # overcommit_limits = {'cpu_limit_percentage': 100, 'memory_limit_percentage': 100} # Defaults
-    # if describe_nodes_output:
-    #     overcommit_limits = _extract_limits_from_describe_nodes(describe_nodes_output)
-    # else:
-    #     logging.warning("Failed to get 'kubectl describe nodes' output for overcommit limits. Using defaults.")
+    # Debug logging
+    logging.info(f"Node analysis: {control_plane_count} pure control plane, {worker_count} worker/mixed, {schedulable_nodes} schedulable")
+    logging.info(f"Total allocatable pods (schedulable nodes): {total_allocatable_pods}")
+    logging.info(f"Total pod capacity (all nodes): {total_pod_capacity}")
+    
+    # Final fallback: If we still have 0 allocatable pods but have capacity, use capacity
+    # This handles edge cases where our detection logic might still miss something
+    if total_allocatable_pods == 0 and total_pod_capacity > 0:
+        logging.warning("No schedulable nodes detected for pod allocation, using total capacity as fallback")
+        total_allocatable_pods = total_pod_capacity
 
     metrics_data = {
         'total_node_pod_capacity': total_pod_capacity,
@@ -197,8 +232,6 @@ def _collect_and_store_environment_metrics():
         'total_node_allocatable_gpus': total_allocatable_gpus,
         'total_node_capacity_cpu_millicores': total_capacity_cpu_millicores,
         'total_node_capacity_memory_bytes': total_capacity_memory_bytes
-        # 'cpu_limit_percentage': overcommit_limits['cpu_limit_percentage'],
-        # 'memory_limit_percentage': overcommit_limits['memory_limit_percentage']
     }
 
     if db.update_environment_metrics(metrics_data):
