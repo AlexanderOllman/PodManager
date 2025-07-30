@@ -185,24 +185,27 @@ def _collect_and_store_environment_metrics():
             'kubernetes.io/role' in labels and labels['kubernetes.io/role'] == 'worker'
         )
         
-        # For mixed role nodes (common in single-node or small clusters),
-        # consider them as workers if they're schedulable and can run pods
-        is_pure_control_plane = is_control_plane and not has_worker_role and not is_schedulable
+        # FIXED LOGIC: Control plane nodes should be excluded from pod allocation
+        # regardless of their schedulable status. We only want true worker nodes
+        # for pod allocation calculations.
+        should_count_for_pod_allocation = (
+            not is_control_plane and  # Not a control plane node
+            is_schedulable           # And is schedulable
+        )
         
         # Debug logging
-        if is_pure_control_plane:
+        if is_control_plane:
             control_plane_count += 1
-            logging.info(f"Node {node_name} detected as pure control plane (schedulable: {is_schedulable})")
+            logging.info(f"Node {node_name} detected as control plane (schedulable: {is_schedulable}) - EXCLUDED from pod allocation")
         else:
             worker_count += 1
-            logging.info(f"Node {node_name} detected as worker/mixed (control_plane: {is_control_plane}, worker: {has_worker_role}, schedulable: {is_schedulable})")
+            logging.info(f"Node {node_name} detected as worker (schedulable: {is_schedulable}) - {'INCLUDED' if should_count_for_pod_allocation else 'EXCLUDED'} in pod allocation")
         
         if is_schedulable:
             schedulable_nodes += 1
 
-        # For pod allocation, count all schedulable nodes (not just pure workers)
-        # This handles single-node clusters and mixed-role nodes properly
-        if not is_pure_control_plane and is_schedulable:
+        # For pod allocation, only count worker nodes that are schedulable
+        if should_count_for_pod_allocation:
             total_allocatable_pods += int(allocatable.get('pods', 0))
         
         # For capacity and other resources, count all nodes
@@ -214,15 +217,18 @@ def _collect_and_store_environment_metrics():
         total_capacity_memory_bytes += parse_memory_to_bytes(capacity.get('memory', '0'))
 
     # Debug logging
-    logging.info(f"Node analysis: {control_plane_count} pure control plane, {worker_count} worker/mixed, {schedulable_nodes} schedulable")
-    logging.info(f"Total allocatable pods (schedulable nodes): {total_allocatable_pods}")
+    logging.info(f"Node analysis: {control_plane_count} control plane, {worker_count} worker, {schedulable_nodes} schedulable")
+    logging.info(f"Total allocatable pods (worker nodes only): {total_allocatable_pods}")
     logging.info(f"Total pod capacity (all nodes): {total_pod_capacity}")
     
-    # Final fallback: If we still have 0 allocatable pods but have capacity, use capacity
-    # This handles edge cases where our detection logic might still miss something
+    # Sanity check: We should have some allocatable pods from workers
+    if total_allocatable_pods == 0 and worker_count > 0:
+        logging.warning(f"No pods counted from {worker_count} worker nodes - this might indicate all workers are unschedulable")
+    
+    # Final fallback: If we still have 0 allocatable pods but have capacity, log it but don't use capacity
+    # as that would include control plane nodes
     if total_allocatable_pods == 0 and total_pod_capacity > 0:
-        logging.warning("No schedulable nodes detected for pod allocation, using total capacity as fallback")
-        total_allocatable_pods = total_pod_capacity
+        logging.error("No worker nodes available for pod allocation despite having total pod capacity - check cluster configuration")
 
     metrics_data = {
         'total_node_pod_capacity': total_pod_capacity,
@@ -2025,14 +2031,19 @@ def debug_pod_allocation():
                     'node-role.kubernetes.io/worker' in labels or
                     'kubernetes.io/role' in labels and labels['kubernetes.io/role'] == 'worker'
                 )
-                is_pure_control_plane = is_control_plane and not has_worker_role and not is_schedulable
+                
+                # Use the same fixed logic as metrics collection
+                should_count_for_pod_allocation = (
+                    not is_control_plane and  # Not a control plane node
+                    is_schedulable           # And is schedulable
+                )
                 
                 node_analysis.append({
                     'name': metadata.get('name', 'unknown'),
                     'is_schedulable': is_schedulable,
                     'is_control_plane': is_control_plane,
                     'has_worker_role': has_worker_role,
-                    'is_pure_control_plane': is_pure_control_plane,
+                    'should_count_for_pod_allocation': should_count_for_pod_allocation,
                     'allocatable_pods': int(allocatable.get('pods', 0)),
                     'capacity_pods': int(capacity.get('pods', 0)),
                     'labels': labels
@@ -2044,7 +2055,7 @@ def debug_pod_allocation():
             'node_analysis': node_analysis,
             'total_allocatable_from_workers': sum(
                 node['allocatable_pods'] for node in node_analysis 
-                if not node['is_pure_control_plane'] and node['is_schedulable']
+                if node['should_count_for_pod_allocation']
             ),
             'total_capacity_all_nodes': sum(
                 node['capacity_pods'] for node in node_analysis

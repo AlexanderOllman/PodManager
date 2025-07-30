@@ -863,7 +863,7 @@ After refresh: ${data.after_refresh?.total_node_allocatable_pods || 'N/A'} alloc
 
 Node breakdown:
 ${data.node_analysis?.map(node => 
-    `${node.name}: ${node.is_pure_control_plane ? 'Control Plane' : 'Worker/Mixed'} - ${node.allocatable_pods} pods`
+    `${node.name}: ${node.is_control_plane ? 'Control Plane' : 'Worker'} - ${node.allocatable_pods} pods (${node.should_count_for_pod_allocation ? 'COUNTED' : 'EXCLUDED'})`
 ).join('\n')}
 
 Expected worker total: ${data.total_allocatable_from_workers}

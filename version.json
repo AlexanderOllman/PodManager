@@ -1,8 +1,54 @@
 {
-  "version": "2.1.6",
+  "version": "2.1.7",
   "buildDate": "2025-01-29",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.1.7",
+      "date": "2025-01-29",
+      "title": "Critical Pod Allocation Logic Fix",
+      "type": "patch",
+      "highlights": [
+        "Fixed critical bug where schedulable control plane nodes were counted as workers",
+        "Pod allocation now correctly excludes ALL control plane nodes regardless of scheduling status",
+        "Dramatically improved accuracy of pod utilization calculations",
+        "Enhanced debug output with clear COUNTED/EXCLUDED status indicators"
+      ],
+      "bugfixes": [
+        "Fixed pod allocation including schedulable master nodes in worker pod count",
+        "Corrected logic that counted ez-master01, ez-master02, ez-master03 as workers",
+        "Pod allocation now shows realistic percentages instead of inflated values",
+        "Fixed debug endpoint to use consistent classification logic",
+        "Eliminated false 'Worker/Mixed' classification for pure control plane nodes"
+      ],
+      "features": [
+        {
+          "category": "Pod Allocation Logic",
+          "items": [
+            "Control plane nodes now excluded from pod allocation regardless of schedulable status",
+            "Clear separation between node capacity (all nodes) and allocatable capacity (workers only)",
+            "Enhanced logging shows exact inclusion/exclusion reasoning for each node",
+            "Improved error handling for edge cases with no available worker nodes"
+          ]
+        },
+        {
+          "category": "Debug & Monitoring",
+          "items": [
+            "Debug output now shows COUNTED/EXCLUDED status for each node",
+            "Enhanced debug logging with step-by-step node classification",
+            "Clear distinction between control plane and worker nodes in all outputs",
+            "Improved error messages for cluster configuration issues"
+          ]
+        }
+      ],
+      "technical": [
+        "Replaced `is_pure_control_plane` logic with `should_count_for_pod_allocation`",
+        "Simplified node classification: `not is_control_plane and is_schedulable`",
+        "Removed fallback logic that could include control plane pod capacity",
+        "Updated debug endpoint to match metrics collection logic exactly",
+        "Enhanced logging for troubleshooting node classification issues"
+      ]
+    },
     {
       "version": "2.1.6",
       "date": "2025-01-29",
