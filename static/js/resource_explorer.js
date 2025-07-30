@@ -510,27 +510,32 @@ function renderResourceSummaryCard(resourceType) {
         return acc;
     }, {});
 
-    let summaryHtml = `<h5 class="card-title mb-2">${resourceType.charAt(0).toUpperCase() + resourceType.slice(1)} Summary</h5>`;
-    summaryHtml += '<div class="d-flex flex-wrap gap-3 align-items-center">';
+    // Build the enhanced summary HTML with new styling
+    let summaryHtml = `
+        <div class="resource-summary-title">
+            <i class="fas fa-chart-bar"></i>
+            ${resourceType.charAt(0).toUpperCase() + resourceType.slice(1)} Summary
+        </div>
+        <div class="resource-summary-stats">`;
 
-    // 'All' status
+    // Total count as first item
     summaryHtml += `
-        <a href="#" class="text-decoration-none text-dark" onclick="filterResourcesByStatus(event, '${resourceType}', null)">
-            <span class="badge bg-primary rounded-pill me-1">${items.length}</span>
-            Total
-        </a>`;
+        <div class="resource-stat-item" onclick="filterResourcesByStatus(event, '${resourceType}', null)" style="cursor: pointer;">
+            <span class="resource-stat-number">${items.length}</span>
+            <span class="resource-stat-label">Total</span>
+        </div>`;
 
+    // Status-specific counts
     Object.entries(statusCounts).forEach(([status, count]) => {
-        const statusColor = getStatusColor(status);
+        const statusClass = status.toLowerCase();
         summaryHtml += `
-            <a href="#" class="text-decoration-none text-dark" onclick="filterResourcesByStatus(event, '${resourceType}', '${status}')">
-                <span class="p-1 me-1 rounded-circle" style="background-color: ${statusColor}; display: inline-block;"></span>
-                <span class="fw-bold">${count}</span>
-                ${status}
-            </a>`;
+            <div class="resource-stat-item ${statusClass}" onclick="filterResourcesByStatus(event, '${resourceType}', '${status}')" style="cursor: pointer;">
+                <span class="resource-stat-number">${count}</span>
+                <span class="resource-stat-label">${status}</span>
+            </div>`;
     });
-    summaryHtml += '</div>';
 
+    summaryHtml += '</div>';
     summaryContainer.innerHTML = summaryHtml;
 }
 

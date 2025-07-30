@@ -1,8 +1,72 @@
 {
-  "version": "2.1.8",
+  "version": "2.1.9",
   "buildDate": "2025-01-29",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.1.9",
+      "date": "2025-01-29",
+      "title": "Enhanced Resource Explorer Design",
+      "type": "minor",
+      "highlights": [
+        "Completely redesigned Resource Explorer page with consistent HPE styling",
+        "Enhanced visual hierarchy and improved user experience across all resource views",
+        "Unified design language with dashboard metrics and settings pages",
+        "Responsive design improvements for mobile and tablet viewing"
+      ],
+      "features": [
+        {
+          "category": "User Interface",
+          "items": [
+            "Redesigned page header with gradient background and consistent typography",
+            "Enhanced resource type tabs with better hover states and active indicators",
+            "Modern card-based summary with pill-style statistics and hover animations",
+            "Improved search controls with consistent input styling and button design",
+            "Enhanced table wrapper with subtle shadows and hover effects",
+            "Modernized action dropdowns with consistent styling across all resources"
+          ]
+        },
+        {
+          "category": "Visual Design",
+          "items": [
+            "Applied HPE color scheme and gradients throughout Resource Explorer",
+            "Enhanced status badges with consistent colors and improved readability",
+            "Added smooth animations and transitions for better user feedback",
+            "Implemented consistent spacing and padding patterns",
+            "Improved loading states with enhanced progress indicators",
+            "Better visual separation between different page sections"
+          ]
+        },
+        {
+          "category": "User Experience",
+          "items": [
+            "More intuitive navigation with clearer visual feedback",
+            "Enhanced clickable elements with better hover states",
+            "Improved accessibility with better color contrast and focus states",
+            "Responsive design that works well on all device sizes",
+            "Consistent interaction patterns across all resource types",
+            "Better visual hierarchy for easier scanning and comprehension"
+          ]
+        },
+        {
+          "category": "Technical Improvements",
+          "items": [
+            "Modular CSS architecture for easier maintenance and consistency",
+            "Enhanced summary rendering with semantic HTML structure",
+            "Improved responsive breakpoints for better mobile experience",
+            "Optimized animations with hardware acceleration",
+            "Better component isolation and reusability"
+          ]
+        }
+      ],
+      "technical": [
+        "Added comprehensive Resource Explorer CSS module with 200+ lines of styling",
+        "Updated HTML template structure to use semantic class names",
+        "Enhanced JavaScript summary rendering with new component structure",
+        "Implemented consistent design tokens throughout the styling system",
+        "Added fade-in animations and micro-interactions for better UX"
+      ]
+    },
     {
       "version": "2.1.8",
       "date": "2025-01-29",

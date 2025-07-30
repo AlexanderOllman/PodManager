@@ -2401,3 +2401,427 @@ body {
     margin-top: auto !important;
     padding-top: 16px;
 } 
+
+/* Resource Explorer Styling */
+.resource-explorer-header {
+    background: linear-gradient(135deg, #f8f9fc 0%, #ffffff 100%);
+    border-bottom: 1px solid rgba(0, 119, 204, 0.1);
+    padding: 1.5rem 0;
+    margin-bottom: 1.5rem;
+}
+
+.resource-explorer-header h1 {
+    color: var(--hpe-primary);
+    font-weight: 600;
+    margin: 0;
+    font-size: 1.75rem;
+}
+
+.resource-last-updated {
+    background: rgba(0, 119, 204, 0.05);
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    color: var(--hpe-primary);
+    border: 1px solid rgba(0, 119, 204, 0.1);
+}
+
+.resource-last-updated i {
+    color: var(--hpe-success);
+    margin-right: 0.5rem;
+}
+
+/* Resource Type Tabs */
+#resourceTypeTabs {
+    border-bottom: 2px solid rgba(0, 119, 204, 0.1);
+    margin-bottom: 1.5rem;
+    background: #ffffff;
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+#resourceTypeTabs .nav-item {
+    margin-bottom: 0;
+}
+
+#resourceTypeTabs .nav-link {
+    background: transparent;
+    border: none;
+    color: #6c757d;
+    font-weight: 500;
+    padding: 1rem 1.5rem;
+    transition: all 0.3s ease;
+    border-radius: 0;
+    position: relative;
+    white-space: nowrap;
+}
+
+#resourceTypeTabs .nav-link:hover {
+    background: rgba(0, 119, 204, 0.05);
+    color: var(--hpe-primary);
+    border-color: transparent;
+}
+
+#resourceTypeTabs .nav-link.active {
+    background: var(--hpe-primary);
+    color: white;
+    border-color: var(--hpe-primary);
+    font-weight: 600;
+}
+
+#resourceTypeTabs .nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--hpe-primary);
+}
+
+/* Resource Summary Card */
+.resource-summary-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
+    border: 1px solid rgba(0, 119, 204, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.resource-summary-card:hover {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.resource-summary-card .card-body {
+    padding: 1.5rem;
+}
+
+.resource-summary-title {
+    color: var(--hpe-primary);
+    font-weight: 600;
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+}
+
+.resource-summary-title i {
+    margin-right: 0.75rem;
+    color: var(--hpe-success);
+}
+
+.resource-summary-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.resource-stat-item {
+    display: flex;
+    align-items: center;
+    background: rgba(0, 119, 204, 0.05);
+    padding: 0.75rem 1.25rem;
+    border-radius: 25px;
+    border: 1px solid rgba(0, 119, 204, 0.1);
+    transition: all 0.3s ease;
+}
+
+.resource-stat-item:hover {
+    background: rgba(0, 119, 204, 0.1);
+    transform: scale(1.05);
+}
+
+.resource-stat-number {
+    font-weight: 700;
+    font-size: 1.25rem;
+    margin-right: 0.5rem;
+    color: var(--hpe-primary);
+}
+
+.resource-stat-label {
+    font-weight: 500;
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+.resource-stat-item.running .resource-stat-number {
+    color: var(--hpe-success);
+}
+
+.resource-stat-item.succeeded .resource-stat-number {
+    color: var(--hpe-info);
+}
+
+/* Resource Controls */
+.resource-controls {
+    background: #ffffff;
+    border: 1px solid rgba(0, 119, 204, 0.1);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.resource-search-container {
+    position: relative;
+}
+
+.resource-search-container .input-group {
+    border-radius: 25px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.resource-search-container .input-group-text {
+    background: linear-gradient(135deg, #f8f9fc 0%, #ffffff 100%);
+    border: 1px solid rgba(0, 119, 204, 0.15);
+    border-right: none;
+    color: var(--hpe-primary);
+}
+
+.resource-search-container .form-control {
+    border: 1px solid rgba(0, 119, 204, 0.15);
+    border-left: none;
+    border-right: none;
+    background: #ffffff;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+}
+
+.resource-search-container .form-control:focus {
+    border-color: var(--hpe-primary);
+    box-shadow: 0 0 0 0.2rem rgba(0, 119, 204, 0.15);
+}
+
+.resource-search-container .btn {
+    border: 1px solid rgba(0, 119, 204, 0.15);
+    border-left: none;
+    background: linear-gradient(135deg, #f8f9fc 0%, #ffffff 100%);
+    color: #6c757d;
+    transition: all 0.3s ease;
+}
+
+.resource-search-container .btn:hover {
+    background: var(--hpe-primary);
+    color: white;
+    border-color: var(--hpe-primary);
+}
+
+.resource-refresh-btn {
+    background: linear-gradient(135deg, var(--hpe-primary), var(--hpe-secondary)) !important;
+    border: none !important;
+    color: white !important;
+    padding: 0.75rem 2rem !important;
+    border-radius: 25px !important;
+    font-weight: 600 !important;
+    font-size: 0.95rem !important;
+    box-shadow: 0 4px 12px rgba(0, 119, 204, 0.3) !important;
+    transition: all 0.3s ease !important;
+}
+
+.resource-refresh-btn:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(0, 119, 204, 0.4) !important;
+}
+
+.resource-refresh-btn i {
+    margin-right: 0.5rem;
+}
+
+/* Resource Table Container */
+.resource-table-wrapper {
+    background: #ffffff;
+    border: 1px solid rgba(0, 119, 204, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.resource-table-wrapper:hover {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+}
+
+.resource-table-wrapper .table-responsive {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.resource-table-wrapper .table {
+    margin-bottom: 0;
+    border-radius: 12px;
+}
+
+.resource-table-wrapper .table thead th {
+    background: linear-gradient(135deg, #f8f9fc 0%, #ffffff 100%);
+    border-bottom: 2px solid rgba(0, 119, 204, 0.1);
+    color: var(--hpe-primary);
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1rem;
+    border-top: none;
+}
+
+.resource-table-wrapper .table tbody tr {
+    transition: all 0.2s ease;
+}
+
+.resource-table-wrapper .table tbody tr:hover {
+    background: rgba(0, 119, 204, 0.02);
+    transform: scale(1.01);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.resource-table-wrapper .table tbody td {
+    padding: 1rem;
+    border-color: rgba(0, 119, 204, 0.08);
+    vertical-align: middle;
+}
+
+/* Resource Loading States */
+.resource-loading-enhanced {
+    background: #ffffff;
+    border: 1px solid rgba(0, 119, 204, 0.1);
+    border-radius: 12px;
+    padding: 3rem 2rem;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.resource-loading-enhanced .universal-progress-container {
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.resource-loading-enhanced .universal-progress-text {
+    color: var(--hpe-primary);
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.resource-loading-enhanced .universal-progress-details {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+/* Resource Actions */
+.resource-actions .action-dropdown .dropdown-toggle {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
+    border: 1px solid rgba(0, 119, 204, 0.15);
+    color: var(--hpe-primary);
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    transition: all 0.3s ease;
+}
+
+.resource-actions .action-dropdown .dropdown-toggle:hover {
+    background: var(--hpe-primary);
+    color: white;
+    border-color: var(--hpe-primary);
+    box-shadow: 0 4px 12px rgba(0, 119, 204, 0.3);
+}
+
+/* Status Badges Enhancement */
+.resource-table-wrapper .status-badge {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid;
+}
+
+.resource-table-wrapper .status-badge.running {
+    background: rgba(40, 167, 69, 0.1);
+    color: var(--hpe-success);
+    border-color: var(--hpe-success);
+}
+
+.resource-table-wrapper .status-badge.succeeded {
+    background: rgba(23, 162, 184, 0.1);
+    color: var(--hpe-info);
+    border-color: var(--hpe-info);
+}
+
+.resource-table-wrapper .status-badge.error,
+.resource-table-wrapper .status-badge.failed {
+    background: rgba(220, 53, 69, 0.1);
+    color: var(--hpe-error);
+    border-color: var(--hpe-error);
+}
+
+.resource-table-wrapper .status-badge.pending {
+    background: rgba(255, 193, 7, 0.1);
+    color: var(--hpe-warning);
+    border-color: var(--hpe-warning);
+}
+
+/* Responsive Design for Resource Explorer */
+@media (max-width: 768px) {
+    .resource-explorer-header {
+        padding: 1rem 0;
+        text-align: center;
+    }
+    
+    .resource-explorer-header .d-flex {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .resource-summary-stats {
+        justify-content: center;
+    }
+    
+    .resource-controls .row {
+        gap: 1rem;
+    }
+    
+    .resource-controls .col-md-8,
+    .resource-controls .col-md-4 {
+        flex: 1 1 100%;
+        max-width: 100%;
+    }
+    
+    #resourceTypeTabs {
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+    
+    #resourceTypeTabs .nav-link {
+        min-width: 120px;
+    }
+}
+
+/* Animation for resource loading */
+@keyframes resourceFadeIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(20px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+.resource-table-wrapper {
+    animation: resourceFadeIn 0.5s ease-out;
+}
+
+.resource-summary-card {
+    animation: resourceFadeIn 0.3s ease-out;
+}
+
+.resource-controls {
+    animation: resourceFadeIn 0.4s ease-out;
+} 

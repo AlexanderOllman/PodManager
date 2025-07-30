@@ -89,16 +89,18 @@ function createActionButton(resourceType, namespace, name) {
     }
 
     return `
-        <div class="action-dropdown dropdown text-center">
-            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="${dropdownId}" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-ellipsis-v"></i>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="${dropdownId}">
-                ${actionsHtml}
-                <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
-                    <i class="fas fa-trash-alt text-danger"></i> Delete
-                </a></li>
-            </ul>
+        <div class="resource-actions">
+            <div class="action-dropdown dropdown text-center">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="${dropdownId}" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="${dropdownId}">
+                    ${actionsHtml}
+                    <li><a class="dropdown-item" href="#" onclick="runAction('delete', '${resourceType}', '${namespace}', '${name}')">
+                        <i class="fas fa-trash-alt text-danger"></i> Delete
+                    </a></li>
+                </ul>
+            </div>
         </div>
     `;
 }
