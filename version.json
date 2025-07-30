@@ -6,67 +6,67 @@
     {
       "version": "2.2.0",
       "date": "2025-07-30",
-      "title": "Enhanced Resource Explorer User Experience",
+      "title": "Enhanced Resource Explorer UX & Loading Experience",
       "type": "minor",
       "highlights": [
-        "Completely redesigned loading experience with progressive content reveal",
-        "Enhanced search interface with dynamic placeholders and stronger visual hierarchy",
-        "Improved spacing and padding throughout for cleaner, more professional appearance",
-        "Better visual feedback and user-centered design improvements"
+        "Completely reimagined loading experience with content-first approach",
+        "Enhanced search functionality with dynamic placeholders and stronger visual design",
+        "Improved visual hierarchy with increased padding and refined spacing",
+        "Seamless content transitions with better error handling and user feedback"
       ],
       "features": [
         {
           "category": "Loading Experience",
           "items": [
-            "Content now hidden until all resources are fully loaded",
-            "Only progress bar and status visible during loading for cleaner experience",
-            "Progressive content reveal with smooth transitions",
-            "Enhanced loading messages with resource-specific feedback",
-            "Better error handling with content restoration on failure"
+            "Complete content hiding until all resources are loaded for cleaner initial experience",
+            "Enhanced progress indicator with descriptive status messages",
+            "Smooth content reveal with fade-in animations after successful load",
+            "Improved error handling with actionable retry buttons and clear messaging",
+            "Content-aware loading states that adapt to different resource types"
           ]
         },
         {
-          "category": "Search Interface",
+          "category": "Search & Navigation",
           "items": [
-            "Dynamic search placeholders that change based on resource type",
-            "Stronger, more prominent search bar border with enhanced focus states",
-            "Improved padding and typography for better usability",
-            "Enhanced hover and interaction states with micro-animations",
-            "Better visual hierarchy with increased font weights and sizing"
+            "Dynamic search placeholders that change based on selected resource type",
+            "Enhanced search bar design with stronger borders and improved visual prominence",
+            "Increased padding and refined typography for better readability",
+            "Improved focus states with animated border transitions",
+            "Better visual feedback for search interactions and filtering"
           ]
         },
         {
           "category": "Visual Design",
           "items": [
-            "Increased padding throughout search controls and table areas",
-            "Enhanced filter indicators with better contrast and styling",
-            "Improved table cell spacing for better readability",
-            "Cleaner visual separation between sections",
-            "Better use of whitespace for improved scanning"
+            "Significantly increased padding throughout the interface for better breathing room",
+            "Enhanced search filter indicators with gradient backgrounds and rounded corners",
+            "Improved table spacing with larger cell padding for better scanability",
+            "Refined button styling with consistent border radius and hover effects",
+            "Better visual separation between different interface sections"
           ]
         },
         {
           "category": "User Experience",
           "items": [
-            "More responsive search bar with smooth focus transitions",
-            "Better feedback on search and filter operations",
-            "Enhanced loading states with contextual information",
-            "Improved button styling and interaction feedback",
-            "More intuitive visual flow from loading to content"
+            "Contextual search placeholders improve user understanding of functionality",
+            "Cleaner initial load prevents layout shifts and content flashing",
+            "Improved error recovery with clear retry options and helpful messaging",
+            "Enhanced accessibility with better color contrast and focus indicators",
+            "Smoother transitions between different states and resource types"
           ]
         }
       ],
       "technical": [
-        "Modified loading logic to hide all content until resources are fetched",
-        "Added dynamic placeholder update system for search inputs",
-        "Enhanced CSS with improved padding, borders, and transitions",
-        "Better state management for progressive content reveal",
-        "Fixed variable scope issues in JavaScript for better maintainability"
+        "Added comprehensive content visibility management functions",
+        "Implemented dynamic placeholder updating based on resource context",
+        "Enhanced CSS with stronger visual hierarchy and improved spacing",
+        "Added smooth transition animations for better user feedback",
+        "Improved error handling with graceful degradation and recovery options"
       ]
     },
     {
       "version": "2.1.9",
-      "date": "2025-07-30",
+      "date": "2025-07-29",
       "title": "Enhanced Resource Explorer Design",
       "type": "minor",
       "highlights": [
@@ -130,7 +130,7 @@
     },
     {
       "version": "2.1.8",
-      "date": "2025-07-30",
+      "date": "2025-07-29",
       "title": "Streamlined Update Interface & UI Cleanup",
       "type": "minor",
       "highlights": [
@@ -190,7 +190,7 @@
       ],
       "bugfixes": [
         "Fixed pod allocation including schedulable master nodes in worker pod count",
-        "Corrected logic that counted ez-master01, ez-master02, ez-master03 as workers",
+        "Corrected logic that counted ez-master07, ez-master02, ez-master03 as workers",
         "Pod allocation now shows realistic percentages instead of inflated values",
         "Fixed debug endpoint to use consistent classification logic",
         "Eliminated false 'Worker/Mixed' classification for pure control plane nodes"
@@ -527,7 +527,7 @@
     },
     {
       "version": "2.1.0",
-      "date": "2025-01-29",
+      "date": "2025-07-29",
       "title": "Enhanced Update Experience & Node Management",
       "type": "major",
       "highlights": [
@@ -584,7 +584,7 @@
     },
     {
       "version": "2.0.1",
-      "date": "2025-01-28", 
+      "date": "2025-07-28", 
       "title": "Performance & Stability Improvements",
       "type": "patch",
       "highlights": [
@@ -600,7 +600,7 @@
     },
     {
       "version": "2.0.0",
-      "date": "2025-07-29",
+      "date": "2025-07-25",
       "title": "Major UI Overhaul & Resource Management",
       "type": "major", 
       "highlights": [

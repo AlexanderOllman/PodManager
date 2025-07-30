@@ -12,14 +12,8 @@ function initializeResourcesPage() {
     // Set initial resource type to 'pods' on page load
     window.app.currentResourceType = 'pods';
     
-    // Initially hide all content until first load completes
-    const summaryCard = document.querySelector('.resource-summary-card');
-    const controlsCard = document.querySelector('.resource-controls');
-    const tableContainer = document.getElementById('resourcesTableContainer');
-    
-    if (summaryCard) summaryCard.style.display = 'none';
-    if (controlsCard) controlsCard.style.display = 'none';
-    if (tableContainer) tableContainer.style.display = 'none';
+    // Hide all content initially until resources are loaded
+    hideAllResourceContent();
     
     // Set up tabs
     const resourceTabs = document.querySelectorAll('#resourceTypeTabs .nav-link');
@@ -38,9 +32,6 @@ function initializeResourcesPage() {
     // Setup search handler
     const searchInput = document.getElementById('resourceSearchInput');
     if (searchInput) {
-        // Set initial placeholder
-        updateSearchPlaceholder(window.app.currentResourceType);
-        
         searchInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') searchResources();
         });
@@ -112,79 +103,6 @@ function loadResourcesPage() {
     }
 }
 
-// Loads data for the selected resource type in the explorer
-function loadResourceType(resourceType) {
-    console.log(`Loading resource type in explorer: ${resourceType}`);
-    window.app.currentResourceType = resourceType; // Update global state
-    window.app.state.resources.activeStatusFilter = null; // Clear status filter on new type load
-    
-    const state = window.app.state.resources[resourceType] || {};
-    state.sortState = { key: null, direction: null };
-    state.originalItems = null; // Mark as stale
-    window.app.state.resources[resourceType] = state;
-
-    // Hide ALL content until loading is complete
-    const loadingContainer = document.getElementById('resourcesLoading');
-    const tableContainer = document.getElementById('resourcesTableContainer');
-    const summaryCard = document.querySelector('.resource-summary-card');
-    const controlsCard = document.querySelector('.resource-controls');
-    const progressBar = document.getElementById('resourcesProgressBar');
-    const loadingText = document.getElementById('resourcesLoadingText');
-    const loadingDetails = document.getElementById('resourcesLoadingDetails');
-
-    // Show loading and hide all content
-    if (loadingContainer) loadingContainer.style.display = 'flex';
-    if (tableContainer) tableContainer.style.display = 'none';
-    if (summaryCard) summaryCard.style.display = 'none';
-    if (controlsCard) controlsCard.style.display = 'none';
-    
-    // Update loading text and progress
-    if (loadingText) loadingText.textContent = `Loading ${resourceType}...`;
-    if (loadingDetails) loadingDetails.textContent = `Fetching ${resourceType} data from cluster...`;
-    if (progressBar) progressBar.style.width = '10%';
-
-    // Update search placeholder
-    updateSearchPlaceholder(resourceType);
-
-    setupTableHeaders(resourceType); // Setup headers for the new type
-
-    // Fetch ALL data, page 1, reset=true
-    fetchResourceData(resourceType, 'all', true, 1, true) // fetchAll=true
-        .then(data => {
-            if (progressBar) progressBar.style.width = '100%';
-            if (loadingText) loadingText.textContent = `${resourceType} loaded successfully`;
-            if (loadingDetails) loadingDetails.textContent = `Found ${data?.items?.length || 0} ${resourceType}`;
-            
-            renderResourceSummaryCard(resourceType); // Render the summary card
-            
-            // Show all content after a brief delay
-            setTimeout(() => {
-                if (loadingContainer) loadingContainer.style.display = 'none';
-                if (tableContainer) {
-                    tableContainer.style.display = 'block';
-                    tableContainer.style.opacity = '1';
-                }
-                if (summaryCard) summaryCard.style.display = 'block';
-                if (controlsCard) controlsCard.style.display = 'block';
-            }, 300); 
-        })
-        .catch(error => {
-            console.error(`Error loading ${resourceType} in explorer:`, error);
-            if (loadingText) loadingText.textContent = `Error loading ${resourceType}`;
-            if (loadingDetails) loadingDetails.textContent = `Failed to fetch ${resourceType}: ${error.message}`;
-            
-            if (tableContainer) {
-                // Simplified error display
-                tableContainer.innerHTML = `<div class="alert alert-danger mt-3">Error loading ${resourceType}: ${error.message} <button class="btn btn-sm btn-outline-danger ms-3" onclick="loadResourceType('${resourceType}')">Retry</button></div>`;
-                tableContainer.style.display = 'block';
-                tableContainer.style.opacity = '1';
-            }
-            if (loadingContainer) loadingContainer.style.display = 'none';
-            if (summaryCard) summaryCard.style.display = 'block';
-            if (controlsCard) controlsCard.style.display = 'block';
-        });
-}
-
 // Sets up the table headers for the resources explorer table
 function setupTableHeaders(resourceType) {
     const tableHeadersRow = document.getElementById('resourcesTableHeader'); // Assuming <thead> has id="resourcesTableHeader"
@@ -193,6 +111,9 @@ function setupTableHeaders(resourceType) {
         return;
     }
     tableHeadersRow.innerHTML = ''; // Clear existing headers
+
+    // Update search placeholder based on resource type
+    updateSearchPlaceholder(resourceType);
 
     let headers = [];
     // Define headers based on resource type, including data-sort attribute
@@ -380,22 +301,6 @@ function sortResources(resourceType) {
     renderCurrentPage(resourceType);
 }
 
-// Update search placeholder based on resource type
-function updateSearchPlaceholder(resourceType) {
-    const searchInput = document.getElementById('resourceSearchInput');
-    if (searchInput) {
-        const placeholders = {
-            'pods': 'Search pods...',
-            'services': 'Search services...',
-            'deployments': 'Search deployments...',
-            'inferenceservices': 'Search inference services...',
-            'configmaps': 'Search config maps...',
-            'secrets': 'Search secrets...'
-        };
-        searchInput.placeholder = placeholders[resourceType] || 'Search resources...';
-    }
-}
-
 // Handles resource type change in the explorer dropdown
 function changeResourceType(resourceType) {
     console.log(`Explorer changing to resource type: ${resourceType}`);
@@ -414,6 +319,10 @@ function changeResourceType(resourceType) {
     const searchInput = document.getElementById('resourceSearchInput');
     if (searchInput) searchInput.value = ''; // Clear search on type change
     clearResourceSearchIndicator(); // Remove filter indicator
+    
+    // Update search placeholder for new resource type
+    updateSearchPlaceholder(resourceType);
+    
     loadResourceType(resourceType);
     window.app.lastUserInteraction = Date.now(); // Track interaction time
 }
@@ -547,10 +456,7 @@ function renderResourcePage(resourceType) {
      // Ensure table is visible after render
      const loadingContainer = document.getElementById('resourcesLoading');
      if (loadingContainer) loadingContainer.style.display = 'none';
-     if (tableContainer) {
-         tableContainer.style.display = 'block';
-         tableContainer.style.opacity = '1';
-     }
+     if (tableContainer) tableContainer.style.opacity = '1';
 }
 
 // Renders the summary card for the given resource type
@@ -767,5 +673,154 @@ function applyFiltersAndSorting(resourceType) {
     } else {
         // If no active sort, just render the filtered items
         renderCurrentPage(resourceType);
+    }
+} 
+
+// Updates the search placeholder text based on resource type
+function updateSearchPlaceholder(resourceType) {
+    const searchInput = document.getElementById('resourceSearchInput');
+    if (!searchInput) return;
+    
+    const placeholders = {
+        'pods': 'Search pods...',
+        'services': 'Search services...',
+        'deployments': 'Search deployments...',
+        'inferenceservices': 'Search inference services...',
+        'configmaps': 'Search config maps...',
+        'secrets': 'Search secrets...'
+    };
+    
+    searchInput.placeholder = placeholders[resourceType] || 'Search resources...';
+}
+
+// Loads data for the selected resource type in the explorer
+function loadResourceType(resourceType) {
+    console.log(`Loading resource type in explorer: ${resourceType}`);
+    window.app.currentResourceType = resourceType; // Update global state
+    window.app.state.resources.activeStatusFilter = null; // Clear status filter on new type load
+    
+    const state = window.app.state.resources[resourceType] || {};
+    state.sortState = { key: null, direction: null };
+    state.originalItems = null; // Mark as stale
+    window.app.state.resources[resourceType] = state;
+
+    // Show loading and hide all content
+    showResourceLoading();
+    hideAllResourceContent();
+
+    setupTableHeaders(resourceType); // Setup headers for the new type
+
+    // Fetch ALL data, page 1, reset=true
+    fetchResourceData(resourceType, 'all', true, 1, true) // fetchAll=true
+        .then(data => {
+            renderResourceSummaryCard(resourceType); // Render the summary card
+            showAllResourceContent(); // Show content after successful load
+            hideResourceLoading();
+            // renderResourcePage should be called by processResourcePageData via renderCurrentPage
+        })
+        .catch(error => {
+            console.error(`Error loading ${resourceType} in explorer:`, error);
+            hideResourceLoading();
+            showResourceError(resourceType, error.message);
+        });
+}
+
+// Shows the main loading indicator and hides all content
+function showResourceLoading() {
+    const loadingContainer = document.getElementById('resourcesLoading');
+    const progressBar = document.getElementById('resourcesProgressBar');
+    const loadingText = document.getElementById('resourcesLoadingText');
+    const loadingDetails = document.getElementById('resourcesLoadingDetails');
+    
+    if (loadingContainer) loadingContainer.style.display = 'flex';
+    if (progressBar) {
+        progressBar.classList.add('indeterminate');
+        progressBar.style.width = '60%';
+    }
+    if (loadingText) loadingText.textContent = 'Loading resources...';
+    if (loadingDetails) loadingDetails.textContent = 'Fetching all resource data from cluster...';
+}
+
+// Hides the main loading indicator
+function hideResourceLoading() {
+    const loadingContainer = document.getElementById('resourcesLoading');
+    const progressBar = document.getElementById('resourcesProgressBar');
+    
+    if (progressBar) {
+        progressBar.style.width = '100%';
+        setTimeout(() => {
+            if (loadingContainer) loadingContainer.style.display = 'none';
+            if (progressBar) {
+                progressBar.style.width = '0%';
+                progressBar.classList.remove('indeterminate');
+            }
+        }, 300);
+    }
+}
+
+// Hides all resource content during loading
+function hideAllResourceContent() {
+    const summaryCard = document.querySelector('.resource-summary-card');
+    const controls = document.querySelector('.resource-controls');
+    const tableWrapper = document.getElementById('resourcesTableContainer');
+    const resourceTabs = document.getElementById('resourceTypeTabs');
+    
+    if (summaryCard) summaryCard.style.display = 'none';
+    if (controls) controls.style.display = 'none';
+    if (tableWrapper) tableWrapper.style.opacity = '0';
+    if (resourceTabs) resourceTabs.style.display = 'none';
+}
+
+// Shows all resource content after loading
+function showAllResourceContent() {
+    const summaryCard = document.querySelector('.resource-summary-card');
+    const controls = document.querySelector('.resource-controls');
+    const tableWrapper = document.getElementById('resourcesTableContainer');
+    const resourceTabs = document.getElementById('resourceTypeTabs');
+    
+    if (summaryCard) summaryCard.style.display = 'block';
+    if (controls) controls.style.display = 'block';
+    if (tableWrapper) {
+        tableWrapper.style.opacity = '1';
+        tableWrapper.style.display = 'block';
+    }
+    if (resourceTabs) resourceTabs.style.display = 'flex';
+}
+
+// Shows error state
+function showResourceError(resourceType, errorMessage) {
+    const summaryCard = document.querySelector('.resource-summary-card');
+    const controls = document.querySelector('.resource-controls');
+    const tableWrapper = document.getElementById('resourcesTableContainer');
+    const resourceTabs = document.getElementById('resourceTypeTabs');
+    
+    // Show basic structure but with error content
+    if (resourceTabs) resourceTabs.style.display = 'flex';
+    if (controls) controls.style.display = 'block';
+    
+    if (summaryCard) {
+        summaryCard.style.display = 'block';
+        summaryCard.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error loading ${resourceType}: ${errorMessage}
+                <button class="btn btn-sm btn-outline-danger ms-3" onclick="loadResourceType('${resourceType}')">
+                    <i class="fas fa-redo me-1"></i> Retry
+                </button>
+            </div>
+        `;
+    }
+    
+    if (tableWrapper) {
+        tableWrapper.style.opacity = '1';
+        tableWrapper.innerHTML = `
+            <div class="alert alert-danger text-center">
+                <h5><i class="fas fa-exclamation-triangle me-2"></i>Failed to Load ${resourceType}</h5>
+                <p>${errorMessage}</p>
+                <button class="btn btn-danger" onclick="loadResourceType('${resourceType}')">
+                    <i class="fas fa-redo me-1"></i> Retry Loading
+                </button>
+            </div>
+        `;
     }
 } 
