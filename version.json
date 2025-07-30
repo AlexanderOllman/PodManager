@@ -1,11 +1,72 @@
 {
-  "version": "2.1.9",
-  "buildDate": "2025-01-29",
+  "version": "2.2.0",
+  "buildDate": "2025-07-30",
   "codename": "Quantum Node",
   "releases": [
     {
+      "version": "2.2.0",
+      "date": "2025-07-30",
+      "title": "Enhanced Resource Explorer User Experience",
+      "type": "minor",
+      "highlights": [
+        "Completely redesigned loading experience with progressive content reveal",
+        "Enhanced search interface with dynamic placeholders and stronger visual hierarchy",
+        "Improved spacing and padding throughout for cleaner, more professional appearance",
+        "Better visual feedback and user-centered design improvements"
+      ],
+      "features": [
+        {
+          "category": "Loading Experience",
+          "items": [
+            "Content now hidden until all resources are fully loaded",
+            "Only progress bar and status visible during loading for cleaner experience",
+            "Progressive content reveal with smooth transitions",
+            "Enhanced loading messages with resource-specific feedback",
+            "Better error handling with content restoration on failure"
+          ]
+        },
+        {
+          "category": "Search Interface",
+          "items": [
+            "Dynamic search placeholders that change based on resource type",
+            "Stronger, more prominent search bar border with enhanced focus states",
+            "Improved padding and typography for better usability",
+            "Enhanced hover and interaction states with micro-animations",
+            "Better visual hierarchy with increased font weights and sizing"
+          ]
+        },
+        {
+          "category": "Visual Design",
+          "items": [
+            "Increased padding throughout search controls and table areas",
+            "Enhanced filter indicators with better contrast and styling",
+            "Improved table cell spacing for better readability",
+            "Cleaner visual separation between sections",
+            "Better use of whitespace for improved scanning"
+          ]
+        },
+        {
+          "category": "User Experience",
+          "items": [
+            "More responsive search bar with smooth focus transitions",
+            "Better feedback on search and filter operations",
+            "Enhanced loading states with contextual information",
+            "Improved button styling and interaction feedback",
+            "More intuitive visual flow from loading to content"
+          ]
+        }
+      ],
+      "technical": [
+        "Modified loading logic to hide all content until resources are fetched",
+        "Added dynamic placeholder update system for search inputs",
+        "Enhanced CSS with improved padding, borders, and transitions",
+        "Better state management for progressive content reveal",
+        "Fixed variable scope issues in JavaScript for better maintainability"
+      ]
+    },
+    {
       "version": "2.1.9",
-      "date": "2025-01-29",
+      "date": "2025-07-30",
       "title": "Enhanced Resource Explorer Design",
       "type": "minor",
       "highlights": [
@@ -69,7 +130,7 @@
     },
     {
       "version": "2.1.8",
-      "date": "2025-01-29",
+      "date": "2025-07-30",
       "title": "Streamlined Update Interface & UI Cleanup",
       "type": "minor",
       "highlights": [
@@ -118,7 +179,7 @@
     },
     {
       "version": "2.1.7",
-      "date": "2025-01-29",
+      "date": "2025-07-29",
       "title": "Critical Pod Allocation Logic Fix",
       "type": "patch",
       "highlights": [
@@ -164,7 +225,7 @@
     },
     {
       "version": "2.1.6",
-      "date": "2025-01-29",
+      "date": "2025-07-29",
       "title": "Pod Allocation Debug Tools & Enhanced Metrics",
       "type": "patch",
       "highlights": [
@@ -215,7 +276,7 @@
     },
     {
       "version": "2.1.5",
-      "date": "2025-01-29",
+      "date": "2025-07-29",
       "title": "Fixed Navigation Loop & Loading Issues",
       "type": "patch",
       "highlights": [
@@ -271,7 +332,7 @@
     },
     {
       "version": "2.1.4",
-      "date": "2025-01-29",
+      "date": "2025-07-29",
       "title": "Fixed Pod Allocation Calculation",
       "type": "patch",
       "highlights": [
@@ -315,7 +376,7 @@
     },
     {
       "version": "2.1.3",
-      "date": "2025-01-29",
+      "date": "2025-07-29",
       "title": "Refined Update Notification & Version Display",
       "type": "minor",
       "highlights": [
@@ -371,7 +432,7 @@
     },
     {
       "version": "2.1.2",
-      "date": "2025-01-29",
+      "date": "2025-07-29",
       "title": "Enhanced Settings Layout & About Information",
       "type": "minor",
       "highlights": [
@@ -427,7 +488,7 @@
     },
     {
       "version": "2.1.1",
-      "date": "2025-01-29",
+      "date": "2025-07-29",
       "title": "Update Notification System",
       "type": "minor",
       "highlights": [
@@ -539,7 +600,7 @@
     },
     {
       "version": "2.0.0",
-      "date": "2025-01-25",
+      "date": "2025-07-29",
       "title": "Major UI Overhaul & Resource Management",
       "type": "major", 
       "highlights": [
