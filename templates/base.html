@@ -85,7 +85,7 @@
                 <div class="d-flex align-items-center">
                     <!-- Update Available Notification -->
                     <div class="update-notification-pill" id="updateNotificationPill" style="display: none;" onclick="showUpdateReleaseNotes()">
-                        <i class="fas fa-download me-1"></i>
+                        <i class="fas fa-chevron-down me-1"></i>
                         <span>Update Available</span>
                     </div>
                     <span class="text-dark me-2"><i class="fas fa-user-circle me-1"></i> Admin</span>
@@ -234,22 +234,17 @@
         // Show update notification pills
         showUpdateNotifications: function() {
             const navbarPill = document.getElementById('updateNotificationPill');
-            const settingsPill = document.getElementById('updateNotificationSettingsPill');
-            const remoteVersionBadge = document.getElementById('remoteVersionBadge');
-            const remoteVersionText = document.getElementById('remoteVersionText');
+            const combinedPill = document.getElementById('combinedUpdatePill');
+            const combinedText = document.getElementById('combinedUpdateText');
             
             // Only show update notifications if there's actually a version difference
             if (this.localVersion && this.remoteVersion && this.isUpdateAvailable(this.localVersion, this.remoteVersion)) {
                 if (navbarPill) {
                     navbarPill.style.display = 'flex';
                 }
-                if (settingsPill) {
-                    settingsPill.style.display = 'flex';
-                }
-                if (remoteVersionBadge && remoteVersionText) {
-                    remoteVersionText.textContent = `v${this.remoteVersion}`;
-                    remoteVersionBadge.style.display = 'inline-flex';
-                    remoteVersionBadge.className = 'badge bg-success me-2'; // Green for "update available"
+                if (combinedPill && combinedText) {
+                    combinedText.textContent = `Update to v${this.remoteVersion}`;
+                    combinedPill.style.display = 'flex';
                 }
                 
                 console.log(`Update available: ${this.localVersion} → ${this.remoteVersion}`);
@@ -263,35 +258,13 @@
         // Hide update notification pills
         hideUpdateNotifications: function() {
             const navbarPill = document.getElementById('updateNotificationPill');
-            const settingsPill = document.getElementById('updateNotificationSettingsPill');
-            const remoteVersionBadge = document.getElementById('remoteVersionBadge');
+            const combinedPill = document.getElementById('combinedUpdatePill');
             
             if (navbarPill) {
                 navbarPill.style.display = 'none';
             }
-            if (settingsPill) {
-                settingsPill.style.display = 'none';
-            }
-            if (remoteVersionBadge) {
-                remoteVersionBadge.style.display = 'none';
-            }
-        },
-
-        // Show remote version even when no update is available
-        showRemoteVersion: function() {
-            const remoteVersionBadge = document.getElementById('remoteVersionBadge');
-            const remoteVersionText = document.getElementById('remoteVersionText');
-            
-            if (remoteVersionBadge && remoteVersionText && this.remoteVersion && this.localVersion) {
-                // Only show remote version badge if we have both versions and they're different
-                if (this.remoteVersion !== this.localVersion) {
-                    remoteVersionText.textContent = `v${this.remoteVersion}`;
-                    remoteVersionBadge.style.display = 'inline-flex';
-                    remoteVersionBadge.className = 'badge bg-info me-2'; // Blue for "up to date"
-                } else {
-                    // Versions are the same, hide the badge
-                    remoteVersionBadge.style.display = 'none';
-                }
+            if (combinedPill) {
+                combinedPill.style.display = 'none';
             }
         }
     };

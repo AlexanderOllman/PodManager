@@ -1,8 +1,57 @@
 {
-  "version": "2.1.7",
+  "version": "2.1.8",
   "buildDate": "2025-01-29",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.1.8",
+      "date": "2025-01-29",
+      "title": "Streamlined Update Interface & UI Cleanup",
+      "type": "minor",
+      "highlights": [
+        "Removed debug functionality and cleaned up development tools",
+        "Consolidated version display and update notifications into unified components",
+        "Enhanced user experience with clickable version links and improved pill design",
+        "Simplified navigation with cleaner icon choices and reduced visual noise"
+      ],
+      "features": [
+        {
+          "category": "User Interface",
+          "items": [
+            "Merged separate version and update notification pills into single combined component",
+            "Made About card version number directly clickable to view release notes",
+            "Replaced download icon with down arrow in navbar update notification",
+            "Removed bouncing animation from navbar pill for cleaner appearance",
+            "Eliminated redundant '[Release Notes]' text in favor of direct version link"
+          ]
+        },
+        {
+          "category": "Code Cleanup",
+          "items": [
+            "Removed 'Debug Pod Allocation' button and associated debugging functionality",
+            "Cleaned up unused CSS animations and styling rules",
+            "Simplified JavaScript functions for better maintainability",
+            "Reduced code complexity in update notification system"
+          ]
+        },
+        {
+          "category": "User Experience",
+          "items": [
+            "Streamlined Settings page layout with fewer buttons and cleaner design",
+            "More intuitive version interaction - click version number to see details",
+            "Consistent update notification behavior across all components",
+            "Improved visual hierarchy with combined notification elements"
+          ]
+        }
+      ],
+      "technical": [
+        "Removed debugPodAllocation() function and related API calls",
+        "Consolidated update notification pills into single combinedUpdatePill component",
+        "Updated About card version element from span to clickable button",
+        "Removed bounce animation CSS and simplified pill styling",
+        "Cleaned up unused DOM elements and event handlers"
+      ]
+    },
     {
       "version": "2.1.7",
       "date": "2025-01-29",

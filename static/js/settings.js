@@ -539,7 +539,7 @@ function loadVersionInfo() {
             const aboutLastUpdated = document.getElementById('aboutLastUpdated');
             
             if (aboutVersionText) {
-                // Just show version number without codename
+                // Just show version number without codename - now it's a button
                 aboutVersionText.textContent = `v${versionData.version}`;
             }
             
@@ -839,40 +839,4 @@ function checkForUpdatesManually() {
     } else {
         console.error('Update checker not available');
     }
-} 
-
-// Debug function to check pod allocation calculation
-function debugPodAllocation() {
-    console.log('Debugging pod allocation...');
-    
-    fetch('/api/debug/pods')
-        .then(response => response.json())
-        .then(data => {
-            console.log('=== POD ALLOCATION DEBUG RESULTS ===');
-            console.log('Before refresh:', data.before_refresh);
-            console.log('After refresh:', data.after_refresh);
-            console.log('Node analysis:', data.node_analysis);
-            console.log('Total allocatable from workers:', data.total_allocatable_from_workers);
-            console.log('Total capacity all nodes:', data.total_capacity_all_nodes);
-            
-            // Show detailed breakdown
-            alert(`Pod Allocation Debug Results:
-
-Before refresh: ${data.before_refresh?.total_node_allocatable_pods || 'N/A'} allocatable
-After refresh: ${data.after_refresh?.total_node_allocatable_pods || 'N/A'} allocatable
-
-Node breakdown:
-${data.node_analysis?.map(node => 
-    `${node.name}: ${node.is_control_plane ? 'Control Plane' : 'Worker'} - ${node.allocatable_pods} pods (${node.should_count_for_pod_allocation ? 'COUNTED' : 'EXCLUDED'})`
-).join('\n')}
-
-Expected worker total: ${data.total_allocatable_from_workers}
-Actual capacity total: ${data.total_capacity_all_nodes}
-
-Check console for full details.`);
-        })
-        .catch(error => {
-            console.error('Debug failed:', error);
-            alert('Debug failed. Check console for details.');
-        });
 } 

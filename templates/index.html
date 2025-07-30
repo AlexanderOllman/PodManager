@@ -885,11 +885,6 @@
                             <button class="settings-btn settings-btn-primary" onclick="refreshDatabase()">
                                 <i class="fas fa-sync-alt"></i> Refresh Database
                             </button>
-                            <div class="mt-2">
-                                <button class="btn btn-sm btn-outline-info" onclick="debugPodAllocation()">
-                                    <i class="fas fa-bug me-1"></i> Debug Pod Allocation
-                                </button>
-                            </div>
                         </div>
                         <div id="databaseRefreshStatus" class="mt-2" style="display: none;"></div>
                     </div>
@@ -900,16 +895,11 @@
                     <div class="settings-section h-100">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h4>Application Update</h4>
-                            <!-- Remote Version Display -->
+                            <!-- Combined Version and Update Notification -->
                             <div class="d-flex align-items-center">
-                                <span class="badge bg-success me-2" id="remoteVersionBadge" style="display: none;">
-                                    <i class="fas fa-cloud-download-alt me-1"></i>
-                                    <span id="remoteVersionText">v0.0.0</span>
-                                </span>
-                                <!-- Update Available Notification in Settings -->
-                                <div class="update-notification-pill-small" id="updateNotificationSettingsPill" style="display: none;" onclick="showSettingsUpdateReleaseNotes()">
+                                <div class="update-notification-pill-small" id="combinedUpdatePill" style="display: none;" onclick="showSettingsUpdateReleaseNotes()">
                                     <i class="fas fa-exclamation-circle me-1"></i>
-                                    <span>Update Available</span>
+                                    <span id="combinedUpdateText">Update Available</span>
                                 </div>
                             </div>
                         </div>
@@ -938,9 +928,8 @@
                             <div class="info-item">
                                 <span class="info-label">Version:</span>
                                 <span class="info-value">
-                                    <span id="aboutVersionText">Loading...</span>
-                                    <button class="btn btn-sm btn-link p-0 ms-1" onclick="showReleaseNotes()" title="View Release Notes">
-                                        [Release Notes]
+                                    <button class="btn btn-sm btn-link p-0" id="aboutVersionText" onclick="showReleaseNotes()" title="View Release Notes">
+                                        Loading...
                                     </button>
                                 </span>
                             </div>
