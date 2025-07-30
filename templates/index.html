@@ -425,87 +425,101 @@
             </div>
         </div>
 
-        <!-- Resource Type Tabs -->
-        <ul class="nav nav-tabs" id="resourceTypeTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="pods-res-tab" data-bs-toggle="tab" data-bs-target="#pods-res" type="button" role="tab" aria-controls="pods" aria-selected="true" onclick="changeResourceType('pods')">Pods</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="services-res-tab" data-bs-toggle="tab" data-bs-target="#services-res" type="button" role="tab" aria-controls="services" aria-selected="false" onclick="changeResourceType('services')">Services</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="inferenceservices-res-tab" data-bs-toggle="tab" data-bs-target="#inferenceservices-res" type="button" role="tab" aria-controls="inferenceservices" aria-selected="false" onclick="changeResourceType('inferenceservices')">Inference Services</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="deployments-res-tab" data-bs-toggle="tab" data-bs-target="#deployments-res" type="button" role="tab" aria-controls="deployments" aria-selected="false" onclick="changeResourceType('deployments')">Deployments</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="configmaps-res-tab" data-bs-toggle="tab" data-bs-target="#configmaps-res" type="button" role="tab" aria-controls="configmaps" aria-selected="false" onclick="changeResourceType('configmaps')">Config Maps</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="secrets-res-tab" data-bs-toggle="tab" data-bs-target="#secrets-res" type="button" role="tab" aria-controls="secrets" aria-selected="false" onclick="changeResourceType('secrets')">Secrets</button>
-            </li>
-        </ul>
-
-        <!-- Summary Card -->
-        <div class="resource-summary-card">
-            <div class="card-body">
-                <div id="resourceSummaryContainer">
-                    <!-- Summary content will be injected here -->
+        <!-- Global Loading State for All Resources -->
+        <div class="resource-loading-enhanced" id="resourcesGlobalLoading">
+            <div class="universal-progress-container">
+                <div class="universal-progress-text" id="resourcesGlobalLoadingText">Loading all resource types...</div>
+                <div class="universal-progress-bar">
+                    <div class="universal-progress-fill indeterminate" id="resourcesGlobalProgressBar"></div>
                 </div>
+                <div class="universal-progress-details" id="resourcesGlobalLoadingDetails">Preparing resource data from cluster...</div>
             </div>
         </div>
 
-        <!-- Resource filters/controls -->
-        <div class="resource-controls">
-            <div class="row mb-3 align-items-center">
-                <div class="col-md-8">
-                    <div class="resource-search-container">
-                        <div class="input-group">
-                            <span class="input-group-text">
-                                <i class="fas fa-search"></i>
-                            </span>
-                            <input type="text" class="form-control" id="resourceSearchInput" placeholder="Search resources...">
-                            <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" onclick="clearResourceSearch()">
-                                <i class="fas fa-times"></i>
-                            </button>
+        <!-- Main Resource Content (Hidden until loaded) -->
+        <div id="resourcesMainContent" style="display: none; opacity: 0; transition: opacity 0.5s ease-in-out;">
+            <!-- Resource Type Tabs -->
+            <ul class="nav nav-tabs" id="resourceTypeTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="pods-res-tab" data-bs-toggle="tab" data-bs-target="#pods-res" type="button" role="tab" aria-controls="pods" aria-selected="true" onclick="changeResourceType('pods')">Pods</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="services-res-tab" data-bs-toggle="tab" data-bs-target="#services-res" type="button" role="tab" aria-controls="services" aria-selected="false" onclick="changeResourceType('services')">Services</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="inferenceservices-res-tab" data-bs-toggle="tab" data-bs-target="#inferenceservices-res" type="button" role="tab" aria-controls="inferenceservices" aria-selected="false" onclick="changeResourceType('inferenceservices')">Inference Services</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="deployments-res-tab" data-bs-toggle="tab" data-bs-target="#deployments-res" type="button" role="tab" aria-controls="deployments" aria-selected="false" onclick="changeResourceType('deployments')">Deployments</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="configmaps-res-tab" data-bs-toggle="tab" data-bs-target="#configmaps-res" type="button" role="tab" aria-controls="configmaps" aria-selected="false" onclick="changeResourceType('configmaps')">Config Maps</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="secrets-res-tab" data-bs-toggle="tab" data-bs-target="#secrets-res" type="button" role="tab" aria-controls="secrets" aria-selected="false" onclick="changeResourceType('secrets')">Secrets</button>
+                </li>
+            </ul>
+
+            <!-- Summary Card -->
+            <div class="resource-summary-card">
+                <div class="card-body">
+                    <div id="resourceSummaryContainer">
+                        <!-- Summary content will be injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resource filters/controls -->
+            <div class="resource-controls">
+                <div class="row mb-3 align-items-center">
+                    <div class="col-md-8">
+                        <div class="resource-search-container">
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-search"></i>
+                                </span>
+                                <input type="text" class="form-control" id="resourceSearchInput" placeholder="Search resources...">
+                                <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" onclick="clearResourceSearch()">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-md-4 text-end">
-                        <button type="button" class="btn btn-primary resource-refresh-btn" id="refreshResourceDatabase">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Main resource container -->
-        <div id="resourceMainContainer">
-            <!-- Loading indicator -->
-            <div class="resource-loading-enhanced" id="resourcesLoading">
-                <div class="universal-progress-container">
-                    <div class="universal-progress-text" id="resourcesLoadingText">Loading resources...</div>
-                    <div class="universal-progress-bar">
-                        <div class="universal-progress-fill indeterminate" id="resourcesProgressBar"></div>
+                    <div class="col-md-4 text-end">
+                            <button type="button" class="btn btn-primary resource-refresh-btn" id="refreshResourceDatabase">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
                     </div>
-                    <div class="universal-progress-details" id="resourcesLoadingDetails">Fetching resource data from cluster...</div>
                 </div>
             </div>
             
-            <!-- Resource table -->
-            <div class="resource-table-wrapper" id="resourcesTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
-                <div class="table-responsive">
-                    <table class="table table-hover table-striped table-sm border-bottom shadow-sm" id="resourcesTable">
-                        <thead class="bg-light">
-                            <tr id="resourcesTableHeader">
-                                <!-- Table headers will be dynamically populated based on resource type -->
-                            </tr>
-                        </thead>
-                        <tbody id="resourcesTableBody">
-                            <!-- Table content will be dynamically populated -->
-                        </tbody>
-                    </table>
+            <!-- Main resource container -->
+            <div id="resourceMainContainer">
+                <!-- Loading indicator for individual resource types -->
+                <div class="resource-loading-enhanced" id="resourcesLoading" style="display: none;">
+                    <div class="universal-progress-container">
+                        <div class="universal-progress-text" id="resourcesLoadingText">Loading resources...</div>
+                        <div class="universal-progress-bar">
+                            <div class="universal-progress-fill indeterminate" id="resourcesProgressBar"></div>
+                        </div>
+                        <div class="universal-progress-details" id="resourcesLoadingDetails">Fetching resource data from cluster...</div>
+                    </div>
+                </div>
+                
+                <!-- Resource table -->
+                <div class="resource-table-wrapper" id="resourcesTableContainer" style="opacity: 0; transition: opacity 0.5s ease-in-out;">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped table-sm border-bottom shadow-sm" id="resourcesTable">
+                            <thead class="bg-light">
+                                <tr id="resourcesTableHeader">
+                                    <!-- Table headers will be dynamically populated based on resource type -->
+                                </tr>
+                            </thead>
+                            <tbody id="resourcesTableBody">
+                                <!-- Table content will be dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

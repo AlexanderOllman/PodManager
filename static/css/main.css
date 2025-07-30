@@ -1094,7 +1094,7 @@ body {
 
 .status-badge.running {
   background-color: rgba(1, 169, 130, 0.1);
-  color: var(--hpe-primary);
+  color: var(--hpe-success);
 }
 
 .status-badge.succeeded {
@@ -2439,12 +2439,6 @@ body {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     overflow-x: auto;
     white-space: nowrap;
-    transition: opacity 0.3s ease, transform 0.3s ease;
-}
-
-#resourceTypeTabs.hidden {
-    opacity: 0;
-    transform: translateY(-10px);
 }
 
 #resourceTypeTabs .nav-item {
@@ -2582,21 +2576,15 @@ body {
     overflow: hidden;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     border: 2px solid rgba(0, 119, 204, 0.2);
-    transition: all 0.3s ease;
-}
-
-.resource-search-container .input-group:focus-within {
-    border-color: var(--hpe-primary);
-    box-shadow: 0 4px 20px rgba(0, 119, 204, 0.15);
-    transform: translateY(-1px);
 }
 
 .resource-search-container .input-group-text {
     background: linear-gradient(135deg, #f8f9fc 0%, #ffffff 100%);
     border: none;
+    border-right: 1px solid rgba(0, 119, 204, 0.15);
     color: var(--hpe-primary);
     padding: 1rem 1.5rem;
-    font-size: 1.1rem;
+    font-size: 1rem;
 }
 
 .resource-search-container .form-control {
@@ -2613,24 +2601,26 @@ body {
     background: #ffffff;
 }
 
-.resource-search-container .form-control::placeholder {
-    color: #8e9aaf;
-    font-weight: 400;
+.resource-search-container .input-group:focus-within {
+    border-color: var(--hpe-primary);
+    box-shadow: 0 4px 16px rgba(0, 119, 204, 0.2);
+    transform: translateY(-1px);
 }
 
 .resource-search-container .btn {
     border: none;
+    border-left: 1px solid rgba(0, 119, 204, 0.15);
     background: linear-gradient(135deg, #f8f9fc 0%, #ffffff 100%);
     color: #6c757d;
     transition: all 0.3s ease;
     padding: 1rem 1.5rem;
-    font-size: 1.1rem;
+    font-size: 1rem;
 }
 
 .resource-search-container .btn:hover {
     background: var(--hpe-primary);
     color: white;
-    transform: scale(1.05);
+    border-color: var(--hpe-primary);
 }
 
 .resource-refresh-btn {
@@ -2662,7 +2652,7 @@ body {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     overflow: hidden;
     transition: all 0.3s ease;
-    padding: 1.5rem;
+    margin-top: 1.5rem;
 }
 
 .resource-table-wrapper:hover {
@@ -2672,7 +2662,7 @@ body {
 .resource-table-wrapper .table-responsive {
     border-radius: 12px;
     overflow: hidden;
-    margin: 0;
+    padding: 1.5rem;
 }
 
 .resource-table-wrapper .table {
@@ -2708,46 +2698,47 @@ body {
     vertical-align: middle;
 }
 
-/* Search Filter Indicator - Enhanced */
-.filter-indicator {
-    background: linear-gradient(135deg, #e3f2fd 0%, #f8f9fc 100%) !important;
-    border: 1px solid rgba(0, 119, 204, 0.2) !important;
-    border-radius: 12px !important;
-    padding: 1.25rem 1.5rem !important;
-    margin-bottom: 1.5rem !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
-    color: var(--hpe-primary) !important;
-    font-weight: 500 !important;
-}
-
-.filter-indicator i {
-    color: var(--hpe-primary) !important;
-    font-size: 1.1rem !important;
-}
-
-.filter-indicator .btn-close {
-    background: rgba(0, 119, 204, 0.1) !important;
-    border-radius: 50% !important;
-    opacity: 0.8 !important;
-    transition: all 0.3s ease !important;
-    margin: 0 !important;
-}
-
-.filter-indicator .btn-close:hover {
-    background: var(--hpe-primary) !important;
-    opacity: 1 !important;
-    transform: scale(1.1) !important;
-}
-
-/* Count Info Styling */
-.count-info {
-    background: rgba(0, 119, 204, 0.05);
-    border: 1px solid rgba(0, 119, 204, 0.1);
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
-    font-weight: 500;
+/* Enhanced Filter Indicator */
+.resource-table-wrapper .filter-indicator {
+    background: linear-gradient(135deg, #e3f2fd 0%, #f8f9fc 100%);
+    border: 1px solid rgba(0, 119, 204, 0.2);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    margin: 1.5rem;
+    margin-bottom: 0;
     color: var(--hpe-primary);
+    font-weight: 500;
+}
+
+.resource-table-wrapper .filter-indicator i {
+    color: var(--hpe-primary);
+    margin-right: 0.75rem;
+}
+
+.resource-table-wrapper .filter-indicator .btn-close {
+    background: var(--hpe-primary);
+    opacity: 0.8;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    margin: 0;
+}
+
+.resource-table-wrapper .filter-indicator .btn-close:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+/* Count Info Enhancement */
+.resource-table-wrapper .count-info {
+    background: rgba(0, 119, 204, 0.05);
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    margin: 1.5rem;
+    margin-bottom: 0;
+    color: var(--hpe-primary);
+    font-weight: 500;
+    border: 1px solid rgba(0, 119, 204, 0.1);
 }
 
 /* Resource Loading States */

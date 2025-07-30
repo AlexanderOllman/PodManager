@@ -6,62 +6,62 @@
     {
       "version": "2.2.0",
       "date": "2025-07-30",
-      "title": "Enhanced Resource Explorer UX & Loading Experience",
+      "title": "Enhanced Resource Explorer Loading & User Experience",
       "type": "minor",
       "highlights": [
-        "Completely reimagined loading experience with content-first approach",
-        "Enhanced search functionality with dynamic placeholders and stronger visual design",
-        "Improved visual hierarchy with increased padding and refined spacing",
-        "Seamless content transitions with better error handling and user feedback"
+        "Implemented intelligent global loading system that waits for all resource types before showing content",
+        "Enhanced search interface with stronger visual design and dynamic placeholders",
+        "Improved visual spacing and padding throughout the Resource Explorer",
+        "Better user feedback with progress tracking for all resource types"
       ],
       "features": [
         {
           "category": "Loading Experience",
           "items": [
-            "Complete content hiding until all resources are loaded for cleaner initial experience",
-            "Enhanced progress indicator with descriptive status messages",
-            "Smooth content reveal with fade-in animations after successful load",
-            "Improved error handling with actionable retry buttons and clear messaging",
-            "Content-aware loading states that adapt to different resource types"
+            "New global loading system that fetches all resource types (pods, services, deployments, etc.) before showing any content",
+            "Real-time progress tracking showing 'Loading resource types... (3/6)' with current resource being loaded",
+            "Smooth transitions between loading states and content display",
+            "Prevents partial page loads and ensures consistent user experience",
+            "Intelligent caching prevents unnecessary reloads when switching between already-loaded resource types"
           ]
         },
         {
-          "category": "Search & Navigation",
+          "category": "Search Interface",
           "items": [
-            "Dynamic search placeholders that change based on selected resource type",
-            "Enhanced search bar design with stronger borders and improved visual prominence",
-            "Increased padding and refined typography for better readability",
-            "Improved focus states with animated border transitions",
-            "Better visual feedback for search interactions and filtering"
+            "Dynamic search placeholders that change based on selected resource type ('Search pods...', 'Search services...', etc.)",
+            "Enhanced search bar with stronger 2px border and improved visual prominence",
+            "Increased padding and font size for better usability and modern appearance",
+            "Smooth focus transitions with subtle hover effects and shadow animations",
+            "Better visual feedback when searching with improved button styling"
           ]
         },
         {
           "category": "Visual Design",
           "items": [
-            "Significantly increased padding throughout the interface for better breathing room",
-            "Enhanced search filter indicators with gradient backgrounds and rounded corners",
-            "Improved table spacing with larger cell padding for better scanability",
-            "Refined button styling with consistent border radius and hover effects",
-            "Better visual separation between different interface sections"
+            "Increased padding throughout the Resource Explorer for cleaner, more spacious layout",
+            "Enhanced filter indicators with better background gradients and improved spacing",
+            "Improved table styling with better cell padding and hover effects",
+            "Better visual separation between different page sections",
+            "More prominent refresh button with enhanced styling and better positioning"
           ]
         },
         {
           "category": "User Experience",
           "items": [
-            "Contextual search placeholders improve user understanding of functionality",
-            "Cleaner initial load prevents layout shifts and content flashing",
-            "Improved error recovery with clear retry options and helpful messaging",
-            "Enhanced accessibility with better color contrast and focus indicators",
-            "Smoother transitions between different states and resource types"
+            "Cleaner interface that doesn't show incomplete data during loading",
+            "Better visual hierarchy with improved spacing and typography",
+            "More intuitive search experience with contextual placeholders",
+            "Smoother animations and transitions throughout the interface",
+            "Enhanced accessibility with better focus states and visual feedback"
           ]
         }
       ],
       "technical": [
-        "Added comprehensive content visibility management functions",
-        "Implemented dynamic placeholder updating based on resource context",
-        "Enhanced CSS with stronger visual hierarchy and improved spacing",
-        "Added smooth transition animations for better user feedback",
-        "Improved error handling with graceful degradation and recovery options"
+        "Added comprehensive global loading state management with Promise.allSettled for robust error handling",
+        "Implemented resource loading progress tracking with loadedTypes array and percentage calculation",
+        "Enhanced CSS with stronger borders, better padding, and improved visual effects",
+        "Added dynamic placeholder update system that responds to resource type changes",
+        "Improved content visibility management with proper show/hide transitions"
       ]
     },
     {
