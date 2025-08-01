@@ -6,26 +6,34 @@
     {
       "version": "2.3.3",
       "date": "2025-08-01",
-      "title": "GPU Dashboard Consolidation & Visual Harmony",
-      "type": "patch",
+      "title": "GPU Dashboard Consolidation & UI Consistency",
+      "type": "minor",
       "highlights": [
-        "Unified GPU dashboard card styling with main dashboard design",
-        "Consolidated GPU allocation tables into single cohesive interface",
-        "Fixed Chart.js destroy method error with enhanced error handling",
-        "Improved visual consistency across all GPU management components"
+        "Consolidated GPU dashboard into unified interface",
+        "Removed redundant charts and simplified layout",
+        "Unified styling across all GPU components",
+        "Streamlined navigation and improved user experience"
       ],
-      "bugfixes": [
-        "Fixed 'window.gpuAllocationChart.destroy is not a function' error",
-        "Added proper Chart.js instance validation before calling destroy",
-        "Enhanced chart error handling with try-catch blocks",
-        "Removed inconsistent GPU-specific styling in favor of unified design"
+      "features": [
+        "Merged 'Active GPU Workloads' into 'GPU Workloads' tab",
+        "Consolidated 'Top Namespaces by Resource' and 'GPU Allocation by Namespace' tables",
+        "Removed GPU allocation chart for cleaner interface",
+        "Unified card styling across GPU dashboard components",
+        "Simplified GPU overview with consistent visual language"
+      ],
+      "improvements": [
+        "Cleaner dashboard layout with reduced visual clutter",
+        "Consistent styling between GPU utilization cards and app theme",
+        "Better organization of GPU-related functionality",
+        "Improved maintainability with consolidated components",
+        "Enhanced user experience with streamlined navigation"
       ],
       "technical": [
-        "Migrated GPU utilization cards to standard dashboard-metric-card styling",
-        "Consolidated GPU allocation chart into unified dashboard card structure",
-        "Merged separate GPU allocation tables into single comprehensive view",
-        "Commented out legacy GPU-specific CSS classes for cleaner codebase",
-        "Enhanced Chart.js error handling with type checking and fallbacks"
+        "Removed Chart.js dependency from GPU allocation display",
+        "Consolidated duplicate HTML templates and CSS classes",
+        "Simplified JavaScript functions for GPU data rendering",
+        "Updated CSS to use consistent design tokens",
+        "Removed redundant DOM elements and event handlers"
       ]
     },
     {

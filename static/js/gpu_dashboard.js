@@ -688,17 +688,9 @@ function renderGpuOverview(data) {
         // Update GPU utilization cards
         updateGpuUtilizationCards(data);
         
-        // Update GPU allocation chart with error handling
-        updateGpuAllocationChart(data);
-        
-        // Update namespace GPU allocation table
+        // Update namespace GPU allocation table (now consolidated)
         if (data.namespace_allocation) {
             updateNamespaceGpuTable(data.namespace_allocation);
-        }
-        
-        // Update node GPU allocation table
-        if (data.node_allocation) {
-            updateNodeGpuTable(data.node_allocation);
         }
     } catch (error) {
         console.error('Error rendering GPU overview:', error);
@@ -742,6 +734,8 @@ function updateGpuUtilizationCards(data) {
     }
 }
 
+/*
+// REMOVED: Chart functionality disabled per user request
 function updateGpuAllocationChart(data) {
     // Create or update a donut chart for GPU allocation
     const chartContainer = document.getElementById('gpuAllocationChart');
@@ -780,7 +774,7 @@ function updateGpuAllocationChart(data) {
             window.gpuAllocationChart.data = chartData;
             window.gpuAllocationChart.update('none'); // Use 'none' animation mode for updates
         } else {
-            // Destroy existing chart if it exists but is not properly initialized
+            // Safely destroy existing chart if it exists and has destroy method
             if (window.gpuAllocationChart && typeof window.gpuAllocationChart.destroy === 'function') {
                 try {
                     window.gpuAllocationChart.destroy();
@@ -828,6 +822,7 @@ function updateGpuAllocationChart(data) {
         window.gpuAllocationChart = null;
     }
 }
+*/
 
 // GPU Nodes Overview
 function loadGpuNodes() {

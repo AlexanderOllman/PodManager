@@ -2992,80 +2992,47 @@ body {
     font-size: 0.9rem;
 }
 
-/* Enhanced GPU Utilization Cards */
-/* Removed - now using standard dashboard-metric-card styling */
-/*
+/* Enhanced GPU Utilization Cards - Simplified to match app styling */
 .gpu-utilization-card {
     background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
-    border: 1px solid rgba(1, 169, 130, 0.12);
-    border-radius: 16px;
-    padding: 2rem 1.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    padding: 1.5rem 1rem;
     text-align: center;
-    transition: all 0.4s ease;
+    transition: all 0.3s ease;
     height: 100%;
-    position: relative;
-    overflow: hidden;
-}
-
-.gpu-utilization-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, #01A982, #00C9A0, #FFB800);
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    box-shadow: rgba(0, 0, 0, 0.08) 0px 4px 12px;
 }
 
 .gpu-utilization-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 16px 40px rgba(1, 169, 130, 0.15);
+    transform: translateY(-5px);
+    box-shadow: rgba(0, 0, 0, 0.12) 0px 8px 16px;
     border-color: var(--hpe-primary);
 }
 
-.gpu-utilization-card:hover::before {
-    opacity: 1;
-}
-
 .gpu-utilization-card .metric-icon {
-    font-size: 2.5rem;
+    font-size: 1.5rem;
     color: var(--hpe-primary);
-    margin-bottom: 1rem;
-    background: linear-gradient(135deg, rgba(1, 169, 130, 0.1) 0%, rgba(1, 169, 130, 0.05) 100%);
-    width: 4rem;
-    height: 4rem;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 1rem auto;
+    margin-bottom: 0.75rem;
 }
 
 .gpu-utilization-card .metric-value {
-    font-size: 3rem;
+    font-size: 2rem;
     font-weight: 700;
-    color: var(--hpe-primary);
-    margin-bottom: 0.5rem;
+    color: var(--hpe-dark);
+    margin-bottom: 0.25rem;
     line-height: 1;
-    background: linear-gradient(135deg, #01A982, #00C9A0);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
 }
 
 .gpu-utilization-card .metric-label {
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     color: var(--hpe-gray);
     text-transform: uppercase;
-    letter-spacing: 1px;
-    font-weight: 700;
-    margin-top: 0.5rem;
+    letter-spacing: 0.5px;
+    font-weight: 600;
 }
-*/
 
-/* Enhanced GPU Allocation Chart */
+/* Enhanced GPU Allocation Chart - REMOVED
 .gpu-allocation-chart-container {
     background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
     border: 1px solid rgba(1, 169, 130, 0.12);
@@ -3091,6 +3058,7 @@ body {
 .gpu-allocation-chart-container canvas {
     max-height: 320px !important;
 }
+*/
 
 /* Enhanced GPU Queue Styles */
 .gpu-queue-summary {
@@ -3257,3 +3225,47 @@ body {
 }
 
 /* End GPU Dashboard Enhanced Styles */
+
+/* Enhanced GPU Allocation Table - Simplified styling */
+.gpu-allocation-table {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: rgba(0, 0, 0, 0.08) 0px 4px 12px;
+    transition: all 0.3s ease;
+}
+
+.gpu-allocation-table:hover {
+    box-shadow: rgba(0, 0, 0, 0.12) 0px 8px 16px;
+    transform: translateY(-2px);
+    border-color: var(--hpe-primary);
+}
+
+.gpu-allocation-table h6 {
+    color: var(--hpe-primary);
+    font-weight: 600;
+    margin-bottom: 1rem;
+    font-size: 1rem;
+}
+
+.gpu-allocation-table .table-sm th {
+    background: var(--hpe-light-gray);
+    border-bottom: 2px solid var(--hpe-primary);
+    color: var(--hpe-dark);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0.75rem 0.5rem;
+}
+
+.gpu-allocation-table .table-sm td {
+    padding: 0.6rem 0.5rem;
+    font-size: 0.9rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.gpu-allocation-table .table-sm tbody tr:hover {
+    background: rgba(1, 169, 130, 0.05);
+}
