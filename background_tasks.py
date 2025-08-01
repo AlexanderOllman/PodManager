@@ -15,6 +15,7 @@ class KubernetesDataUpdater:
         self.thread = None
         self.running = False
         self.env_metrics_collector = env_metrics_collector_func
+        self.db = db  # Add database reference
 
     def run_kubectl_command(self, command: str) -> dict:
         """Execute kubectl command and return JSON output."""
@@ -98,30 +99,161 @@ class KubernetesDataUpdater:
             return '0'
 
     def _update_resources(self):
-        """Update all resources in the database atomically."""
-        resource_types = ['pods', 'services', 'deployments', 'configmaps', 'secrets', 'inferenceservices', 'nodes']
+        """Update all cached resources."""
+        if not self.running:
+            return
+            
+        logger.info("Starting resource cache update...")
+        
+        # Resource types to fetch
+        resource_types = ['pods', 'services', 'deployments', 'inferenceservices', 'configmaps', 'secrets', 'nodes']
+        
+        # Dictionary to store all resources
         all_resources = {}
         
         for resource_type in resource_types:
             try:
-                # Use a more generic fetch command
-                data = self.run_kubectl_command(f'get {resource_type} --all-namespaces')
-                resources = data.get('items', [])
-                for item in resources:
-                    # Add age calculation for all resources
-                    item['age'] = self._get_age(item.get('metadata', {}).get('creationTimestamp'))
-                all_resources[resource_type] = resources
-                logger.info(f"Fetched {len(resources)} {resource_type}")
-
+                logger.info(f"Fetching {resource_type}...")
+                
+                if resource_type == 'inferenceservices':
+                    # Custom command for InferenceServices
+                    command = ["get", "inferenceservices", "-A", "-o", "json"]
+                else:
+                    # Standard command for other resources
+                    command = ["get", resource_type, "-A", "-o", "json"]
+                
+                result = subprocess.run(['kubectl'] + command, 
+                                     capture_output=True, text=True, timeout=60)
+                
+                if result.returncode == 0:
+                    data = json.loads(result.stdout)
+                    items = data.get('items', [])
+                    all_resources[resource_type] = items
+                    logger.info(f"Successfully fetched {len(items)} {resource_type}")
+                else:
+                    logger.error(f"Failed to fetch {resource_type}: {result.stderr}")
+                    all_resources[resource_type] = []
+                    
+            except subprocess.TimeoutExpired:
+                logger.error(f"Timeout fetching {resource_type}")
+                all_resources[resource_type] = []
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error for {resource_type}: {e}")
+                all_resources[resource_type] = []
             except Exception as e:
-                logger.error(f"Error fetching {resource_type}: {str(e)}")
-                all_resources[resource_type] = [] # Ensure key exists even on error
-
-        # Perform a single atomic update
-        if db.update_resources_atomically(all_resources):
-            logger.info("Successfully and atomically updated all resources in the database.")
+                logger.error(f"Unexpected error fetching {resource_type}: {e}")
+                all_resources[resource_type] = []
+        
+        # Update database atomically
+        success = self.db.update_resources_atomically(all_resources)
+        
+        if success:
+            logger.info("Resource cache update completed successfully")
+            
+            # After successful resource update, calculate and store namespace metrics
+            self._update_namespace_metrics()
         else:
-            logger.error("Failed to atomically update resources in the database.")
+            logger.error("Failed to update resource cache")
+    
+    def _update_namespace_metrics(self):
+        """Calculate and store namespace-level resource metrics."""
+        try:
+            logger.info("Calculating namespace resource metrics...")
+            
+            # Get all pods to calculate namespace-level metrics
+            pods = self.db.get_resources('pods')
+            
+            # Dictionary to store namespace metrics
+            namespace_metrics = {}
+            
+            for pod in pods:
+                if not isinstance(pod, dict):
+                    continue
+                    
+                metadata = pod.get('metadata', {})
+                namespace = metadata.get('namespace', 'default')
+                spec = pod.get('spec', {})
+                status = pod.get('status', {})
+                phase = status.get('phase', '')
+                
+                # Initialize namespace metrics if not exists
+                if namespace not in namespace_metrics:
+                    namespace_metrics[namespace] = {
+                        'namespace': namespace,
+                        'pod_count': 0,
+                        'cpu_usage': 0,
+                        'gpu_usage': 0,
+                        'memory_usage': 0,  # in MB
+                        'running_pods': 0,
+                        'pending_pods': 0,
+                        'failed_pods': 0
+                    }
+                
+                # Count pods by phase
+                namespace_metrics[namespace]['pod_count'] += 1
+                if phase == 'Running':
+                    namespace_metrics[namespace]['running_pods'] += 1
+                elif phase == 'Pending':
+                    namespace_metrics[namespace]['pending_pods'] += 1
+                elif phase == 'Failed':
+                    namespace_metrics[namespace]['failed_pods'] += 1
+                
+                # Calculate resource usage from containers
+                for container in spec.get('containers', []):
+                    requests = container.get('resources', {}).get('requests', {})
+                    
+                    # CPU usage
+                    if 'cpu' in requests:
+                        cpu_str = requests['cpu']
+                        if cpu_str.endswith('m'):
+                            namespace_metrics[namespace]['cpu_usage'] += float(cpu_str[:-1]) / 1000
+                        else:
+                            try:
+                                namespace_metrics[namespace]['cpu_usage'] += float(cpu_str)
+                            except ValueError:
+                                pass
+                    
+                    # GPU usage
+                    if 'nvidia.com/gpu' in requests:
+                        try:
+                            namespace_metrics[namespace]['gpu_usage'] += float(requests['nvidia.com/gpu'])
+                        except ValueError:
+                            pass
+                    
+                    # Memory usage (convert to MB)
+                    if 'memory' in requests:
+                        memory_str = requests['memory']
+                        if memory_str.endswith('Mi'):
+                            namespace_metrics[namespace]['memory_usage'] += float(memory_str[:-2])
+                        elif memory_str.endswith('Gi'):
+                            namespace_metrics[namespace]['memory_usage'] += float(memory_str[:-2]) * 1024
+                        elif memory_str.endswith('Ki'):
+                            namespace_metrics[namespace]['memory_usage'] += float(memory_str[:-2]) / 1024
+                        else:
+                            try:
+                                # Assume bytes if no unit
+                                namespace_metrics[namespace]['memory_usage'] += float(memory_str) / (1024 * 1024)
+                            except ValueError:
+                                pass
+            
+            # Store metrics in database for each metric type
+            for namespace, metrics in namespace_metrics.items():
+                # Store GPU metrics
+                if metrics['gpu_usage'] > 0:
+                    self.db.update_metrics('gpu', namespace, metrics)
+                
+                # Store CPU metrics
+                if metrics['cpu_usage'] > 0:
+                    self.db.update_metrics('cpu', namespace, metrics)
+                
+                # Store memory metrics
+                if metrics['memory_usage'] > 0:
+                    self.db.update_metrics('memory', namespace, metrics)
+            
+            logger.info(f"Successfully calculated metrics for {len(namespace_metrics)} namespaces")
+            
+        except Exception as e:
+            logger.error(f"Error calculating namespace metrics: {e}")
 
     def start(self):
         """Start the background updater thread."""

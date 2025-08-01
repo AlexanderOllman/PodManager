@@ -20,7 +20,7 @@ import struct
 import fcntl
 import termios
 from typing import Optional, Union, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 
 # Configure logging
@@ -159,6 +159,8 @@ def _collect_and_store_environment_metrics():
     control_plane_count = 0
     worker_count = 0
     schedulable_nodes = 0
+    
+    logging.info(f"Processing {len(nodes_data.get('items', []))} nodes for environment metrics...")
 
     for node in nodes_data.get('items', []):
         status = node.get('status', {})
@@ -239,6 +241,18 @@ def _collect_and_store_environment_metrics():
         'total_node_capacity_cpu_millicores': total_capacity_cpu_millicores,
         'total_node_capacity_memory_bytes': total_capacity_memory_bytes
     }
+    
+    # Log the final calculated metrics for debugging
+    logging.info(f"Environment metrics summary:")
+    logging.info(f"  - Total nodes processed: {len(nodes_data.get('items', []))}")
+    logging.info(f"  - Control plane nodes: {control_plane_count}")
+    logging.info(f"  - Worker nodes: {worker_count}")
+    logging.info(f"  - Schedulable nodes: {schedulable_nodes}")
+    logging.info(f"  - Total pod capacity (all nodes): {total_pod_capacity}")
+    logging.info(f"  - Total allocatable pods (workers only): {total_allocatable_pods}")
+    logging.info(f"  - Total allocatable CPU: {total_allocatable_cpu_millicores} millicores")
+    logging.info(f"  - Total allocatable memory: {total_allocatable_memory_bytes} bytes")
+    logging.info(f"  - Total allocatable GPUs: {total_allocatable_gpus}")
 
     if db.update_environment_metrics(metrics_data):
         logging.info("Successfully collected and stored environment metrics.")
@@ -256,6 +270,28 @@ else:
 
 # Start the background updater
 updater.start()
+
+# Collect initial environment metrics immediately after startup
+# This ensures pod allocation and other metrics are available right away
+# instead of waiting for the 5-minute background task cycle
+logging.info("Collecting initial environment metrics on startup...")
+try:
+    _collect_and_store_environment_metrics()
+    logging.info("Initial environment metrics collected successfully.")
+except Exception as e:
+    logging.error(f"Failed to collect initial environment metrics: {e}")
+    logging.info("Environment metrics will be collected by background task or on-demand.")
+    
+    # Try once more after a short delay in case kubectl wasn't ready
+    import time
+    logging.info("Retrying environment metrics collection after 3 seconds...")
+    time.sleep(3)
+    try:
+        _collect_and_store_environment_metrics()
+        logging.info("Environment metrics collected successfully on retry.")
+    except Exception as retry_error:
+        logging.error(f"Retry failed for environment metrics: {retry_error}")
+        logging.info("Will rely on background task or on-demand collection.")
 
 # Register cleanup function
 @atexit.register
@@ -1441,11 +1477,27 @@ def get_environment_metrics_endpoint():
         env_metrics = db.get_latest_environment_metrics()
         if not env_metrics:
             logging.warning("Environment metrics not found in DB, attempting to collect now.")
-            _collect_and_store_environment_metrics()
-            env_metrics = db.get_latest_environment_metrics()
+            
+            # Try to collect metrics immediately
+            try:
+                _collect_and_store_environment_metrics()
+                env_metrics = db.get_latest_environment_metrics()
+                
+                if env_metrics:
+                    logging.info("Successfully collected environment metrics on-demand.")
+                else:
+                    logging.error("Environment metrics collection completed but no data was stored.")
+                    
+            except Exception as collection_error:
+                logging.error(f"Failed to collect environment metrics on-demand: {collection_error}")
+            
+            # Final check
             if not env_metrics:
                 logging.error("Failed to retrieve or collect environment metrics.")
-                return jsonify({"error": "Environment metrics are currently unavailable."}), 503
+                return jsonify({
+                    "error": "Environment metrics are currently unavailable. Please try refreshing the database in Settings.",
+                    "suggestion": "The cluster may still be initializing. Try again in a few moments."
+                }), 503
 
         all_pods_data = db.get_resources('pods')
 
@@ -2065,6 +2117,260 @@ def debug_pod_allocation():
     except Exception as e:
         logging.error(f"Error in debug endpoint: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/gpu-nodes', methods=['GET'])
+def get_gpu_nodes():
+    """Get all nodes with GPU information for GPU overview dashboard."""
+    try:
+        nodes = db.get_resources('nodes')
+        
+        gpu_nodes = []
+        for node in nodes:
+            metadata = node.get('metadata', {})
+            status = node.get('status', {})
+            capacity = status.get('capacity', {})
+            allocatable = status.get('allocatable', {})
+            node_info = status.get('nodeInfo', {})
+            
+            # Get GPU count from capacity and allocatable
+            gpu_capacity = int(capacity.get('nvidia.com/gpu', 0))
+            gpu_allocatable = int(allocatable.get('nvidia.com/gpu', 0))
+            
+            # Only include nodes that have GPUs
+            if gpu_capacity > 0 or gpu_allocatable > 0:
+                # Get node conditions for status
+                conditions = status.get('conditions', [])
+                ready_condition = next((c for c in conditions if c.get('type') == 'Ready'), {})
+                is_ready = ready_condition.get('status') == 'True'
+                
+                # Check if node is schedulable
+                spec = node.get('spec', {})
+                is_schedulable = not spec.get('unschedulable', False)
+                
+                # Get GPU model information from labels if available
+                labels = metadata.get('labels', {})
+                gpu_model = (
+                    labels.get('nvidia.com/gpu.product', '') or
+                    labels.get('accelerator', '') or
+                    labels.get('gpu-type', '') or
+                    'Unknown'
+                )
+                
+                gpu_node = {
+                    'name': metadata.get('name', ''),
+                    'gpu_capacity': gpu_capacity,
+                    'gpu_allocatable': gpu_allocatable,
+                    'gpu_model': gpu_model,
+                    'status': 'Ready' if is_ready else 'NotReady',
+                    'schedulable': is_schedulable,
+                    'cpu_cores': capacity.get('cpu', '0'),
+                    'memory_gb': round(int(capacity.get('memory', '0Ki')[:-2]) / (1024 * 1024), 1) if capacity.get('memory', '').endswith('Ki') else 0,
+                    'os_image': node_info.get('osImage', ''),
+                    'kernel_version': node_info.get('kernelVersion', ''),
+                    'nvidia_driver': labels.get('nvidia.com/cuda.driver.major', 'Unknown'),
+                    'labels': labels,
+                    'age': node.get('age', '')
+                }
+                gpu_nodes.append(gpu_node)
+        
+        return jsonify(gpu_nodes)
+    except Exception as e:
+        logging.error(f"Error getting GPU nodes: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/gpu-queue', methods=['GET'])
+def get_gpu_queue():
+    """Get GPU scheduling queue information - pending pods requesting GPUs."""
+    try:
+        pods = db.get_resources('pods')
+        
+        gpu_queue = {
+            'pending_pods': [],
+            'queue_summary': {
+                'total_pending': 0,
+                'total_gpu_requests': 0,
+                'average_wait_time': 0,
+                'longest_wait_time': 0
+            }
+        }
+        
+        current_time = datetime.now(timezone.utc)
+        wait_times = []
+        
+        for pod in pods:
+            if not isinstance(pod, dict):
+                continue
+                
+            metadata = pod.get('metadata', {})
+            spec = pod.get('spec', {})
+            status = pod.get('status', {})
+            phase = status.get('phase', '')
+            
+            # Only look at pending pods
+            if phase != 'Pending':
+                continue
+            
+            # Check if pod requests GPUs
+            gpu_request = 0
+            for container in spec.get('containers', []):
+                requests = container.get('resources', {}).get('requests', {})
+                gpu_request += int(requests.get('nvidia.com/gpu', 0))
+            
+            if gpu_request > 0:
+                # Calculate wait time
+                creation_time_str = metadata.get('creationTimestamp', '')
+                wait_time_seconds = 0
+                if creation_time_str:
+                    try:
+                        creation_time = datetime.fromisoformat(creation_time_str.replace('Z', '+00:00'))
+                        wait_time_seconds = (current_time - creation_time).total_seconds()
+                        wait_times.append(wait_time_seconds)
+                    except:
+                        pass
+                
+                # Get pod conditions for more details
+                conditions = status.get('conditions', [])
+                unscheduled_condition = next(
+                    (c for c in conditions if c.get('type') == 'PodScheduled' and c.get('status') == 'False'), 
+                    {}
+                )
+                
+                pending_pod = {
+                    'name': metadata.get('name', ''),
+                    'namespace': metadata.get('namespace', ''),
+                    'gpu_request': gpu_request,
+                    'creation_time': creation_time_str,
+                    'wait_time_seconds': wait_time_seconds,
+                    'wait_time_human': format_duration(wait_time_seconds),
+                    'reason': unscheduled_condition.get('reason', 'Unknown'),
+                    'message': unscheduled_condition.get('message', ''),
+                    'node_selector': spec.get('nodeSelector', {}),
+                    'tolerations': len(spec.get('tolerations', [])),
+                    'priority_class': spec.get('priorityClassName', ''),
+                    'owner': get_pod_owner(metadata)
+                }
+                
+                gpu_queue['pending_pods'].append(pending_pod)
+                gpu_queue['queue_summary']['total_pending'] += 1
+                gpu_queue['queue_summary']['total_gpu_requests'] += gpu_request
+        
+        # Calculate queue statistics
+        if wait_times:
+            gpu_queue['queue_summary']['average_wait_time'] = sum(wait_times) / len(wait_times)
+            gpu_queue['queue_summary']['longest_wait_time'] = max(wait_times)
+        
+        # Sort pending pods by wait time (longest first)
+        gpu_queue['pending_pods'].sort(key=lambda x: x['wait_time_seconds'], reverse=True)
+        
+        return jsonify(gpu_queue)
+    except Exception as e:
+        logging.error(f"Error getting GPU queue: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/gpu-utilization', methods=['GET'])
+def get_gpu_utilization():
+    """Get GPU utilization overview - allocation vs capacity across the cluster."""
+    try:
+        # Get environment metrics for total GPU capacity
+        env_metrics = db.get_latest_environment_metrics()
+        if not env_metrics:
+            return jsonify({"error": "Environment metrics not available"}), 503
+        
+        total_gpu_capacity = env_metrics.get('total_node_allocatable_gpus', 0)
+        
+        # Get current GPU allocations from environment metrics
+        all_pods_data = db.get_resources('pods')
+        
+        allocated_gpus = {
+            'running': 0,
+            'pending': 0,
+            'failed': 0
+        }
+        
+        # GPU allocation by namespace
+        namespace_gpu_allocation = {}
+        
+        # GPU allocation by node
+        node_gpu_allocation = {}
+        
+        for pod in all_pods_data:
+            if not isinstance(pod, dict):
+                continue
+                
+            metadata = pod.get('metadata', {})
+            spec = pod.get('spec', {})
+            status = pod.get('status', {})
+            phase = status.get('phase', '')
+            namespace = metadata.get('namespace', 'default')
+            node_name = spec.get('nodeName', 'Unscheduled')
+            
+            # Calculate GPU requests
+            pod_gpu_request = 0
+            for container in spec.get('containers', []):
+                requests = container.get('resources', {}).get('requests', {})
+                pod_gpu_request += int(requests.get('nvidia.com/gpu', 0))
+            
+            if pod_gpu_request > 0:
+                # Count by phase
+                if phase == 'Running':
+                    allocated_gpus['running'] += pod_gpu_request
+                elif phase == 'Pending':
+                    allocated_gpus['pending'] += pod_gpu_request
+                elif phase == 'Failed':
+                    allocated_gpus['failed'] += pod_gpu_request
+                
+                # Count by namespace
+                if namespace not in namespace_gpu_allocation:
+                    namespace_gpu_allocation[namespace] = 0
+                namespace_gpu_allocation[namespace] += pod_gpu_request
+                
+                # Count by node (only for running pods)
+                if phase == 'Running' and node_name != 'Unscheduled':
+                    if node_name not in node_gpu_allocation:
+                        node_gpu_allocation[node_name] = 0
+                    node_gpu_allocation[node_name] += pod_gpu_request
+        
+        # Calculate utilization percentages
+        total_allocated = allocated_gpus['running'] + allocated_gpus['pending']
+        utilization_percentage = (allocated_gpus['running'] / total_gpu_capacity * 100) if total_gpu_capacity > 0 else 0
+        
+        gpu_utilization = {
+            'total_capacity': total_gpu_capacity,
+            'allocated_gpus': allocated_gpus,
+            'available_gpus': total_gpu_capacity - total_allocated,
+            'utilization_percentage': round(utilization_percentage, 1),
+            'allocation_percentage': round((total_allocated / total_gpu_capacity * 100) if total_gpu_capacity > 0 else 0, 1),
+            'namespace_allocation': dict(sorted(namespace_gpu_allocation.items(), key=lambda x: x[1], reverse=True)),
+            'node_allocation': dict(sorted(node_gpu_allocation.items(), key=lambda x: x[1], reverse=True))
+        }
+        
+        return jsonify(gpu_utilization)
+    except Exception as e:
+        logging.error(f"Error getting GPU utilization: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+def format_duration(seconds):
+    """Format duration in seconds to human-readable string."""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    elif seconds < 3600:
+        return f"{int(seconds // 60)}m"
+    elif seconds < 86400:
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        return f"{hours}h{minutes}m"
+    else:
+        days = int(seconds // 86400)
+        hours = int((seconds % 86400) // 3600)
+        return f"{days}d{hours}h"
+
+def get_pod_owner(metadata):
+    """Get the owner reference of a pod (deployment, job, etc.)."""
+    owner_refs = metadata.get('ownerReferences', [])
+    if owner_refs:
+        owner = owner_refs[0]  # Take the first owner
+        return f"{owner.get('kind', 'Unknown')}/{owner.get('name', 'Unknown')}"
+    return "Direct"
 
 if __name__ == '__main__':
     # This block runs when you execute `python app.py` directly.

@@ -900,7 +900,9 @@
                             Last refreshed: <span id="db-last-updated-time">Loading...</span>
                         </p>
                         <p class="text-muted mb-3">Manually refresh the database with current Kubernetes resources.
-                            This will fetch fresh data for all resources from the cluster.
+                            This will fetch fresh data for all resources from the cluster that populate all metrics shown throughout Resource Manager.
+                        </p>
+                        <p class="text-muted mb-3">Scheduled to automatically refresh every 5 minutes.
                         </p>
                         <div class="mt-auto">
                             <button class="settings-btn settings-btn-primary" onclick="refreshDatabase()">

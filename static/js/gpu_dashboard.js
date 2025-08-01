@@ -563,3 +563,514 @@ function updateDashboardMetrics(data) {
             </div>`;
     }
 } 
+
+// GPU Dashboard Enhanced Features
+// Manages the improved GPU-focused dashboard with comprehensive GPU insights
+
+let currentGpuView = 'overview'; // 'overview', 'nodes', 'queue', 'pods'
+let gpuRefreshInterval = null;
+
+// Initialize GPU dashboard when page loads
+function initializeGpuDashboard() {
+    console.log('Initializing enhanced GPU dashboard...');
+    
+    // Set up view switching
+    setupGpuViewSwitching();
+    
+    // Load initial GPU overview
+    loadGpuOverview();
+    
+    // Set up auto-refresh
+    setupGpuAutoRefresh();
+    
+    // Load initial data
+    loadAllGpuData();
+}
+
+function setupGpuViewSwitching() {
+    // Add click handlers for GPU view tabs
+    document.querySelectorAll('.gpu-view-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const view = this.dataset.view;
+            switchGpuView(view);
+        });
+    });
+}
+
+function switchGpuView(view) {
+    currentGpuView = view;
+    
+    // Update active tab
+    document.querySelectorAll('.gpu-view-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.view === view);
+    });
+    
+    // Show/hide content sections
+    document.querySelectorAll('.gpu-view-content').forEach(content => {
+        content.style.display = content.dataset.view === view ? 'block' : 'none';
+    });
+    
+    // Load data for the selected view
+    switch(view) {
+        case 'overview':
+            loadGpuOverview();
+            break;
+        case 'nodes':
+            loadGpuNodes();
+            break;
+        case 'queue':
+            loadGpuQueue();
+            break;
+        case 'pods':
+            fetchGpuPods();
+            break;
+    }
+}
+
+function setupGpuAutoRefresh() {
+    // Clear any existing interval
+    if (gpuRefreshInterval) {
+        clearInterval(gpuRefreshInterval);
+    }
+    
+    // Set up 30-second auto-refresh
+    gpuRefreshInterval = setInterval(() => {
+        if (currentGpuView === 'overview') {
+            loadGpuOverview();
+        } else if (currentGpuView === 'nodes') {
+            loadGpuNodes();
+        } else if (currentGpuView === 'queue') {
+            loadGpuQueue();
+        } else if (currentGpuView === 'pods') {
+            fetchGpuPods();
+        }
+        
+        // Always refresh namespace metrics
+        fetchNamespaceMetrics('gpu');
+    }, 30000);
+}
+
+function loadAllGpuData() {
+    // Load all GPU data types
+    loadGpuOverview();
+    fetchGpuPods();
+    fetchNamespaceMetrics('gpu');
+}
+
+// GPU Overview - Utilization Summary
+function loadGpuOverview() {
+    console.log('Loading GPU utilization overview...');
+    
+    fetch('/api/gpu-utilization')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Error loading GPU utilization:', data.error);
+                return;
+            }
+            
+            renderGpuOverview(data);
+        })
+        .catch(error => {
+            console.error('Error fetching GPU utilization:', error);
+        });
+}
+
+function renderGpuOverview(data) {
+    // Update GPU utilization cards
+    updateGpuUtilizationCards(data);
+    
+    // Update GPU allocation chart
+    updateGpuAllocationChart(data);
+    
+    // Update namespace GPU allocation table
+    updateNamespaceGpuTable(data.namespace_allocation);
+    
+    // Update node GPU allocation table
+    updateNodeGpuTable(data.node_allocation);
+}
+
+function updateGpuUtilizationCards(data) {
+    // Total GPU Capacity Card
+    const capacityElement = document.getElementById('gpuTotalCapacity');
+    if (capacityElement) {
+        capacityElement.textContent = data.total_capacity;
+    }
+    
+    // Running GPUs Card
+    const runningElement = document.getElementById('gpuRunning');
+    if (runningElement) {
+        runningElement.textContent = data.allocated_gpus.running;
+    }
+    
+    // Available GPUs Card
+    const availableElement = document.getElementById('gpuAvailable');
+    if (availableElement) {
+        availableElement.textContent = data.available_gpus;
+    }
+    
+    // Utilization Percentage
+    const utilizationElement = document.getElementById('gpuUtilizationPercentage');
+    if (utilizationElement) {
+        utilizationElement.textContent = `${data.utilization_percentage}%`;
+    }
+    
+    // Pending GPUs
+    const pendingElement = document.getElementById('gpuPending');
+    if (pendingElement) {
+        pendingElement.textContent = data.allocated_gpus.pending;
+    }
+}
+
+function updateGpuAllocationChart(data) {
+    // Create or update a donut chart for GPU allocation
+    const chartContainer = document.getElementById('gpuAllocationChart');
+    if (!chartContainer) return;
+    
+    const chartData = {
+        labels: ['Running', 'Available', 'Pending'],
+        datasets: [{
+            data: [
+                data.allocated_gpus.running,
+                data.available_gpus,
+                data.allocated_gpus.pending
+            ],
+            backgroundColor: [
+                '#01A982', // HPE Green for running
+                '#CCCCCC', // Gray for available  
+                '#FFB800'  // Warning yellow for pending
+            ],
+            borderWidth: 2,
+            borderColor: '#ffffff'
+        }]
+    };
+    
+    // If chart already exists, update it; otherwise create new one
+    if (window.gpuAllocationChart) {
+        window.gpuAllocationChart.data = chartData;
+        window.gpuAllocationChart.update();
+    } else {
+        const ctx = chartContainer.getContext('2d');
+        window.gpuAllocationChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: chartData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            font: {
+                                family: 'MetricHPE'
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${label}: ${value} GPUs (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// GPU Nodes Overview
+function loadGpuNodes() {
+    console.log('Loading GPU nodes overview...');
+    
+    fetch('/api/gpu-nodes')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Error loading GPU nodes:', data.error);
+                return;
+            }
+            
+            renderGpuNodes(data);
+        })
+        .catch(error => {
+            console.error('Error fetching GPU nodes:', error);
+        });
+}
+
+function renderGpuNodes(nodes) {
+    const container = document.getElementById('gpuNodesContainer');
+    if (!container) return;
+    
+    if (nodes.length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                No GPU nodes found in the cluster.
+            </div>
+        `;
+        return;
+    }
+    
+    const nodesHtml = nodes.map(node => `
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card gpu-node-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="fas fa-server me-2"></i>
+                        ${node.name}
+                    </h6>
+                    <span class="badge ${node.status === 'Ready' ? 'bg-success' : 'bg-danger'}">
+                        ${node.status}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <div class="text-center">
+                                <div class="h3 mb-1 text-primary">${node.gpu_allocatable}</div>
+                                <small class="text-muted">Available GPUs</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center">
+                                <div class="h3 mb-1 text-info">${node.gpu_capacity}</div>
+                                <small class="text-muted">Total GPUs</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="gpu-node-details">
+                        <div class="detail-row">
+                            <span class="detail-label">GPU Model:</span>
+                            <span class="detail-value">${node.gpu_model}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">CPU Cores:</span>
+                            <span class="detail-value">${node.cpu_cores}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Memory:</span>
+                            <span class="detail-value">${node.memory_gb} GB</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Schedulable:</span>
+                            <span class="detail-value">
+                                <span class="badge ${node.schedulable ? 'bg-success' : 'bg-warning'}">
+                                    ${node.schedulable ? 'Yes' : 'No'}
+                                </span>
+                            </span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">NVIDIA Driver:</span>
+                            <span class="detail-value">${node.nvidia_driver}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <small class="text-muted">
+                        <i class="fas fa-clock me-1"></i>
+                        Age: ${node.age || 'Unknown'}
+                    </small>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    container.innerHTML = nodesHtml;
+}
+
+// GPU Queue Monitoring
+function loadGpuQueue() {
+    console.log('Loading GPU queue information...');
+    
+    fetch('/api/gpu-queue')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Error loading GPU queue:', data.error);
+                return;
+            }
+            
+            renderGpuQueue(data);
+        })
+        .catch(error => {
+            console.error('Error fetching GPU queue:', error);
+        });
+}
+
+function renderGpuQueue(queueData) {
+    // Update queue summary cards
+    updateQueueSummaryCards(queueData.queue_summary);
+    
+    // Update pending pods table
+    updatePendingPodsTable(queueData.pending_pods);
+}
+
+function updateQueueSummaryCards(summary) {
+    // Total Pending
+    const pendingElement = document.getElementById('queueTotalPending');
+    if (pendingElement) {
+        pendingElement.textContent = summary.total_pending;
+    }
+    
+    // Total GPU Requests
+    const requestsElement = document.getElementById('queueTotalRequests');
+    if (requestsElement) {
+        requestsElement.textContent = summary.total_gpu_requests;
+    }
+    
+    // Average Wait Time
+    const avgWaitElement = document.getElementById('queueAvgWait');
+    if (avgWaitElement) {
+        avgWaitElement.textContent = formatDuration(summary.average_wait_time);
+    }
+    
+    // Longest Wait Time
+    const longestWaitElement = document.getElementById('queueLongestWait');
+    if (longestWaitElement) {
+        longestWaitElement.textContent = formatDuration(summary.longest_wait_time);
+    }
+}
+
+function updatePendingPodsTable(pendingPods) {
+    const tableBody = document.getElementById('pendingPodsTableBody');
+    if (!tableBody) return;
+    
+    if (pendingPods.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center py-4">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    No pods waiting for GPU resources
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    const rowsHtml = pendingPods.map(pod => `
+        <tr>
+            <td>
+                <strong>${pod.name}</strong>
+                <br>
+                <small class="text-muted">${pod.namespace}</small>
+            </td>
+            <td class="text-center">
+                <span class="badge bg-warning">${pod.gpu_request}</span>
+            </td>
+            <td>${pod.wait_time_human}</td>
+            <td>
+                <span class="badge bg-info">${pod.reason}</span>
+                ${pod.message ? `<br><small class="text-muted">${pod.message}</small>` : ''}
+            </td>
+            <td>${pod.owner}</td>
+            <td>${pod.priority_class || 'Default'}</td>
+            <td>
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="describePod('${pod.namespace}', '${pod.name}')">
+                            <i class="fas fa-info-circle me-2"></i>Describe
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="viewPodLogs('${pod.namespace}', '${pod.name}')">
+                            <i class="fas fa-file-alt me-2"></i>Logs
+                        </a></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="deletePod('${pod.namespace}', '${pod.name}')">
+                            <i class="fas fa-trash-alt me-2"></i>Delete
+                        </a></li>
+                    </ul>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+    
+    tableBody.innerHTML = rowsHtml;
+}
+
+function formatDuration(seconds) {
+    if (!seconds || seconds < 60) {
+        return `${Math.round(seconds || 0)}s`;
+    } else if (seconds < 3600) {
+        return `${Math.round(seconds / 60)}m`;
+    } else if (seconds < 86400) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.round((seconds % 3600) / 60);
+        return `${hours}h${minutes}m`;
+    } else {
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.round((seconds % 86400) / 3600);
+        return `${days}d${hours}h`;
+    }
+}
+
+// Enhanced namespace and node allocation tables
+function updateNamespaceGpuTable(namespaceAllocation) {
+    const container = document.getElementById('namespaceGpuAllocation');
+    if (!container) return;
+    
+    const entries = Object.entries(namespaceAllocation);
+    if (entries.length === 0) {
+        container.innerHTML = '<div class="text-muted">No GPU allocations found</div>';
+        return;
+    }
+    
+    const tableHtml = `
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Namespace</th>
+                    <th class="text-end">GPUs</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${entries.map(([namespace, gpus]) => `
+                    <tr>
+                        <td>${namespace}</td>
+                        <td class="text-end"><span class="badge bg-primary">${gpus}</span></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    
+    container.innerHTML = tableHtml;
+}
+
+function updateNodeGpuTable(nodeAllocation) {
+    const container = document.getElementById('nodeGpuAllocation');
+    if (!container) return;
+    
+    const entries = Object.entries(nodeAllocation);
+    if (entries.length === 0) {
+        container.innerHTML = '<div class="text-muted">No GPU allocations found</div>';
+        return;
+    }
+    
+    const tableHtml = `
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Node</th>
+                    <th class="text-end">GPUs</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${entries.map(([node, gpus]) => `
+                    <tr>
+                        <td>${node}</td>
+                        <td class="text-end"><span class="badge bg-success">${gpus}</span></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    
+    container.innerHTML = tableHtml;
+} 

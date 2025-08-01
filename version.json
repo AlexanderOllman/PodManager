@@ -1,8 +1,152 @@
 {
-  "version": "2.2.0",
+  "version": "2.3.0",
   "buildDate": "2025-07-30",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.3.0",
+      "date": "2025-07-30",
+      "title": "Comprehensive GPU Dashboard & Resource Intelligence",
+      "type": "minor",
+      "highlights": [
+        "Revolutionary GPU resource management with comprehensive utilization tracking",
+        "Fixed namespace GPU metrics with automated background collection",
+        "Advanced GPU node overview with hardware specifications and driver information",
+        "Intelligent GPU queue monitoring with wait time analysis and scheduling insights",
+        "Enhanced GPU allocation visualization with real-time charts and breakdowns"
+      ],
+      "features": [
+        {
+          "category": "GPU Management Revolution",
+          "items": [
+            "Comprehensive GPU utilization dashboard with allocation vs capacity tracking",
+            "Advanced GPU node overview showing hardware specs, GPU models, and driver versions",
+            "Intelligent GPU queue monitoring with wait time analysis for pending workloads",
+            "Real-time GPU allocation charts with running, available, and pending breakdowns",
+            "Enhanced GPU pod listing with improved filtering and resource information"
+          ]
+        },
+        {
+          "category": "Smart Resource Analytics",
+          "items": [
+            "Automated namespace-level GPU, CPU, and memory metrics collection and storage",
+            "GPU allocation breakdown by namespace and node for resource planning",
+            "Queue analytics including average wait times and longest-waiting workloads",
+            "GPU efficiency tracking with utilization percentages and capacity planning",
+            "Enhanced pod owner tracking (Deployment, Job, etc.) for better resource attribution"
+          ]
+        },
+        {
+          "category": "Advanced GPU Insights",
+          "items": [
+            "GPU model and NVIDIA driver version detection for hardware compatibility",
+            "Scheduling insights with detailed reasons for pending GPU requests",
+            "Node schedulability status and GPU availability for capacity planning",
+            "Priority class tracking for GPU workload management",
+            "Comprehensive GPU hardware specifications including CPU cores and memory"
+          ]
+        },
+        {
+          "category": "Enhanced User Experience",
+          "items": [
+            "Multi-view GPU dashboard with Overview, Nodes, Queue, and Pods sections",
+            "Real-time auto-refresh (30-second intervals) for up-to-date GPU information",
+            "Interactive donut charts for GPU allocation visualization",
+            "Enhanced wait time formatting with human-readable durations",
+            "Improved card layouts with consistent HPE design language"
+          ]
+        },
+        {
+          "category": "Background Intelligence",
+          "items": [
+            "Automated namespace metrics calculation and storage every 5 minutes",
+            "Comprehensive resource usage tracking across all pods and containers",
+            "Intelligent metric aggregation with proper unit conversion (Mi, Gi, Ki)",
+            "Background task optimization with atomic database updates",
+            "Enhanced error handling and logging for resource collection processes"
+          ]
+        }
+      ],
+      "bugfixes": [
+        "Fixed critical namespace GPU metrics showing 'No namespaces found with gpu usage'",
+        "Resolved namespace-level resource calculations not being stored in database",
+        "Fixed GPU allocation tracking for pending and failed pods",
+        "Improved resource unit conversion for accurate memory calculations",
+        "Enhanced background task reliability with better error handling"
+      ],
+      "technical": [
+        "Added comprehensive GPU API endpoints: /api/gpu-nodes, /api/gpu-queue, /api/gpu-utilization",
+        "Implemented namespace metrics background collection with automated storage",
+        "Enhanced background task updater with namespace metrics calculation",
+        "Added GPU model detection from Kubernetes node labels",
+        "Implemented intelligent wait time calculation and formatting utilities",
+        "Enhanced Chart.js integration for GPU allocation visualization",
+        "Optimized database queries with proper resource type filtering"
+      ]
+    },
+    {
+      "version": "2.2.1",
+      "date": "2025-07-30",
+      "title": "Critical Pod Allocation Reliability Fix",
+      "type": "patch",
+      "highlights": [
+        "Fixed Pod Allocation card showing 0 total pods on startup",
+        "Added immediate environment metrics collection on application startup",
+        "Enhanced reliability with retry mechanisms and better error handling",
+        "Improved debugging capabilities with detailed metrics logging"
+      ],
+      "bugfixes": [
+        "Fixed Pod Allocation card displaying '271 / 0' instead of correct total allocatable pods",
+        "Resolved delay in environment metrics availability requiring database refresh",
+        "Fixed container deployments not collecting metrics until first 5-minute background cycle",
+        "Eliminated dependency on manual database refresh for initial pod allocation display"
+      ],
+      "features": [
+        {
+          "category": "Startup Reliability",
+          "items": [
+            "Added immediate environment metrics collection on application startup",
+            "Implemented retry mechanism with 3-second delay for kubectl readiness",
+            "Enhanced startup sequence to ensure pod allocation data is available immediately",
+            "Added comprehensive error handling for startup metrics collection failures"
+          ]
+        },
+        {
+          "category": "Error Handling & Recovery",
+          "items": [
+            "Improved /api/environment_metrics endpoint with better fallback behavior",
+            "Enhanced error messages with actionable suggestions for users",
+            "Added graceful degradation when initial metrics collection fails",
+            "Implemented robust on-demand metrics collection with better logging"
+          ]
+        },
+        {
+          "category": "Debugging & Monitoring",
+          "items": [
+            "Added detailed environment metrics summary logging on each collection",
+            "Enhanced logging shows node counts, worker identification, and allocation calculations",
+            "Improved error reporting with specific failure reasons and suggestions",
+            "Added comprehensive debugging information for troubleshooting pod allocation issues"
+          ]
+        },
+        {
+          "category": "User Experience",
+          "items": [
+            "Pod Allocation card now displays correct data immediately on page load",
+            "Eliminated need for manual database refresh to see pod allocation metrics",
+            "Faster dashboard loading with pre-populated metrics",
+            "Better error messages guide users when metrics are temporarily unavailable"
+          ]
+        }
+      ],
+      "technical": [
+        "Added startup metrics collection after background updater initialization",
+        "Implemented retry mechanism for kubectl readiness scenarios",
+        "Enhanced API endpoint error handling with structured error responses",
+        "Added comprehensive logging throughout metrics collection pipeline",
+        "Improved fallback behavior for container deployment scenarios"
+      ]
+    },
     {
       "version": "2.2.0",
       "date": "2025-07-30",
