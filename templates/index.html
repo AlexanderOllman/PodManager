@@ -176,46 +176,63 @@
                                     Cluster GPU Utilization
                                 </h5>
                                 <div class="row gpu-metrics-grid">
-                                    <div class="col-md-2 col-sm-6 mb-3">
-                                        <div class="gpu-utilization-card">
-                                            <div class="metric-icon">
-                                                <i class="fas fa-microchip"></i>
+                                    <div class="col-xl-3 col-md-6 mb-3">
+                                        <div class="dashboard-metric-card">
+                                            <div class="card-title-container">
+                                                <i class="fas fa-microchip card-header-icon"></i>
+                                                <h5 class="card-title">Total GPUs</h5>
                                             </div>
-                                            <div class="metric-value" id="gpuTotalCapacity">0</div>
-                                            <div class="metric-label">Total GPUs</div>
+                                            <div class="card-metric-details">
+                                                <span id="gpuTotalCapacity">0</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="col-md-2 col-sm-6 mb-3">
-                                        <div class="gpu-utilization-card">
-                                            <div class="metric-icon">
-                                                <i class="fas fa-play-circle"></i>
+                                    <div class="col-xl-3 col-md-6 mb-3">
+                                        <div class="dashboard-metric-card">
+                                            <div class="card-title-container">
+                                                <i class="fas fa-play-circle card-header-icon"></i>
+                                                <h5 class="card-title">Running</h5>
                                             </div>
-                                            <div class="metric-value" id="gpuRunning">0</div>
-                                            <div class="metric-label">Running</div>
+                                            <div class="card-metric-details">
+                                                <span id="gpuRunning">0</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="col-md-2 col-sm-6 mb-3">
-                                        <div class="gpu-utilization-card">
-                                            <div class="metric-icon">
-                                                <i class="fas fa-check-circle"></i>
+                                    <div class="col-xl-3 col-md-6 mb-3">
+                                        <div class="dashboard-metric-card">
+                                            <div class="card-title-container">
+                                                <i class="fas fa-check-circle card-header-icon"></i>
+                                                <h5 class="card-title">Available</h5>
                                             </div>
-                                            <div class="metric-value" id="gpuAvailable">0</div>
-                                            <div class="metric-label">Available</div>
+                                            <div class="card-metric-details">
+                                                <span id="gpuAvailable">0</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="col-md-2 col-sm-6 mb-3">
-                                        <div class="gpu-utilization-card">
-                                            <div class="metric-icon">
-                                                <i class="fas fa-hourglass-half"></i>
+                                    <div class="col-xl-3 col-md-6 mb-3">
+                                        <div class="dashboard-metric-card">
+                                            <div class="card-title-container">
+                                                <i class="fas fa-hourglass-half card-header-icon"></i>
+                                                <h5 class="card-title">Pending</h5>
                                             </div>
-                                            <div class="metric-value" id="gpuPending">0</div>
-                                            <div class="metric-label">Pending</div>
+                                            <div class="card-metric-details">
+                                                <span id="gpuPending">0</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="col-md-4 col-sm-12 mb-3">
-                                        <div class="gpu-allocation-chart-container">
-                                            <h5>GPU Allocation Breakdown</h5>
-                                            <canvas id="gpuAllocationChart"></canvas>
+                                </div>
+                                
+                                <!-- GPU Allocation Chart -->
+                                <div class="row mb-4">
+                                    <div class="col-12">
+                                        <div class="dashboard-metric-card">
+                                            <div class="card-title-container">
+                                                <i class="fas fa-chart-pie card-header-icon"></i>
+                                                <h5 class="card-title">GPU Allocation Breakdown</h5>
+                                            </div>
+                                            <div style="height: 320px; padding: 1rem;">
+                                                <canvas id="gpuAllocationChart"></canvas>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -227,19 +244,31 @@
                                     Resource Allocation Analysis
                                 </h5>
                                 <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="gpu-allocation-table">
-                                            <h6>GPU Allocation by Namespace</h6>
-                                            <div id="namespaceGpuAllocation">
-                                                <div class="text-muted">Loading...</div>
+                                    <div class="col-12">
+                                        <div class="dashboard-metric-card">
+                                            <div class="card-title-container">
+                                                <i class="fas fa-table card-header-icon"></i>
+                                                <h5 class="card-title">GPU Resource Allocation</h5>
                                             </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="gpu-allocation-table">
-                                            <h6>GPU Allocation by Node</h6>
-                                            <div id="nodeGpuAllocation">
-                                                <div class="text-muted">Loading...</div>
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <h6 class="text-muted mb-3">
+                                                        <i class="fas fa-layer-group me-2"></i>
+                                                        By Namespace
+                                                    </h6>
+                                                    <div id="namespaceGpuAllocation">
+                                                        <div class="text-muted">Loading...</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <h6 class="text-muted mb-3">
+                                                        <i class="fas fa-server me-2"></i>
+                                                        By Node
+                                                    </h6>
+                                                    <div id="nodeGpuAllocation">
+                                                        <div class="text-muted">Loading...</div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

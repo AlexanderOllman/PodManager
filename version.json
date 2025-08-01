@@ -1,8 +1,33 @@
 {
-  "version": "2.3.2",
+  "version": "2.3.3",
   "buildDate": "2025-08-01",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.3.3",
+      "date": "2025-08-01",
+      "title": "GPU Dashboard Consolidation & Visual Harmony",
+      "type": "patch",
+      "highlights": [
+        "Unified GPU dashboard card styling with main dashboard design",
+        "Consolidated GPU allocation tables into single cohesive interface",
+        "Fixed Chart.js destroy method error with enhanced error handling",
+        "Improved visual consistency across all GPU management components"
+      ],
+      "bugfixes": [
+        "Fixed 'window.gpuAllocationChart.destroy is not a function' error",
+        "Added proper Chart.js instance validation before calling destroy",
+        "Enhanced chart error handling with try-catch blocks",
+        "Removed inconsistent GPU-specific styling in favor of unified design"
+      ],
+      "technical": [
+        "Migrated GPU utilization cards to standard dashboard-metric-card styling",
+        "Consolidated GPU allocation chart into unified dashboard card structure",
+        "Merged separate GPU allocation tables into single comprehensive view",
+        "Commented out legacy GPU-specific CSS classes for cleaner codebase",
+        "Enhanced Chart.js error handling with type checking and fallbacks"
+      ]
+    },
     {
       "version": "2.3.2",
       "date": "2025-08-01",

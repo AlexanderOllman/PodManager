@@ -781,9 +781,15 @@ function updateGpuAllocationChart(data) {
             window.gpuAllocationChart.update('none'); // Use 'none' animation mode for updates
         } else {
             // Destroy existing chart if it exists but is not properly initialized
-            if (window.gpuAllocationChart) {
-                window.gpuAllocationChart.destroy();
+            if (window.gpuAllocationChart && typeof window.gpuAllocationChart.destroy === 'function') {
+                try {
+                    window.gpuAllocationChart.destroy();
+                } catch (destroyError) {
+                    console.warn('Error destroying existing chart:', destroyError);
+                }
             }
+            // Clear the chart reference regardless
+            window.gpuAllocationChart = null;
             
             const ctx = chartContainer.getContext('2d');
             window.gpuAllocationChart = new Chart(ctx, {

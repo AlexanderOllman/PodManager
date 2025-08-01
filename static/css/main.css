@@ -2993,6 +2993,8 @@ body {
 }
 
 /* Enhanced GPU Utilization Cards */
+/* Removed - now using standard dashboard-metric-card styling */
+/*
 .gpu-utilization-card {
     background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
     border: 1px solid rgba(1, 169, 130, 0.12);
@@ -3043,7 +3045,7 @@ body {
 
 .gpu-utilization-card .metric-value {
     font-size: 3rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--hpe-primary);
     margin-bottom: 0.5rem;
     line-height: 1;
@@ -3061,6 +3063,7 @@ body {
     font-weight: 700;
     margin-top: 0.5rem;
 }
+*/
 
 /* Enhanced GPU Allocation Chart */
 .gpu-allocation-chart-container {
