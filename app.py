@@ -1342,6 +1342,74 @@ def get_gpu_pods():
         else:
             pods = db.get_resources('pods')
         
+        # Also get nodes to check for GPU memory capacity information
+        nodes = db.get_resources('nodes')
+        node_gpu_memory_map = {}
+        
+        # Build a map of node -> GPU memory capacity from node labels/status
+        for node in nodes:
+            metadata = node.get('metadata', {})
+            labels = metadata.get('labels', {})
+            status = node.get('status', {})
+            capacity = status.get('capacity', {})
+            allocatable = status.get('allocatable', {})
+            node_name = metadata.get('name', '')
+            
+            # Check for GPU memory information in various possible locations
+            gpu_memory_capacity = None
+            
+            # Common GPU memory label patterns
+            possible_gpu_memory_keys = [
+                'nvidia.com/gpu.memory',
+                'nvidia.com/gpu-memory',
+                'gpu-memory',
+                'nvidia.com/mig-1g.5gb',  # For MIG instances
+                'nvidia.com/mig-2g.10gb',
+                'nvidia.com/mig-3g.20gb',
+                'nvidia.com/mig-7g.40gb'
+            ]
+            
+            # Check capacity first
+            for key in possible_gpu_memory_keys:
+                if key in capacity:
+                    gpu_memory_capacity = capacity[key]
+                    break
+            
+            # Check allocatable if not found in capacity
+            if not gpu_memory_capacity:
+                for key in possible_gpu_memory_keys:
+                    if key in allocatable:
+                        gpu_memory_capacity = allocatable[key]
+                        break
+            
+            # Check labels for GPU memory info
+            if not gpu_memory_capacity:
+                for key in possible_gpu_memory_keys:
+                    if key in labels:
+                        gpu_memory_capacity = labels[key]
+                        break
+                
+                # Check for product-specific memory information
+                gpu_product = labels.get('nvidia.com/gpu.product', '')
+                if gpu_product:
+                    # Map known GPU products to memory (this is a basic mapping)
+                    gpu_memory_map = {
+                        'Tesla-V100-SXM2-16GB': '16Gi',
+                        'Tesla-V100-SXM2-32GB': '32Gi',
+                        'Tesla-T4': '16Gi',
+                        'Tesla-P100-PCIE-16GB': '16Gi',
+                        'Tesla-K80': '12Gi',
+                        'GeForce-RTX-3090': '24Gi',
+                        'GeForce-RTX-4090': '24Gi',
+                        'A100-SXM4-40GB': '40Gi',
+                        'A100-SXM4-80GB': '80Gi',
+                        'H100-SXM5-80GB': '80Gi'
+                    }
+                    gpu_memory_capacity = gpu_memory_map.get(gpu_product)
+            
+            if gpu_memory_capacity:
+                node_gpu_memory_map[node_name] = gpu_memory_capacity
+        
         gpu_pods = []
         for pod in pods:
             if not isinstance(pod, dict): # Ensure pod is a dictionary
@@ -1350,6 +1418,7 @@ def get_gpu_pods():
 
             has_gpu_request = False
             gpu_request_count = 0
+            gpu_memory_request = '0'
             
             # Check containers and initContainers for GPU requests
             spec = pod.get('spec', {})
@@ -1357,29 +1426,64 @@ def get_gpu_pods():
                 for container in spec.get(container_type, []):
                     resources = container.get('resources', {})
                     requests = resources.get('requests', {}) # Changed from limits to requests
+                    limits = resources.get('limits', {})
                     
                     if requests: # Ensure requests exist
                         gpu_val_str = requests.get('nvidia.com/gpu', '0') # Check nvidia.com/gpu in requests
-                        # Consider generic 'gpu' as well if that's a convention in your cluster
-                        # if requests.get('gpu', '0') != '0' and gpu_val_str == '0':
-                        #     gpu_val_str = requests.get('gpu', '0')
                         
                         try:
                             current_container_gpu_request = int(gpu_val_str)
                             if current_container_gpu_request > 0:
                                 has_gpu_request = True
                                 gpu_request_count += current_container_gpu_request
+                                
+                                # Check for GPU memory requests
+                                gpu_memory_keys = [
+                                    'nvidia.com/gpu.memory',
+                                    'nvidia.com/gpu-memory',
+                                    'gpu-memory'
+                                ]
+                                
+                                for mem_key in gpu_memory_keys:
+                                    if mem_key in requests:
+                                        gpu_memory_request = requests[mem_key]
+                                        break
+                                    elif mem_key in limits:
+                                        gpu_memory_request = limits[mem_key]
+                                        break
+                                
                         except ValueError:
                             logging.warning(f"Could not parse GPU request value '{gpu_val_str}' for container {container.get('name')} in pod {pod.get('metadata',{}).get('name')}")
                             pass # Or handle error as needed
             
             if has_gpu_request:
+                pod_node = spec.get('nodeName', '')
+                
+                # If no explicit GPU memory request, try to infer from node capacity
+                if gpu_memory_request == '0' and pod_node in node_gpu_memory_map:
+                    node_gpu_memory = node_gpu_memory_map[pod_node]
+                    # Calculate per-GPU memory if we know the total and GPU count
+                    if gpu_request_count > 0:
+                        try:
+                            # Parse node GPU memory (e.g., "80Gi" -> 80)
+                            if node_gpu_memory.endswith('Gi'):
+                                total_gb = int(node_gpu_memory[:-2])
+                                per_gpu_gb = total_gb // max(1, gpu_request_count)
+                                gpu_memory_request = f"{per_gpu_gb}Gi"
+                            elif node_gpu_memory.endswith('Mi'):
+                                total_mb = int(node_gpu_memory[:-2])
+                                per_gpu_mb = total_mb // max(1, gpu_request_count)
+                                gpu_memory_request = f"{per_gpu_mb}Mi"
+                        except (ValueError, TypeError):
+                            pass
+                
                 gpu_pods.append({
                     'name': pod.get('metadata', {}).get('name', ''),
                     'namespace': pod.get('metadata', {}).get('namespace', ''),
-                    'node': spec.get('nodeName', ''), # Moved spec.get out of loop
+                    'node': pod_node,
                     'status': pod.get('status', {}).get('phase', ''),
-                    'gpu_count': gpu_request_count # This now reflects summed requests
+                    'gpu_count': gpu_request_count,
+                    'gpu_memory': gpu_memory_request if gpu_memory_request != '0' else 'Unknown'
                 })
         
         return jsonify(gpu_pods)
@@ -2371,6 +2475,258 @@ def get_pod_owner(metadata):
         owner = owner_refs[0]  # Take the first owner
         return f"{owner.get('kind', 'Unknown')}/{owner.get('name', 'Unknown')}"
     return "Direct"
+
+@app.route('/api/gpu-pods', methods=['GET'])
+def get_gpu_pods():
+    try:
+        namespace = request.args.get('namespace')
+        
+        if namespace:
+            pods = db.get_resources('pods', namespace)
+        else:
+            pods = db.get_resources('pods')
+        
+        # Also get nodes to check for GPU memory capacity information
+        nodes = db.get_resources('nodes')
+        node_gpu_memory_map = {}
+        
+        # Build a map of node -> GPU memory capacity from node labels/status
+        for node in nodes:
+            metadata = node.get('metadata', {})
+            labels = metadata.get('labels', {})
+            status = node.get('status', {})
+            capacity = status.get('capacity', {})
+            allocatable = status.get('allocatable', {})
+            node_name = metadata.get('name', '')
+            
+            # Check for GPU memory information in various possible locations
+            gpu_memory_capacity = None
+            
+            # Common GPU memory label patterns
+            possible_gpu_memory_keys = [
+                'nvidia.com/gpu.memory',
+                'nvidia.com/gpu-memory',
+                'gpu-memory',
+                'nvidia.com/mig-1g.5gb',  # For MIG instances
+                'nvidia.com/mig-2g.10gb',
+                'nvidia.com/mig-3g.20gb',
+                'nvidia.com/mig-7g.40gb'
+            ]
+            
+            # Check capacity first
+            for key in possible_gpu_memory_keys:
+                if key in capacity:
+                    gpu_memory_capacity = capacity[key]
+                    break
+            
+            # Check allocatable if not found in capacity
+            if not gpu_memory_capacity:
+                for key in possible_gpu_memory_keys:
+                    if key in allocatable:
+                        gpu_memory_capacity = allocatable[key]
+                        break
+            
+            # Check labels for GPU memory info
+            if not gpu_memory_capacity:
+                for key in possible_gpu_memory_keys:
+                    if key in labels:
+                        gpu_memory_capacity = labels[key]
+                        break
+                
+                # Check for product-specific memory information
+                gpu_product = labels.get('nvidia.com/gpu.product', '')
+                if gpu_product:
+                    # Map known GPU products to memory (this is a basic mapping)
+                    gpu_memory_map = {
+                        'Tesla-V100-SXM2-16GB': '16Gi',
+                        'Tesla-V100-SXM2-32GB': '32Gi',
+                        'Tesla-T4': '16Gi',
+                        'Tesla-P100-PCIE-16GB': '16Gi',
+                        'Tesla-K80': '12Gi',
+                        'GeForce-RTX-3090': '24Gi',
+                        'GeForce-RTX-4090': '24Gi',
+                        'A100-SXM4-40GB': '40Gi',
+                        'A100-SXM4-80GB': '80Gi',
+                        'H100-SXM5-80GB': '80Gi'
+                    }
+                    gpu_memory_capacity = gpu_memory_map.get(gpu_product)
+            
+            if gpu_memory_capacity:
+                node_gpu_memory_map[node_name] = gpu_memory_capacity
+        
+        gpu_pods = []
+        for pod in pods:
+            if not isinstance(pod, dict): # Ensure pod is a dictionary
+                logging.warning(f"Skipping non-dict pod resource in get_gpu_pods: {type(pod)}")
+                continue
+
+            has_gpu_request = False
+            gpu_request_count = 0
+            gpu_memory_request = '0'
+            
+            # Check containers and initContainers for GPU requests
+            spec = pod.get('spec', {})
+            for container_type in ['containers', 'initContainers']:
+                for container in spec.get(container_type, []):
+                    resources = container.get('resources', {})
+                    requests = resources.get('requests', {}) # Changed from limits to requests
+                    limits = resources.get('limits', {})
+                    
+                    if requests: # Ensure requests exist
+                        gpu_val_str = requests.get('nvidia.com/gpu', '0') # Check nvidia.com/gpu in requests
+                        
+                        try:
+                            current_container_gpu_request = int(gpu_val_str)
+                            if current_container_gpu_request > 0:
+                                has_gpu_request = True
+                                gpu_request_count += current_container_gpu_request
+                                
+                                # Check for GPU memory requests
+                                gpu_memory_keys = [
+                                    'nvidia.com/gpu.memory',
+                                    'nvidia.com/gpu-memory',
+                                    'gpu-memory'
+                                ]
+                                
+                                for mem_key in gpu_memory_keys:
+                                    if mem_key in requests:
+                                        gpu_memory_request = requests[mem_key]
+                                        break
+                                    elif mem_key in limits:
+                                        gpu_memory_request = limits[mem_key]
+                                        break
+                                
+                        except ValueError:
+                            logging.warning(f"Could not parse GPU request value '{gpu_val_str}' for container {container.get('name')} in pod {pod.get('metadata',{}).get('name')}")
+                            pass # Or handle error as needed
+            
+            if has_gpu_request:
+                pod_node = spec.get('nodeName', '')
+                
+                # If no explicit GPU memory request, try to infer from node capacity
+                if gpu_memory_request == '0' and pod_node in node_gpu_memory_map:
+                    node_gpu_memory = node_gpu_memory_map[pod_node]
+                    # Calculate per-GPU memory if we know the total and GPU count
+                    if gpu_request_count > 0:
+                        try:
+                            # Parse node GPU memory (e.g., "80Gi" -> 80)
+                            if node_gpu_memory.endswith('Gi'):
+                                total_gb = int(node_gpu_memory[:-2])
+                                per_gpu_gb = total_gb // max(1, gpu_request_count)
+                                gpu_memory_request = f"{per_gpu_gb}Gi"
+                            elif node_gpu_memory.endswith('Mi'):
+                                total_mb = int(node_gpu_memory[:-2])
+                                per_gpu_mb = total_mb // max(1, gpu_request_count)
+                                gpu_memory_request = f"{per_gpu_mb}Mi"
+                        except (ValueError, TypeError):
+                            pass
+                
+                gpu_pods.append({
+                    'name': pod.get('metadata', {}).get('name', ''),
+                    'namespace': pod.get('metadata', {}).get('namespace', ''),
+                    'node': pod_node,
+                    'status': pod.get('status', {}).get('phase', ''),
+                    'gpu_count': gpu_request_count,
+                    'gpu_memory': gpu_memory_request if gpu_memory_request != '0' else 'Unknown'
+                })
+        
+        return jsonify(gpu_pods)
+    
+    except Exception as e:
+        logging.error(f"Error getting GPU pods: {str(e)}", exc_info=True) # Added exc_info
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/gpu-memory-info', methods=['GET'])
+def get_gpu_memory_info():
+    """Get detailed GPU memory information from the cluster for debugging and configuration."""
+    try:
+        nodes = db.get_resources('nodes')
+        pods = db.get_resources('pods')
+        
+        gpu_memory_info = {
+            'nodes': [],
+            'pods_with_gpu_memory': [],
+            'detected_patterns': [],
+            'recommendations': []
+        }
+        
+        # Analyze nodes for GPU memory patterns
+        for node in nodes:
+            metadata = node.get('metadata', {})
+            labels = metadata.get('labels', {})
+            status = node.get('status', {})
+            capacity = status.get('capacity', {})
+            allocatable = status.get('allocatable', {})
+            node_name = metadata.get('name', '')
+            
+            gpu_count = int(capacity.get('nvidia.com/gpu', 0))
+            if gpu_count > 0:
+                node_info = {
+                    'name': node_name,
+                    'gpu_count': gpu_count,
+                    'labels': {k: v for k, v in labels.items() if 'gpu' in k.lower() or 'nvidia' in k.lower()},
+                    'capacity_keys': [k for k in capacity.keys() if 'gpu' in k.lower() or 'nvidia' in k.lower()],
+                    'allocatable_keys': [k for k in allocatable.keys() if 'gpu' in k.lower() or 'nvidia' in k.lower()],
+                    'gpu_product': labels.get('nvidia.com/gpu.product', 'Unknown')
+                }
+                gpu_memory_info['nodes'].append(node_info)
+        
+        # Analyze pods for GPU memory request patterns
+        gpu_memory_request_count = 0
+        for pod in pods:
+            if not isinstance(pod, dict):
+                continue
+                
+            spec = pod.get('spec', {})
+            metadata = pod.get('metadata', {})
+            
+            for container in spec.get('containers', []):
+                resources = container.get('resources', {})
+                requests = resources.get('requests', {})
+                limits = resources.get('limits', {})
+                
+                # Check if this container has GPU requests
+                if requests.get('nvidia.com/gpu', '0') != '0':
+                    gpu_memory_keys = [k for k in list(requests.keys()) + list(limits.keys()) 
+                                     if 'memory' in k.lower() and ('gpu' in k.lower() or 'nvidia' in k.lower())]
+                    
+                    if gpu_memory_keys:
+                        gpu_memory_request_count += 1
+                        gpu_memory_info['pods_with_gpu_memory'].append({
+                            'pod_name': metadata.get('name', ''),
+                            'namespace': metadata.get('namespace', ''),
+                            'container_name': container.get('name', ''),
+                            'gpu_memory_keys': gpu_memory_keys,
+                            'requests': {k: requests.get(k) for k in gpu_memory_keys if k in requests},
+                            'limits': {k: limits.get(k) for k in gpu_memory_keys if k in limits}
+                        })
+        
+        # Provide recommendations based on analysis
+        if gpu_memory_request_count == 0:
+            gpu_memory_info['recommendations'].append({
+                'type': 'info',
+                'message': 'No pods currently specify GPU memory requests. GPU memory will be estimated from node hardware information when available.'
+            })
+        
+        if len(gpu_memory_info['nodes']) > 0:
+            gpu_memory_info['recommendations'].append({
+                'type': 'success',
+                'message': f'Found {len(gpu_memory_info["nodes"])} GPU nodes. GPU memory information will be inferred from node labels and hardware specifications.'
+            })
+        
+        # Common patterns detected
+        all_labels = []
+        for node_info in gpu_memory_info['nodes']:
+            all_labels.extend(node_info['labels'].keys())
+        
+        unique_patterns = list(set(all_labels))
+        gpu_memory_info['detected_patterns'] = unique_patterns
+        
+        return jsonify(gpu_memory_info)
+        
+    except Exception as e:
+        logging.error(f"Error getting GPU memory info: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # This block runs when you execute `python app.py` directly.

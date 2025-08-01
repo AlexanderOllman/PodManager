@@ -2896,37 +2896,58 @@ body {
     cursor: pointer;
     transition: all 0.3s ease;
     border-bottom: 3px solid transparent;
+    font-size: 0.95rem;
+    letter-spacing: 0.3px;
 }
 
 .gpu-view-tab:hover {
     color: var(--hpe-primary);
-    background: rgba(1, 169, 130, 0.05);
+    background: linear-gradient(135deg, rgba(1, 169, 130, 0.05) 0%, rgba(1, 169, 130, 0.1) 100%);
+    transform: translateY(-2px);
 }
 
 .gpu-view-tab.active {
     color: var(--hpe-primary);
     border-bottom-color: var(--hpe-primary);
     font-weight: 600;
-    background: rgba(1, 169, 130, 0.05);
+    background: linear-gradient(135deg, rgba(1, 169, 130, 0.08) 0%, rgba(1, 169, 130, 0.12) 100%);
+    box-shadow: 0 4px 12px rgba(1, 169, 130, 0.15);
 }
 
-/* GPU Node Cards */
+/* Enhanced GPU Node Cards */
 .gpu-node-card {
-    border: 1px solid var(--hpe-light-gray);
-    border-radius: 12px;
-    transition: all 0.3s ease;
+    border: 1px solid rgba(1, 169, 130, 0.15);
+    border-radius: 16px;
+    transition: all 0.4s ease;
     overflow: hidden;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 .gpu-node-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 12px 40px rgba(1, 169, 130, 0.2);
     border-color: var(--hpe-primary);
 }
 
 .gpu-node-card .card-header {
-    background: linear-gradient(135deg, #f8f9fc 0%, #ffffff 100%);
-    border-bottom: 1px solid var(--hpe-light-gray);
+    background: linear-gradient(135deg, #01A982 0%, #00C9A0 100%);
+    color: white;
+    border-bottom: none;
+    padding: 1.25rem;
+}
+
+.gpu-node-card .card-header h6 {
+    color: white;
+    font-weight: 600;
+    margin: 0;
+}
+
+.gpu-node-card .card-header .badge {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    font-weight: 500;
 }
 
 .gpu-node-details {
@@ -2937,8 +2958,18 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #f5f5f5;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(1, 169, 130, 0.08);
+    transition: all 0.2s ease;
+}
+
+.detail-row:hover {
+    background: rgba(1, 169, 130, 0.02);
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+    border-radius: 8px;
 }
 
 .detail-row:last-child {
@@ -2946,102 +2977,174 @@ body {
 }
 
 .detail-label {
-    font-weight: 500;
+    font-weight: 600;
     color: var(--hpe-gray);
     font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .detail-value {
     font-weight: 600;
     color: var(--hpe-dark);
-    font-size: 0.875rem;
+    font-size: 0.9rem;
 }
 
-/* GPU Utilization Cards */
+/* Enhanced GPU Utilization Cards */
 .gpu-utilization-card {
     background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
-    border: 1px solid rgba(1, 169, 130, 0.1);
-    border-radius: 12px;
-    padding: 1.5rem;
+    border: 1px solid rgba(1, 169, 130, 0.12);
+    border-radius: 16px;
+    padding: 2rem 1.5rem;
     text-align: center;
-    transition: all 0.3s ease;
+    transition: all 0.4s ease;
     height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.gpu-utilization-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #01A982, #00C9A0, #FFB800);
+    opacity: 0;
+    transition: opacity 0.3s ease;
 }
 
 .gpu-utilization-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-6px);
+    box-shadow: 0 16px 40px rgba(1, 169, 130, 0.15);
     border-color: var(--hpe-primary);
 }
 
-.gpu-utilization-card .metric-value {
+.gpu-utilization-card:hover::before {
+    opacity: 1;
+}
+
+.gpu-utilization-card .metric-icon {
     font-size: 2.5rem;
-    font-weight: 700;
+    color: var(--hpe-primary);
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, rgba(1, 169, 130, 0.1) 0%, rgba(1, 169, 130, 0.05) 100%);
+    width: 4rem;
+    height: 4rem;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem auto;
+}
+
+.gpu-utilization-card .metric-value {
+    font-size: 3rem;
+    font-weight: 800;
     color: var(--hpe-primary);
     margin-bottom: 0.5rem;
     line-height: 1;
+    background: linear-gradient(135deg, #01A982, #00C9A0);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .gpu-utilization-card .metric-label {
     font-size: 0.875rem;
     color: var(--hpe-gray);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 600;
+    letter-spacing: 1px;
+    font-weight: 700;
+    margin-top: 0.5rem;
 }
 
-.gpu-utilization-card .metric-icon {
-    font-size: 2rem;
-    color: var(--hpe-primary);
-    margin-bottom: 1rem;
-}
-
-/* GPU Allocation Chart */
+/* Enhanced GPU Allocation Chart */
 .gpu-allocation-chart-container {
-    background: white;
-    border: 1px solid var(--hpe-light-gray);
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
+    border: 1px solid rgba(1, 169, 130, 0.12);
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+}
+
+.gpu-allocation-chart-container:hover {
+    box-shadow: 0 12px 40px rgba(1, 169, 130, 0.15);
+    transform: translateY(-2px);
+}
+
+.gpu-allocation-chart-container h5 {
+    color: var(--hpe-primary);
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    text-align: center;
+    font-size: 1.25rem;
 }
 
 .gpu-allocation-chart-container canvas {
-    max-height: 300px !important;
+    max-height: 320px !important;
 }
 
-/* GPU Queue Styles */
+/* Enhanced GPU Queue Styles */
 .gpu-queue-summary {
     background: linear-gradient(135deg, #fff8e1 0%, #ffffff 100%);
-    border: 1px solid rgba(255, 184, 0, 0.2);
-    border-radius: 12px;
-    padding: 1.5rem;
+    border: 1px solid rgba(255, 184, 0, 0.25);
+    border-radius: 16px;
+    padding: 2rem;
     margin-bottom: 2rem;
+    box-shadow: 0 8px 30px rgba(255, 184, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.gpu-queue-summary::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #FFB800, #FFA000);
 }
 
 .queue-summary-card {
     text-align: center;
-    padding: 1rem;
+    padding: 1.5rem 1rem;
+    transition: all 0.3s ease;
+}
+
+.queue-summary-card:hover {
+    transform: translateY(-3px);
 }
 
 .queue-summary-card .summary-value {
-    font-size: 2rem;
-    font-weight: 700;
+    font-size: 2.5rem;
+    font-weight: 800;
     color: var(--hpe-warning);
     margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #FFB800, #FFA000);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .queue-summary-card .summary-label {
     font-size: 0.875rem;
     color: var(--hpe-gray);
-    font-weight: 500;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
+/* Enhanced Pending Pods Table */
 .pending-pods-table {
-    background: white;
-    border: 1px solid var(--hpe-light-gray);
-    border-radius: 12px;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
+    border: 1px solid rgba(1, 169, 130, 0.12);
+    border-radius: 16px;
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
 }
 
 .pending-pods-table .table {
@@ -3049,186 +3152,103 @@ body {
 }
 
 .pending-pods-table .table th {
-    background: linear-gradient(135deg, #f8f9fc 0%, #ffffff 100%);
-    border-bottom: 2px solid var(--hpe-light-gray);
-    color: var(--hpe-primary);
-    font-weight: 600;
+    background: linear-gradient(135deg, #01A982 0%, #00C9A0 100%);
+    color: white;
+    border: none;
+    font-weight: 700;
     font-size: 0.875rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 1rem;
+    letter-spacing: 0.8px;
+    padding: 1.25rem 1rem;
 }
 
 .pending-pods-table .table td {
-    padding: 1rem;
-    border-color: var(--hpe-light-gray);
+    padding: 1.25rem 1rem;
+    border-color: rgba(1, 169, 130, 0.08);
     vertical-align: middle;
+    font-size: 0.9rem;
+}
+
+.pending-pods-table .table tbody tr {
+    transition: all 0.2s ease;
 }
 
 .pending-pods-table .table tbody tr:hover {
-    background: rgba(1, 169, 130, 0.02);
+    background: linear-gradient(135deg, rgba(1, 169, 130, 0.02) 0%, rgba(1, 169, 130, 0.05) 100%);
+    transform: scale(1.01);
+    box-shadow: 0 4px 20px rgba(1, 169, 130, 0.1);
 }
 
-/* GPU Allocation Tables */
+/* Enhanced GPU Allocation Tables */
 .gpu-allocation-table {
-    background: white;
-    border: 1px solid var(--hpe-light-gray);
-    border-radius: 12px;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
+    border: 1px solid rgba(1, 169, 130, 0.12);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+}
+
+.gpu-allocation-table:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(1, 169, 130, 0.15);
 }
 
 .gpu-allocation-table h6 {
     color: var(--hpe-primary);
-    font-weight: 600;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--hpe-light-gray);
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid rgba(1, 169, 130, 0.15);
+    font-size: 1.1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .gpu-allocation-table .table-sm th {
-    background: rgba(1, 169, 130, 0.05);
+    background: linear-gradient(135deg, rgba(1, 169, 130, 0.08) 0%, rgba(1, 169, 130, 0.12) 100%);
     color: var(--hpe-primary);
-    font-weight: 600;
-    font-size: 0.8rem;
+    font-weight: 700;
+    font-size: 0.85rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 0.75rem;
+    letter-spacing: 0.8px;
+    padding: 1rem 0.75rem;
     border: none;
 }
 
 .gpu-allocation-table .table-sm td {
-    padding: 0.75rem;
-    border-color: rgba(1, 169, 130, 0.1);
-    font-size: 0.875rem;
+    padding: 1rem 0.75rem;
+    border-color: rgba(1, 169, 130, 0.08);
+    font-size: 0.9rem;
+    font-weight: 500;
 }
 
-/* Wait Time Indicators */
-.wait-time-short {
-    color: var(--hpe-success);
-    font-weight: 600;
+.gpu-allocation-table .table-sm tbody tr:hover {
+    background: rgba(1, 169, 130, 0.03);
 }
 
-.wait-time-medium {
-    color: var(--hpe-warning);
-    font-weight: 600;
-}
-
-.wait-time-long {
-    color: var(--hpe-error);
-    font-weight: 600;
-}
-
-/* GPU Status Indicators */
-.gpu-status-ready {
-    background: linear-gradient(135deg, #28a745, #20c997);
-    color: white;
-}
-
-.gpu-status-not-ready {
-    background: linear-gradient(135deg, #dc3545, #fd7e14);
-    color: white;
-}
-
-.gpu-schedulable {
-    background: linear-gradient(135deg, #01A982, #00C9A0);
-    color: white;
-}
-
-.gpu-not-schedulable {
-    background: linear-gradient(135deg, #FFB800, #FFA000);
-    color: white;
-}
-
-/* GPU View Content */
-.gpu-view-content {
-    animation: fadeInUp 0.4s ease-out;
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* GPU Metrics Enhancement */
-.gpu-metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-}
-
-.gpu-overview-section {
-    margin-bottom: 2rem;
-}
-
+/* Enhanced Section Headers */
 .gpu-overview-section h5 {
     color: var(--hpe-primary);
-    font-weight: 600;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 2px solid var(--hpe-light-gray);
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 3px solid var(--hpe-primary);
+    font-size: 1.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: relative;
 }
 
-/* Responsive GPU Dashboard */
-@media (max-width: 768px) {
-    .gpu-view-tabs {
-        overflow-x: auto;
-        white-space: nowrap;
-        scrollbar-width: thin;
-    }
-    
-    .gpu-view-tab {
-        padding: 0.75rem 1rem;
-        font-size: 0.875rem;
-    }
-    
-    .gpu-metrics-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .gpu-utilization-card .metric-value {
-        font-size: 2rem;
-    }
-    
-    .detail-row {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.25rem;
-    }
-    
-    .detail-value {
-        align-self: flex-end;
-    }
-}
-
-/* GPU Loading States */
-.gpu-loading {
-    background: rgba(1, 169, 130, 0.05);
-    border: 1px solid rgba(1, 169, 130, 0.1);
-    border-radius: 12px;
-    padding: 3rem 2rem;
-    text-align: center;
-    margin: 2rem 0;
-}
-
-.gpu-loading .spinner-border {
-    color: var(--hpe-primary);
-    width: 3rem;
-    height: 3rem;
-}
-
-.gpu-loading-text {
-    color: var(--hpe-primary);
-    font-weight: 500;
-    margin-top: 1rem;
+.gpu-overview-section h5::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0;
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(90deg, #00C9A0, #FFB800);
 }
 
 /* End GPU Dashboard Enhanced Styles */

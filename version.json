@@ -1,8 +1,69 @@
 {
-  "version": "2.3.0",
-  "buildDate": "2025-07-30",
+  "version": "2.3.1",
+  "buildDate": "2025-01-29",
   "codename": "Quantum Node",
   "releases": [
+    {
+      "version": "2.3.1",
+      "date": "2025-01-29",
+      "title": "Premium GPU Dashboard Design & Intelligent Memory Detection",
+      "type": "minor",
+      "highlights": [
+        "Stunning visual redesign of GPU dashboard with premium gradients, shadows, and animations",
+        "Intelligent GPU memory detection from node hardware specifications and pod requests",
+        "Enhanced GPU workload tables with comprehensive memory information",
+        "Professional card layouts with improved typography and spacing",
+        "Smart GPU memory inference for known hardware models (Tesla, A100, H100, etc.)"
+      ],
+      "features": [
+        {
+          "category": "Visual Design Enhancement",
+          "items": [
+            "Premium GPU card styling with gradient backgrounds and enhanced shadows",
+            "Animated hover effects with smooth transitions and scaling",
+            "Professional color gradients matching HPE branding standards",
+            "Enhanced typography with improved font weights and letter spacing",
+            "Consistent visual hierarchy across all GPU dashboard components"
+          ]
+        },
+        {
+          "category": "GPU Memory Intelligence",
+          "items": [
+            "Automatic GPU memory detection from multiple Kubernetes sources",
+            "Support for nvidia.com/gpu.memory, nvidia.com/gpu-memory resource types",
+            "Hardware-based memory inference for known GPU models",
+            "MIG (Multi-Instance GPU) support detection",
+            "Smart per-GPU memory calculation based on node capacity"
+          ]
+        },
+        {
+          "category": "Enhanced Table Features", 
+          "items": [
+            "GPU Memory column added to all GPU workload tables",
+            "Intelligent memory display with fallback to 'Unknown' when unavailable",
+            "Improved table headers with better naming (Pod Name vs Name)",
+            "Enhanced visual spacing and padding for better readability"
+          ]
+        },
+        {
+          "category": "Comprehensive GPU Dashboard",
+          "items": [
+            "Multi-view GPU dashboard with Overview, Nodes, Queue, and Workloads tabs",
+            "Professional navigation tabs with icons and smooth transitions",
+            "GPU utilization cards with metric icons and gradient text effects",
+            "Real-time GPU allocation charts and breakdowns",
+            "Enhanced loading states with branded animations"
+          ]
+        }
+      ],
+      "technical": [
+        "Enhanced GPU pods API with comprehensive memory detection logic",
+        "Hardware model mapping for major GPU vendors (NVIDIA Tesla, A100, H100 series)",
+        "Multiple fallback mechanisms for GPU memory information retrieval",
+        "Improved error handling and logging for GPU memory detection",
+        "CSS3 animations and transitions for enhanced user experience"
+      ]
+    },
     {
       "version": "2.3.0",
       "date": "2025-07-30",
