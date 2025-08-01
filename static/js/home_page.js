@@ -71,6 +71,14 @@ async function initializeHomePage() {
 
     // This is now the primary function to fetch data for the home page tables
     fetchResourcesForAllTabs();
+    
+    // Initialize GPU dashboard components
+    if (typeof initializeGpuDashboard === 'function') {
+        console.log('Initializing GPU dashboard...');
+        initializeGpuDashboard();
+    } else {
+        console.warn('initializeGpuDashboard function not found.');
+    }
 }
 
 // Home dashboard: This should only be called once on initial load.

@@ -360,8 +360,9 @@ body {
 }
 
 .dashboard-metric-card.gpu-card {
-  background: linear-gradient(135deg, #ffffff 0%, #f5f9ff 100%);
-  border-left: 4px solid var(--hpe-secondary);
+  /* Removed special blue styling to match other cards */
+  /* background: linear-gradient(135deg, #ffffff 0%, #f5f9ff 100%); */
+  /* border-left: 4px solid var(--hpe-secondary); */
 }
 
 .dashboard-metric-card.metric-card {
@@ -378,7 +379,8 @@ body {
 }
 
 .dashboard-metric-card.gpu-card .card-icon {
-  color: var(--hpe-secondary);
+  /* Use default dark color like other cards */
+  color: var(--hpe-dark);
 }
 
 .dashboard-metric-card.metric-card .card-icon {

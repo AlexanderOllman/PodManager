@@ -574,6 +574,13 @@ let gpuRefreshInterval = null;
 function initializeGpuDashboard() {
     console.log('Initializing enhanced GPU dashboard...');
     
+    // Check if GPU dashboard elements exist
+    const gpuManagementSection = document.querySelector('.gpu-view-tabs');
+    if (!gpuManagementSection) {
+        console.log('GPU management section not found, skipping GPU dashboard initialization');
+        return;
+    }
+    
     // Set up view switching
     setupGpuViewSwitching();
     
@@ -677,17 +684,30 @@ function loadGpuOverview() {
 }
 
 function renderGpuOverview(data) {
-    // Update GPU utilization cards
-    updateGpuUtilizationCards(data);
-    
-    // Update GPU allocation chart
-    updateGpuAllocationChart(data);
-    
-    // Update namespace GPU allocation table
-    updateNamespaceGpuTable(data.namespace_allocation);
-    
-    // Update node GPU allocation table
-    updateNodeGpuTable(data.node_allocation);
+    try {
+        // Update GPU utilization cards
+        updateGpuUtilizationCards(data);
+        
+        // Update GPU allocation chart with error handling
+        updateGpuAllocationChart(data);
+        
+        // Update namespace GPU allocation table
+        if (data.namespace_allocation) {
+            updateNamespaceGpuTable(data.namespace_allocation);
+        }
+        
+        // Update node GPU allocation table
+        if (data.node_allocation) {
+            updateNodeGpuTable(data.node_allocation);
+        }
+    } catch (error) {
+        console.error('Error rendering GPU overview:', error);
+        // Display fallback message if needed
+        const overviewContainer = document.querySelector('.gpu-view-content[data-view="overview"]');
+        if (overviewContainer) {
+            // Could add fallback UI here if needed
+        }
+    }
 }
 
 function updateGpuUtilizationCards(data) {
@@ -725,15 +745,24 @@ function updateGpuUtilizationCards(data) {
 function updateGpuAllocationChart(data) {
     // Create or update a donut chart for GPU allocation
     const chartContainer = document.getElementById('gpuAllocationChart');
-    if (!chartContainer) return;
+    if (!chartContainer) {
+        console.warn('GPU allocation chart container not found');
+        return;
+    }
+    
+    // Check if Chart.js is available
+    if (typeof Chart === 'undefined') {
+        console.error('Chart.js library not loaded, cannot create GPU allocation chart');
+        return;
+    }
     
     const chartData = {
         labels: ['Running', 'Available', 'Pending'],
         datasets: [{
             data: [
-                data.allocated_gpus.running,
-                data.available_gpus,
-                data.allocated_gpus.pending
+                data.allocated_gpus?.running || 0,
+                data.available_gpus || 0,
+                data.allocated_gpus?.pending || 0
             ],
             backgroundColor: [
                 '#01A982', // HPE Green for running
@@ -745,41 +774,52 @@ function updateGpuAllocationChart(data) {
         }]
     };
     
-    // If chart already exists, update it; otherwise create new one
-    if (window.gpuAllocationChart) {
-        window.gpuAllocationChart.data = chartData;
-        window.gpuAllocationChart.update();
-    } else {
-        const ctx = chartContainer.getContext('2d');
-        window.gpuAllocationChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: chartData,
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            font: {
-                                family: 'MetricHPE'
+    try {
+        // If chart already exists, update it; otherwise create new one
+        if (window.gpuAllocationChart && typeof window.gpuAllocationChart.update === 'function') {
+            window.gpuAllocationChart.data = chartData;
+            window.gpuAllocationChart.update('none'); // Use 'none' animation mode for updates
+        } else {
+            // Destroy existing chart if it exists but is not properly initialized
+            if (window.gpuAllocationChart) {
+                window.gpuAllocationChart.destroy();
+            }
+            
+            const ctx = chartContainer.getContext('2d');
+            window.gpuAllocationChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: {
+                                    family: 'MetricHPE'
+                                }
                             }
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const label = context.label || '';
-                                const value = context.parsed;
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                const percentage = ((value / total) * 100).toFixed(1);
-                                return `${label}: ${value} GPUs (${percentage}%)`;
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+                                    return `${label}: ${value} GPUs (${percentage}%)`;
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
+            });
+        }
+    } catch (error) {
+        console.error('Error updating GPU allocation chart:', error);
+        // Reset chart on error
+        window.gpuAllocationChart = null;
     }
 }
 

@@ -1,11 +1,39 @@
 {
-  "version": "2.3.1",
-  "buildDate": "2025-01-29",
+  "version": "2.3.2",
+  "buildDate": "2025-08-01",
   "codename": "Quantum Node",
   "releases": [
     {
+      "version": "2.3.2",
+      "date": "2025-08-01",
+      "title": "GPU Dashboard Reliability & Visual Consistency Fixes",
+      "type": "patch",
+      "highlights": [
+        "Fixed GPU dashboard auto-loading on page refresh",
+        "Resolved Chart.js initialization errors in GPU allocation charts",
+        "Removed blue highlights from GPU card to match other dashboard cards",
+        "Enhanced error handling for robust GPU dashboard functionality"
+      ],
+      "bugfixes": [
+        "Fixed 'window.gpuAllocationChart.update is not a function' error",
+        "Resolved manual refresh requirement for GPU metrics display",
+        "Removed special blue styling from GPU summary card for visual consistency",
+        "Added proper Chart.js availability checks before chart creation",
+        "Enhanced error handling in GPU overview rendering",
+        "Added safety checks for DOM elements in GPU dashboard initialization"
+      ],
+      "technical": [
+        "Added automatic GPU dashboard initialization on home page load",
+        "Implemented try-catch blocks for chart update operations",
+        "Added Chart.js library availability validation",
+        "Enhanced chart destruction and recreation logic for failed initializations",
+        "Improved data validation with null coalescing for chart data",
+        "Added comprehensive logging for GPU dashboard initialization steps"
+      ]
+    },
+    {
       "version": "2.3.1",
-      "date": "2025-01-29",
+      "date": "2025-08-01",
       "title": "Premium GPU Dashboard Design & Intelligent Memory Detection",
       "type": "minor",
       "highlights": [
